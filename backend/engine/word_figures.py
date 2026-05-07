@@ -258,16 +258,29 @@ def _fig_surge_envelope_for(draft: dict, pipeline: str) -> bytes | None:
     """
     Internal: MOC pressure envelope for a named pipeline ("suction" or "discharge").
 
-    Filters envelope data by the ``pipeline`` field in mocResult.
+    Data source resolution (mirrors the Excel exporter convention):
+      - suction  → ``draft["suctionSurgeResult"]`` first; falls back to
+                   ``draft["mocResult"]`` when that result has pipeline="suction".
+      - discharge → ``draft["mocResult"]``; skipped when pipeline tag says "suction".
+
     Returns None when envelope data for the requested pipeline is absent.
     """
-    moc = draft.get("mocResult") or {}
-    env = moc.get("envelope", []) or []
+    if pipeline.lower() == "suction":
+        # Prefer the dedicated suction result
+        moc = draft.get("suctionSurgeResult") or {}
+        if not moc:
+            # Fall back: use mocResult only if it is tagged suction
+            fallback = draft.get("mocResult") or {}
+            tag = fallback.get("pipeline", "")
+            moc = fallback if (not tag or tag.lower() == "suction") else {}
+    else:
+        # Discharge: use mocResult; skip if explicitly tagged "suction"
+        moc = draft.get("mocResult") or {}
+        tag = moc.get("pipeline", "")
+        if tag and tag.lower() == "suction":
+            moc = {}
 
-    # Accept if pipeline matches OR if it's the only envelope present
-    moc_pipeline = moc.get("pipeline", "")
-    if moc_pipeline and moc_pipeline.lower() != pipeline.lower() and env:
-        return None
+    env = moc.get("envelope", []) or []
     if not env:
         return None
 

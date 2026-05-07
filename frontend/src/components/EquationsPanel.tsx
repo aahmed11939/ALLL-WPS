@@ -10,9 +10,14 @@ import {
   GPM_PER_M3H,
   FT_PER_M,
   IN_PER_MM,
+  MM_PER_IN,
   FPS_PER_MS,
   M3S_PER_GPM,
 } from "../utils/units";
+
+/** Conversion factors derived from unit constants — never hardcoded literals */
+const C_IN_TO_M = MM_PER_IN / 1000;   // exact: 0.0254 m per inch
+const C_M_TO_FT = FT_PER_M;           // 3.28084 ft per metre
 
 const G = 9.80665;
 const NU = 1.004e-6;
@@ -227,11 +232,11 @@ export default function EquationsPanel({ results, lastReq, pumpResult }: Props) 
   const velStepsSI: EqStep[] = [
     {
       label: "Given:",
-      latex: `Q = ${lx(Q_m3h, 2)}\\,\\text{m}^3\\!/\\text{h} = ${lx(Q_m3s, 6)}\\,\\text{m}^3\\!/\\text{s}\\;,\\quad D = ${lx(D_mm, 0)}\\,\\text{mm} = ${lx(D_m, 4)}\\,\\text{m}`,
+      latex: `Q = ${lx(Q_m3h, 2)}\\,\\text{m}^3/\\text{h} \\div 3600 = ${lx(Q_m3s, 6)}\\,\\text{m}^3/\\text{s}\\;,\\quad D = ${lx(D_mm, 0)}\\,\\text{mm}`,
     },
     {
       label: "Area:",
-      latex: `A = \\dfrac{\\pi\\,(${lx(D_m, 4)})^2}{4} = ${lx(A_m2, 7)}\\,\\text{m}^2`,
+      latex: `D = ${lx(D_mm, 0)}\\,\\text{mm} / 1000 = ${lx(D_m, 4)}\\,\\text{m}\\;,\\quad A = \\dfrac{\\pi\\,(${lx(D_m, 4)})^2}{4} = ${lx(A_m2, 7)}\\,\\text{m}^2`,
     },
     {
       label: "Substitute:",
@@ -250,7 +255,7 @@ export default function EquationsPanel({ results, lastReq, pumpResult }: Props) 
     },
     {
       label: "SI conv.:",
-      latex: `D = ${lx(D_in, 3)} \\times 0.0254 = ${lx(D_m, 4)}\\,\\text{m}\\;,\\quad A = ${lx(A_m2, 7)}\\,\\text{m}^2`,
+      latex: `D = ${lx(D_in, 3)}\\,\\text{in} \\times ${C_IN_TO_M.toFixed(4)} = ${lx(D_m, 4)}\\,\\text{m}\\;,\\quad A = ${lx(A_m2, 7)}\\,\\text{m}^2`,
     },
     {
       label: "Substitute:",
@@ -314,7 +319,7 @@ export default function EquationsPanel({ results, lastReq, pumpResult }: Props) 
     },
     {
       label: "Convert:",
-      latex: `h_f = ${lx(hf_m, 4)} \\times 3.281 = ${lx(hf_d, 3)}\\,\\text{ft}`,
+      latex: `h_f = ${lx(hf_m, 4)}\\,\\text{m} \\times ${C_M_TO_FT.toFixed(4)} = ${lx(hf_d, 3)}\\,\\text{ft}`,
     },
   ];
 
@@ -362,7 +367,7 @@ export default function EquationsPanel({ results, lastReq, pumpResult }: Props) 
     },
     {
       label: "Convert:",
-      latex: `TDH = ${lx(tdh_m, 3)} \\times 3.281 = ${lx(tdh_d, 3)}\\,\\text{ft}`,
+      latex: `TDH = ${lx(tdh_m, 3)}\\,\\text{m} \\times ${C_M_TO_FT.toFixed(4)} = ${lx(tdh_d, 3)}\\,\\text{ft}`,
     },
   ];
 
@@ -528,15 +533,15 @@ export default function EquationsPanel({ results, lastReq, pumpResult }: Props) 
             engineering={engineering}
           />
 
-          {/* EQ 7 — Hazen-Williams reference */}
+          {/* EQ 7 — Hazen-Williams head-loss reference */}
           <div className="border-l-4 border-slate-300 pl-4 py-1">
             <div className="flex items-baseline gap-2 mb-2 flex-wrap">
               <span className="text-[10px] font-mono font-semibold text-slate-400">EQ.7</span>
               <span className="text-xs font-semibold text-slate-500">
-                Hazen-Williams (Reference Only)
+                Hazen-Williams Friction Head Loss
               </span>
               <span className="text-[10px] rounded px-1.5 py-0.5 bg-amber-100 text-amber-700 font-semibold">
-                Informational — this app uses Darcy-Weisbach
+                Reference — C&#8203;<sub>HW</sub> not in current form
               </span>
             </div>
 
@@ -544,36 +549,39 @@ export default function EquationsPanel({ results, lastReq, pumpResult }: Props) 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
                 <div className="bg-slate-50 rounded px-3 py-3 text-center overflow-x-auto">
                   <p className="text-[9px] text-slate-400 mb-1.5 uppercase tracking-wide font-semibold">
-                    SI Form
+                    SI — Q [m³/s], D [m], L [m] → h_f [m]
                   </p>
                   <KaTeXBlock
-                    latex={`V = 0.8492\\,C_{HW}\\,R_h^{0.63}\\,S^{0.54}`}
+                    latex={`h_f = \\dfrac{10.67\\,L\\,Q^{1.852}}{C_{HW}^{1.852}\\,D^{4.87}}`}
                     display
                   />
-                  <p className="text-[9px] text-slate-400 mt-1.5">
-                    V [m/s], R_h [m], S [m/m]
-                  </p>
                 </div>
                 <div className="bg-slate-50 rounded px-3 py-3 text-center overflow-x-auto">
                   <p className="text-[9px] text-slate-400 mb-1.5 uppercase tracking-wide font-semibold">
-                    US Customary Form
+                    US — Q [ft³/s], D [ft], L [ft] → h_f [ft]
                   </p>
                   <KaTeXBlock
-                    latex={`V = 1.318\\,C_{HW}\\,R_h^{0.63}\\,S^{0.54}`}
+                    latex={`h_f = \\dfrac{4.727\\,L\\,Q^{1.852}}{C_{HW}^{1.852}\\,D^{4.87}}`}
                     display
                   />
-                  <p className="text-[9px] text-slate-400 mt-1.5">
-                    V [fps], R_h [ft], S [ft/ft]
-                  </p>
                 </div>
               </div>
             )}
 
+            {!engineering && (
+              <div className="bg-slate-50 rounded px-3 py-2 mb-2 overflow-x-auto text-center">
+                <KaTeXBlock
+                  latex={`h_f = \\dfrac{10.67\\,L\\,Q^{1.852}}{C_{HW}^{1.852}\\,D^{4.87}}\\;\\text{(SI)}`}
+                  display
+                />
+              </div>
+            )}
+
             <p className="text-[10px] text-slate-400 italic leading-relaxed">
-              H-W is empirical and unit-dependent (SI factor 0.8492, US factor 1.318). Valid for turbulent
-              flow in water mains at 10–24 °C. C_HW ranges 60 (rough concrete) to 150 (smooth PVC/HDPE).
-              Darcy-Weisbach + Colebrook-White is theoretically rigorous and unit-consistent — preferred by
-              AWWA M11, Hydraulic Institute, and ISO 4006.
+              Substituted values require a C_HW roughness coefficient input (add to the form to enable).
+              C_HW ranges: 60 (rough/old cast iron) → 100 (new cast/ductile iron) → 140 (new steel) → 150 (PVC/HDPE).
+              Valid 10–24 °C. Darcy-Weisbach + Colebrook-White (EQ.4) is the governing method for this calculation —
+              H-W shown here as a reference cross-check per AWWA M11.
             </p>
           </div>
 

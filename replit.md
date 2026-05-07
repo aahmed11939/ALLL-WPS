@@ -28,10 +28,12 @@ Municipal drinking-water pump station hydraulic design tool — computes TDH and
 - `backend/api/main.py` — FastAPI routes (`/api/v1/calculate`, `/api/v1/materials`, `/api/v1/pump-library`)
 - `backend/data/pipe_materials.yaml` — roughness ε values per material
 - `backend/data/pump_library.yaml` — example pump catalogue
-- `frontend/src/pages/DesignPage.tsx` — main layout
+- `frontend/src/pages/DesignPage.tsx` — main layout (under `src/` per Vite scaffold convention)
 - `frontend/src/components/` — CalculationForm, ResultsPanel, SystemCurveChart
 - `frontend/src/utils/api.ts` — typed axios client
-- `sample_data/example_request.json` — realistic design scenario
+- `sample_data/example_request.json` — realistic design scenario (DN150 / 36 m³/h)
+- `sample_data/example_response.json` — expected API response for above request
+- `sample_data/pump_library.yaml` — illustrative pump catalogue (mirrors `backend/data/pump_library.yaml`)
 - `docs/README.md` — full technical documentation
 
 ## Architecture decisions

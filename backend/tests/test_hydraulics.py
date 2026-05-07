@@ -83,15 +83,16 @@ class TestFrictionFactor:
         assert f == pytest.approx(0.064, rel=1e-6)
 
     def test_moody_turbulent_rough(self):
-        # Re = 1e5, ε/D = 0.001 → Colebrook-White ≈ 0.0222
-        # (verified against iterative solution; Moody chart hand-reading ~ 0.021-0.023)
+        # Re = 1e5, ε/D = 0.001 → Colebrook-White iterative solution = 0.02218
+        # Verified by hand iteration: x = 1/√f converges to 6.7149 ⟹ f = 0.02218
         f = friction_factor_colebrook(1e5, 0.001)
-        assert 0.020 < f < 0.025
+        assert f == pytest.approx(0.0222, abs=0.001)
 
     def test_smooth_pipe_high_re(self):
-        # Re = 1e6, smooth (ε/D = 0) → Colebrook-White ≈ 0.0116 (Filonenko ~0.0116)
+        # Re = 1e6, smooth (ε/D = 0) → Colebrook-White iterative = 0.01165
+        # Consistent with Filonenko (0.0025·(log Re − 0.8)⁻²) ≈ 0.01162
         f = friction_factor_colebrook(1e6, 0.0)
-        assert 0.010 < f < 0.015
+        assert f == pytest.approx(0.0116, abs=0.001)
 
     def test_fully_rough(self):
         # Re = 1e8, ε/D = 0.05 → fully-rough regime, f ≈ 1/(1.14 - 2 log(ε/D))²

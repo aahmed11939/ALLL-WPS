@@ -46,190 +46,80 @@ function round(v: number, d = 2): string {
   return v.toFixed(d);
 }
 
-/**
- * Compute velocity (m/s) from flow (m³/h) and pipe internal diameter (mm).
- * Returns null when inputs are invalid.
- */
-function velocityMs(Q_m3h: number, diameter_mm: number): number | null {
-  if (Q_m3h <= 0 || diameter_mm <= 0) return null;
-  const A = Math.PI * Math.pow(diameter_mm / 1000 / 2, 2);
-  return (Q_m3h / 3600) / A;
-}
-
 // ---------------------------------------------------------------------------
 // Individual checks
 // ---------------------------------------------------------------------------
 
 /**
- * Check 1a — Suction pipe velocity vs AWWA M11 potable-water recommendations.
- * Computed from design flow + primary suction segment diameter.
- * Recommended range: 0.9–3.0 m/s.
- * Warning : > 3.0 m/s or < 0.6 m/s (stagnation)
+ * Check 1 — Pipeline velocity vs AWWA M11 potable-water recommendations.
+ * Sources from hydraulicsResult.velocity_ms; skips gracefully when result absent.
+ * Recommended range: 0.9–3.0 m/s (AWWA M11 potable-water mains).
+ * Warning : > 3.0 m/s  OR  < 0.9 m/s
  * Critical: > 4.5 m/s
  */
-function checkSuctionVelocity(draft: ProjectDraft, isUS: boolean): CheckResult {
-  const seg = draft.suction.segments[0];
+function checkVelocity(draft: ProjectDraft, isUS: boolean): CheckResult {
+  const r = draft.hydraulicsResult;
 
-  if (!seg) {
+  if (!r) {
     return {
-      id: "velocity_suction",
-      category: "Suction Velocity",
+      id: "velocity",
+      category: "Pipeline Velocity",
       severity: "info",
-      title: "Suction velocity — no suction segment defined",
-      message: "No suction pipeline segment is configured.",
-      recommendation: "Add a suction segment on Step 3.",
+      title: "Pipeline velocity — awaiting hydraulic compute",
+      message: "Run 'Compute Hydraulics' on Step 7 to evaluate pipeline velocity.",
+      recommendation: "Complete the hydraulic computation to unlock this check.",
       skipped: true,
     };
   }
 
-  const v = velocityMs(draft.designFlow_m3h, seg.diameter_mm);
-
-  if (v === null) {
-    return {
-      id: "velocity_suction",
-      category: "Suction Velocity",
-      severity: "info",
-      title: "Suction velocity — invalid inputs",
-      message: "Design flow or suction diameter is zero.",
-      recommendation: "Check flow and pipe diameter inputs.",
-      skipped: true,
-    };
-  }
-
+  const v = r.velocity_ms;
   const vDisplay = isUS ? v * 3.28084 : v;
   const unit = isUS ? "fps" : "m/s";
   const metric = `${round(vDisplay, 3)} ${unit}`;
 
   if (v > 4.5) {
     return {
-      id: "velocity_suction",
-      category: "Suction Velocity",
+      id: "velocity",
+      category: "Pipeline Velocity",
       severity: "critical",
-      title: "Suction velocity critically high — erosion and cavitation risk",
-      message: `Suction pipe velocity is ${metric}. AWWA M11 recommends ≤ 3.0 m/s (10 fps) for potable suction mains; velocities above 4.5 m/s (15 fps) amplify NPSH demand, cause erosion, and increase water-hammer surge pressures.`,
-      recommendation: "Increase the suction pipe diameter. Each size increase typically reduces velocity by ~40%.",
+      title: "Pipeline velocity critically high — erosion and water-hammer risk",
+      message: `Calculated pipeline velocity is ${metric}. AWWA M11 recommends ≤ 3.0 m/s (10 fps) for potable pump-station mains; velocities above 4.5 m/s (15 fps) cause pipe erosion, elevated noise, amplified NPSH demand, and dangerous water-hammer surges on pump trip.`,
+      recommendation: "Increase the primary pipe diameter immediately. Review the surge analysis (Step 9) to ensure transient pressures remain within pipe pressure ratings.",
       metric,
     };
   }
 
   if (v > 3.0) {
     return {
-      id: "velocity_suction",
-      category: "Suction Velocity",
+      id: "velocity",
+      category: "Pipeline Velocity",
       severity: "warning",
-      title: "Suction velocity above AWWA M11 recommended limit",
-      message: `Suction pipe velocity is ${metric}. AWWA M11 recommends ≤ 3.0 m/s (10 fps) for potable suction mains. High suction velocity increases friction losses, lowers NPSHa, and raises cavitation risk.`,
-      recommendation: "Increase the suction pipe diameter. Use a larger size on the suction side than the discharge side if necessary to protect NPSH.",
+      title: "Pipeline velocity above AWWA M11 recommended limit",
+      message: `Calculated pipeline velocity is ${metric}. AWWA M11 recommends ≤ 3.0 m/s (10 fps) for potable pump-station mains. Exceeding this increases friction losses, lowers NPSHa, and raises water-hammer surge potential.`,
+      recommendation: "Consider increasing the primary pipe diameter. Re-run hydraulics to verify the improvement in head loss and TDH after the change.",
       metric,
     };
   }
 
-  if (v < 0.6) {
+  if (v < 0.9) {
     return {
-      id: "velocity_suction",
-      category: "Suction Velocity",
+      id: "velocity",
+      category: "Pipeline Velocity",
       severity: "warning",
-      title: "Suction velocity below minimum — sediment and biofilm risk",
-      message: `Suction pipe velocity is ${metric}. Velocities below 0.6 m/s (2 fps) in potable mains may allow sediment deposition and disinfectant residual decay (AWWA M58).`,
-      recommendation: "Reduce the suction pipe diameter or verify the design flow assumption. Oversized suction piping is a common source of low velocity.",
+      title: "Pipeline velocity below AWWA M11 recommended minimum",
+      message: `Calculated pipeline velocity is ${metric}. AWWA M11 recommends ≥ 0.9 m/s (3 fps) in potable pump-station mains to maintain self-cleaning conditions and adequate disinfectant residual.`,
+      recommendation: "Reduce the primary pipe diameter or increase the design flow. Oversized suction piping is a common source of low velocity.",
       metric,
     };
   }
 
   return {
-    id: "velocity_suction",
-    category: "Suction Velocity",
+    id: "velocity",
+    category: "Pipeline Velocity",
     severity: "info",
-    title: "Suction velocity within recommended range",
-    message: `Suction pipe velocity is ${metric} — within the AWWA M11 recommended range of 0.6–3.0 m/s (2–10 fps) for potable suction mains.`,
-    recommendation: "No action required.",
-    metric,
-  };
-}
-
-/**
- * Check 1b — Discharge pipe velocity vs AWWA M11 potable-water recommendations.
- * Computed from design flow + primary discharge segment diameter.
- * Recommended range: 0.9–3.5 m/s (slightly higher than suction).
- * Warning : > 3.5 m/s or < 0.6 m/s
- * Critical: > 4.5 m/s
- */
-function checkDischargeVelocity(draft: ProjectDraft, isUS: boolean): CheckResult {
-  const seg = draft.discharge.segments[0];
-
-  if (!seg) {
-    return {
-      id: "velocity_discharge",
-      category: "Discharge Velocity",
-      severity: "info",
-      title: "Discharge velocity — no discharge segment defined",
-      message: "No discharge pipeline segment is configured.",
-      recommendation: "Add a discharge segment on Step 6.",
-      skipped: true,
-    };
-  }
-
-  const v = velocityMs(draft.designFlow_m3h, seg.diameter_mm);
-
-  if (v === null) {
-    return {
-      id: "velocity_discharge",
-      category: "Discharge Velocity",
-      severity: "info",
-      title: "Discharge velocity — invalid inputs",
-      message: "Design flow or discharge diameter is zero.",
-      recommendation: "Check flow and pipe diameter inputs.",
-      skipped: true,
-    };
-  }
-
-  const vDisplay = isUS ? v * 3.28084 : v;
-  const unit = isUS ? "fps" : "m/s";
-  const metric = `${round(vDisplay, 3)} ${unit}`;
-
-  if (v > 4.5) {
-    return {
-      id: "velocity_discharge",
-      category: "Discharge Velocity",
-      severity: "critical",
-      title: "Discharge velocity critically high — erosion and water-hammer risk",
-      message: `Discharge pipe velocity is ${metric}. AWWA M11 recommends ≤ 3.5 m/s (11.5 fps) for potable discharge mains; velocities above 4.5 m/s (15 fps) cause pipe erosion, elevated noise, and dangerous water-hammer surges on pump trip.`,
-      recommendation: "Increase the discharge pipe diameter immediately. Review the surge analysis (Step 9) to ensure water-hammer pressures remain within pipe pressure ratings.",
-      metric,
-    };
-  }
-
-  if (v > 3.5) {
-    return {
-      id: "velocity_discharge",
-      category: "Discharge Velocity",
-      severity: "warning",
-      title: "Discharge velocity above AWWA M11 recommended limit",
-      message: `Discharge pipe velocity is ${metric}. AWWA M11 recommends ≤ 3.5 m/s (11.5 fps) for potable discharge mains. Exceeding this increases water-hammer surge potential and pipe wear.`,
-      recommendation: "Consider increasing the discharge pipe diameter, particularly on long runs. Re-run hydraulics to verify head loss impact.",
-      metric,
-    };
-  }
-
-  if (v < 0.6) {
-    return {
-      id: "velocity_discharge",
-      category: "Discharge Velocity",
-      severity: "warning",
-      title: "Discharge velocity below minimum — sediment risk",
-      message: `Discharge pipe velocity is ${metric}. Velocities below 0.6 m/s (2 fps) in potable distribution mains risk sediment accumulation.`,
-      recommendation: "Reduce the discharge pipe diameter or review the design flow assumption.",
-      metric,
-    };
-  }
-
-  return {
-    id: "velocity_discharge",
-    category: "Discharge Velocity",
-    severity: "info",
-    title: "Discharge velocity within recommended range",
-    message: `Discharge pipe velocity is ${metric} — within the AWWA M11 recommended range of 0.6–3.5 m/s (2–11.5 fps) for potable discharge mains.`,
-    recommendation: "No action required.",
+    title: "Pipeline velocity within AWWA M11 recommended range",
+    message: `Calculated pipeline velocity is ${metric} — within the AWWA M11 recommended range of 0.9–3.0 m/s (3–10 fps) for potable pump-station mains.`,
+    recommendation: "No action required. Verify suction velocity separately if the suction pipe diameter differs significantly from the discharge.",
     metric,
   };
 }
@@ -794,8 +684,7 @@ export function runChecks(draft: ProjectDraft): CheckResult[] {
   const isUS = draft.unitSystem === "US";
 
   const raw: CheckResult[] = [
-    checkSuctionVelocity(draft, isUS),
-    checkDischargeVelocity(draft, isUS),
+    checkVelocity(draft, isUS),
     checkFrictionLoss(draft, isUS),
     checkNpsh(draft, isUS),
     checkCycling(draft, isUS),

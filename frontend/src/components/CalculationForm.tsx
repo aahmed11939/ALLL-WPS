@@ -27,9 +27,8 @@ interface Props {
 export default function CalculationForm({ onSubmit, loading }: Props) {
   const [materials, setMaterials] = useState<MaterialOption[]>([]);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { register, handleSubmit, control, watch, formState: { errors } } = useForm<FormValues>({
-    resolver: zodResolver(schema) as any, // @hookform/resolvers v5 + zod v4
+  const { register, handleSubmit, control, watch, formState: { errors } } = useForm<FormValues, unknown, FormValues>({
+    resolver: zodResolver(schema),
     defaultValues: {
       Q: 36,
       flowUnit: "m3h",

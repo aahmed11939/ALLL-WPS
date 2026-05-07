@@ -621,3 +621,97 @@ export async function computeWaveSpeed(
   const res = await axios.post<WaveSpeedResponse>("/surge/wavespeed", req);
   return res.data;
 }
+
+// ---------------------------------------------------------------------------
+// Surge Mode B — MOC transient solver
+// ---------------------------------------------------------------------------
+
+export interface MOCSegmentInput {
+  label?: string;
+  L_m: number;
+  D_m: number;
+  roughness_m?: number;
+  elev_start_m?: number;
+  elev_end_m?: number;
+}
+
+export type MOCBoundaryInput =
+  | { type: "reservoir"; H_m: number }
+  | { type: "pump_trip"; H_pump_m: number; Q_m3s: number; t_trip_s: number; H_reservoir_m?: number }
+  | { type: "valve_closure"; Q_m3s: number; t_close_s: number; profile: "linear" | "equal_percentage" }
+  | { type: "suction_pump_trip"; H_sump_m: number; Q_m3s: number; t_trip_s: number };
+
+export interface MOCObservationPoint {
+  label?: string;
+  frac: number;
+}
+
+export interface MOCRequest {
+  pipeline: "suction" | "discharge";
+  wave_speed_ms: number;
+  Q_0_m3s: number;
+  H_0_m?: number;
+  temperature_C?: number;
+  rho_kg_m3?: number;
+  pressure_rating_kPa?: number | null;
+  segments: MOCSegmentInput[];
+  boundary_A: MOCBoundaryInput;
+  boundary_B: MOCBoundaryInput;
+  observation_points?: MOCObservationPoint[];
+  n_reaches?: number | null;
+  t_total_s?: number | null;
+  unit_system?: string;
+}
+
+export interface MOCEnvelopePoint {
+  x_m: number;
+  elev_m: number;
+  H_max_m: number;
+  H_min_m: number;
+  P_max_kPa: number;
+  P_min_kPa: number;
+}
+
+export interface MOCTimePoint {
+  t_s: number;
+  H_m: number;
+  P_kPa: number;
+}
+
+export interface MOCObservationResult {
+  label: string;
+  frac: number;
+  node_index: number;
+  x_m: number;
+  history: MOCTimePoint[];
+}
+
+export interface MOCResponse {
+  pipeline: string;
+  N: number;
+  dx_m: number;
+  dt_s: number;
+  courant: number;
+  t_total_s: number;
+  n_steps: number;
+  D_m: number;
+  f: number;
+  T_char_s: number;
+  envelope: MOCEnvelopePoint[];
+  observations: MOCObservationResult[];
+  global_max_H_m: number;
+  global_min_H_m: number;
+  global_max_P_kPa: number;
+  global_min_P_kPa: number;
+  cavitation_x_m: number[];
+  h_vap_m: number;
+  temperature_C: number;
+  assumption_notes: string[];
+  rating_check: PressureRatingCheck | null;
+  unit_system: string;
+}
+
+export async function computeMOC(req: MOCRequest): Promise<MOCResponse> {
+  const res = await axios.post<MOCResponse>("/surge/moc", req);
+  return res.data;
+}

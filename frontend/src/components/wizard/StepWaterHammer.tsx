@@ -8,6 +8,7 @@ import type {
   PressureRatingCheck,
 } from "../../utils/api";
 import type { WaterHammerConfig } from "../../types/project";
+import StepWaterHammerModeB from "./StepWaterHammerModeB";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -195,6 +196,9 @@ export default function StepWaterHammer() {
   const [waveCalcResult, setWaveCalcResult] = useState<WaveSpeedResponse | null>(null);
   const [waveCalcLoading, setWaveCalcLoading] = useState(false);
   const [waveCalcError,   setWaveCalcError]   = useState<string | null>(null);
+
+  // ── Mode A / B tab ────────────────────────────────────────────────────────
+  const [activeMode, setActiveMode] = useState<"A" | "B">("A");
 
   // ── Compute state ─────────────────────────────────────────────────────────
   const [computing, setComputing] = useState(false);
@@ -393,17 +397,56 @@ export default function StepWaterHammer() {
   return (
     <div className="space-y-5">
 
-      {/* Header */}
+      {/* Header + mode tabs */}
       <div>
         <h2 className="text-base font-bold text-slate-800 mb-1">
-          Water Hammer Analysis — Mode A Quick Check
+          Water Hammer Analysis
         </h2>
-        <p className="text-xs text-slate-500 max-w-2xl leading-relaxed">
-          Joukowsky equation with Allievi/Bergeron slow-closure reduction.
-          ΔH&nbsp;=&nbsp;a·ΔV/g for instantaneous events; reduced by K&nbsp;=&nbsp;T/t<sub>c</sub>{" "}
-          when closure is slow (t<sub>c</sub>&nbsp;&gt;&nbsp;T&nbsp;=&nbsp;2L/a).
+        <p className="text-xs text-slate-500 max-w-2xl leading-relaxed mb-3">
+          Surge analysis using Joukowsky theory (Mode A) or a full 1-D Method of
+          Characteristics simulation (Mode B).
         </p>
+
+        {/* Mode selector */}
+        <div className="flex gap-0 rounded-xl border border-slate-200 overflow-hidden w-fit">
+          {(["A", "B"] as const).map(m => (
+            <button
+              key={m}
+              onClick={() => setActiveMode(m)}
+              className={`px-5 py-2 text-xs font-semibold transition-colors ${
+                activeMode === m
+                  ? m === "A"
+                    ? "bg-blue-600 text-white"
+                    : "bg-indigo-600 text-white"
+                  : "bg-white text-slate-500 hover:bg-slate-50"
+              }`}
+            >
+              {m === "A" ? "Mode A — Quick Check" : "Mode B — MOC Simulation"}
+            </button>
+          ))}
+        </div>
+
+        {activeMode === "A" && (
+          <p className="text-[10px] text-slate-400 mt-2 max-w-2xl">
+            Joukowsky equation with Allievi/Bergeron slow-closure reduction.
+            ΔH = a·ΔV/g for instantaneous events; reduced by K = T/t<sub>c</sub>{" "}
+            when closure is slow (t<sub>c</sub> &gt; T = 2L/a).
+          </p>
+        )}
+        {activeMode === "B" && (
+          <p className="text-[10px] text-slate-400 mt-2 max-w-2xl">
+            Full time-domain MOC (Method of Characteristics) — resolves wave
+            reflections, column separation, and friction. Slower but far more
+            accurate than Mode A.
+          </p>
+        )}
       </div>
+
+      {/* ── Mode B ───────────────────────────────────────────────────────────── */}
+      {activeMode === "B" && <StepWaterHammerModeB />}
+
+      {/* ── Mode A content (Wave Speed Calculator + form + results) ──────── */}
+      {activeMode === "A" && <>
 
       {/* ── Wave Speed Calculator (collapsible) ──────────────────────────── */}
       <div className="rounded-xl border border-blue-200 bg-blue-50/40 overflow-hidden">
@@ -1087,6 +1130,7 @@ export default function StepWaterHammer() {
           </div>
         </div>
       )}
+      </>}
     </div>
   );
 }

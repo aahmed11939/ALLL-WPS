@@ -16,10 +16,11 @@ import type {
   PumpSelectionConfig,
   PumpCurveConfig,
   WaterHammerConfig,
+  MOCConfig,
 } from "../types/project";
 import { DEFAULT_DRAFT } from "../types/project";
 import type { UnitSystem } from "../utils/units";
-import type { CalculationResponse, ClearWellResponse, PumpComputeResponse, SurgeQuickResponse } from "../utils/api";
+import type { CalculationResponse, ClearWellResponse, PumpComputeResponse, SurgeQuickResponse, MOCResponse } from "../utils/api";
 
 // ---------------------------------------------------------------------------
 // Actions
@@ -42,6 +43,8 @@ type Action =
   | { type: "SET_CLEARWELL_RESULT";      result: ClearWellResponse | null }
   | { type: "SET_WATER_HAMMER_CONFIG";   config: WaterHammerConfig | null }
   | { type: "SET_WATER_HAMMER_RESULT";   result: SurgeQuickResponse | null }
+  | { type: "SET_MOC_CONFIG";            config: MOCConfig | null }
+  | { type: "SET_MOC_RESULT";            result: MOCResponse | null }
   | { type: "LOAD";                      draft: ProjectDraft };
 
 function reducer(state: ProjectDraft, action: Action): ProjectDraft {
@@ -63,6 +66,8 @@ function reducer(state: ProjectDraft, action: Action): ProjectDraft {
     case "SET_CLEARWELL_RESULT":      return { ...state, clearwellResult: action.result };
     case "SET_WATER_HAMMER_CONFIG":   return { ...state, waterHammerConfig: action.config };
     case "SET_WATER_HAMMER_RESULT":   return { ...state, waterHammerResult: action.result };
+    case "SET_MOC_CONFIG":            return { ...state, mocConfig: action.config };
+    case "SET_MOC_RESULT":            return { ...state, mocResult: action.result };
     case "LOAD":                      return { ...action.draft };
     default:                          return state;
   }
@@ -96,6 +101,8 @@ function parseDraft(raw: string): ProjectDraft {
     clearwellResult:      parsed.clearwellResult      ?? null,
     waterHammerConfig:    parsed.waterHammerConfig    ?? null,
     waterHammerResult:    parsed.waterHammerResult    ?? null,
+    mocConfig:            parsed.mocConfig            ?? null,
+    mocResult:            parsed.mocResult            ?? null,
   };
 }
 

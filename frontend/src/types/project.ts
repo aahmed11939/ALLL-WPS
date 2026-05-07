@@ -1,5 +1,5 @@
 import type { UnitSystem } from "../utils/units";
-import type { AccessoryItem, CalculationResponse, ClearWellResponse, PumpComputeResponse, SurgeQuickResponse, SurgeEventType } from "../utils/api";
+import type { AccessoryItem, CalculationResponse, ClearWellResponse, PumpComputeResponse, SurgeQuickResponse, SurgeEventType, MOCResponse } from "../utils/api";
 
 export interface ProjectMeta {
   name: string;
@@ -98,6 +98,49 @@ export interface WaterHammerConfig {
 }
 
 // ---------------------------------------------------------------------------
+// MOC (Mode B) config types
+// ---------------------------------------------------------------------------
+
+export type MOCBCType =
+  | "reservoir"
+  | "pump_trip"
+  | "valve_closure"
+  | "suction_pump_trip";
+
+export interface MOCBoundaryConfig {
+  type: MOCBCType;
+  H_m: string;
+  H_pump_m: string;
+  Q_m3s: string;
+  t_trip_s: string;
+  H_reservoir_m: string;
+  t_close_s: string;
+  profile: "linear" | "equal_percentage";
+  H_sump_m: string;
+}
+
+export interface MOCObsConfig {
+  label: string;
+  frac: string;
+}
+
+/** Persisted form state for the Water Hammer step Mode B (MOC). */
+export interface MOCConfig {
+  pipeline: "suction" | "discharge";
+  wave_speed_ms: number;
+  Q_0_m3s_override: string;
+  H_0_m_override: string;
+  rho_kg_m3: string;
+  temperature_C: string;
+  pressure_rating_kPa: string;
+  boundary_A: MOCBoundaryConfig;
+  boundary_B: MOCBoundaryConfig;
+  obs_points: MOCObsConfig[];
+  n_reaches: string;
+  t_total_s: string;
+}
+
+// ---------------------------------------------------------------------------
 // Top-level draft
 // ---------------------------------------------------------------------------
 
@@ -126,6 +169,10 @@ export interface ProjectDraft {
   waterHammerConfig: WaterHammerConfig | null;
   /** Cached water hammer compute result. */
   waterHammerResult: SurgeQuickResponse | null;
+  /** Editable state of Water Hammer Mode B (MOC). Null until user runs Mode B. */
+  mocConfig: MOCConfig | null;
+  /** Cached MOC simulation result. */
+  mocResult: MOCResponse | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -219,4 +266,6 @@ export const DEFAULT_DRAFT: ProjectDraft = {
   clearwellResult: null,
   waterHammerConfig: null,
   waterHammerResult: null,
+  mocConfig: null,
+  mocResult: null,
 };

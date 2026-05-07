@@ -62,6 +62,12 @@ from backend.api.schemas import (
     SurgeQuickResponse,
     WaveSpeedRequest,
     WaveSpeedResponse,
+    MOCRequest,
+    MOCResponse,
+    MOCBCReservoir,
+    MOCBCPumpTrip,
+    MOCBCValveClosure,
+    MOCBCSuctionPumpTrip,
     SystemCurvePoint,
     TypeSpecificField,
     VerticalTurbineExtras,
@@ -97,6 +103,14 @@ from backend.engine.pump_curves import (
     series_hq_fn,
 )
 from backend.engine.surge import surge_quick, wave_speed as compute_wave_speed
+from backend.engine.surge_moc import (
+    run_moc,
+    BoundaryCondition,
+    ReservoirBC,
+    PumpTripBC,
+    ValveClosureBC,
+    SuctionPumpTripBC,
+)
 from backend.engine.clearwell import (
     clearwell_volume_curve,
     cycle_analysis,
@@ -1916,3 +1930,104 @@ def surge_wave_speed(req: WaveSpeedRequest) -> WaveSpeedResponse:
         )
 
     return WaveSpeedResponse(**result)
+
+
+# ---------------------------------------------------------------------------
+# Surge Mode B — Method of Characteristics (MOC) transient simulation
+# ---------------------------------------------------------------------------
+
+
+def _build_moc_bc(bc_data) -> BoundaryCondition:
+    """Convert a validated Pydantic BC model to the appropriate engine class."""
+    if isinstance(bc_data, MOCBCReservoir):
+        return ReservoirBC(H_res_m=bc_data.H_m)
+    if isinstance(bc_data, MOCBCPumpTrip):
+        return PumpTripBC(
+            H_pump_0=bc_data.H_pump_m,
+            Q_0=bc_data.Q_m3s,
+            t_trip=bc_data.t_trip_s,
+            H_reservoir_m=bc_data.H_reservoir_m,
+        )
+    if isinstance(bc_data, MOCBCValveClosure):
+        return ValveClosureBC(
+            Q_0=bc_data.Q_m3s,
+            t_close=bc_data.t_close_s,
+            profile=bc_data.profile,
+        )
+    if isinstance(bc_data, MOCBCSuctionPumpTrip):
+        return SuctionPumpTripBC(
+            H_sump_m=bc_data.H_sump_m,
+            Q_0=bc_data.Q_m3s,
+            t_trip=bc_data.t_trip_s,
+        )
+    raise ValueError(f"Unknown boundary condition type: {bc_data.type}")
+
+
+@app.post(
+    "/surge/moc",
+    response_model=MOCResponse,
+    tags=["surge"],
+    summary="Mode B — full MOC transient simulation",
+)
+async def moc_transient(req: MOCRequest) -> MOCResponse:
+    """
+    Run a 1-D Method of Characteristics (MOC) transient simulation on a single
+    pipeline.
+
+    The pipeline is described as one or more segments; multi-segment pipelines
+    are collapsed to an equivalent uniform grid (flow-weighted mean diameter,
+    length-weighted mean roughness).  Courant number = 1 is enforced.
+
+    **Boundary condition types**
+
+    | type | side | description |
+    |------|------|-------------|
+    | `reservoir` | either | Constant-head (fixed HGL) |
+    | `pump_trip` | upstream | Quadratic head decay + check valve |
+    | `valve_closure` | downstream | Gate-valve model Q = Q₀·τ(t)² |
+    | `suction_pump_trip` | downstream | Pump demand collapse on suction line |
+
+    Returns pressure-envelope arrays, time histories at up to 5 observation
+    nodes, grid metadata, and an optional pipe-rating FoS check.
+    """
+    segs = [
+        {
+            "L_m":         float(s.L_m),
+            "D_m":         float(s.D_m),
+            "roughness_m": float(s.roughness_m),
+            "elev_start_m": float(s.elev_start_m),
+            "elev_end_m":   float(s.elev_end_m),
+        }
+        for s in req.segments
+    ]
+
+    obs_fracs  = [op.frac  for op in req.observation_points] or None
+    obs_labels = [op.label or f"{op.frac:.0%}" for op in req.observation_points] or None
+
+    try:
+        raw = run_moc(
+            segments=segs,
+            wave_speed_ms=req.wave_speed_ms,
+            Q_0_m3s=req.Q_0_m3s,
+            H_0_m=req.H_0_m,
+            boundary_A=_build_moc_bc(req.boundary_A),
+            boundary_B=_build_moc_bc(req.boundary_B),
+            temperature_C=req.temperature_C,
+            rho_kg_m3=req.rho_kg_m3,
+            pressure_rating_kPa=req.pressure_rating_kPa,
+            observation_fracs=obs_fracs,
+            observation_labels=obs_labels,
+            n_reaches_override=req.n_reaches,
+            t_total_override=req.t_total_s,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
+
+    return MOCResponse(
+        pipeline=req.pipeline,
+        unit_system=req.unit_system,
+        **raw,
+    )

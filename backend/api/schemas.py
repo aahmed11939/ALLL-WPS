@@ -5,7 +5,7 @@ Pydantic v2 request/response schemas for the ALLL WPS Designer API.
 
 from __future__ import annotations
 
-from typing import Annotated, List, Literal, Optional
+from typing import Annotated, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -1675,4 +1675,141 @@ class WaveSpeedResponse(BaseModel):
     flexibility: float = Field(description="Flexibility term K_f·Dᵢ/(Eₚ·e)")
     denominator: float = Field(description="Denominator √(1 + flexibility·C)")
     equation_trace: str = Field(description="Step-by-step equation trace")
+
+
+# ---------------------------------------------------------------------------
+# Surge Mode B — Method of Characteristics (MOC) transient solver schemas
+# ---------------------------------------------------------------------------
+
+class MOCSegmentInput(BaseModel):
+    """One reach of the MOC pipeline grid."""
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    label: str = Field(default="")
+    L_m: Annotated[float, Field(gt=0, description="Segment length [m]")]
+    D_m: Annotated[float, Field(gt=0, description="Internal diameter [m]")]
+    roughness_m: float = Field(default=1e-4, ge=0, description="Absolute roughness ε [m]")
+    elev_start_m: float = Field(default=0.0, description="Elevation at segment start [m]")
+    elev_end_m: float = Field(default=0.0, description="Elevation at segment end [m]")
+
+
+class MOCBCReservoir(BaseModel):
+    """Constant-head reservoir / fixed-HGL boundary."""
+    type: Literal["reservoir"] = "reservoir"
+    H_m: float = Field(description="Reservoir total piezometric head [m]")
+
+
+class MOCBCPumpTrip(BaseModel):
+    """
+    Upstream pump boundary with quadratic head-decay trip model.
+    H_source(t) = H_pump × (1 − t/t_trip)².  Q clamped ≥ 0 (check valve).
+    """
+    type: Literal["pump_trip"] = "pump_trip"
+    H_pump_m: Annotated[float, Field(gt=0, description="Steady-state pump total head [m]")]
+    Q_m3s: Annotated[float, Field(ge=0, description="Steady-state flow rate [m³/s]")]
+    t_trip_s: Annotated[float, Field(gt=0, description="Trip duration [s]")]
+    H_reservoir_m: float = Field(
+        default=0.0,
+        description="Suction reservoir HGL [m] — used post-trip",
+    )
+
+
+class MOCBCValveClosure(BaseModel):
+    """Downstream valve closure — gate-valve model Q = Q₀·τ(t)²."""
+    type: Literal["valve_closure"] = "valve_closure"
+    Q_m3s: Annotated[float, Field(ge=0, description="Steady-state flow rate [m³/s]")]
+    t_close_s: Annotated[float, Field(gt=0, description="Closure time [s]")]
+    profile: Literal["linear", "equal_percentage"] = "linear"
+
+
+class MOCBCSuctionPumpTrip(BaseModel):
+    """Downstream suction boundary — pump demand head decays to zero over t_trip."""
+    type: Literal["suction_pump_trip"] = "suction_pump_trip"
+    H_sump_m: float = Field(description="Sump total piezometric head [m]")
+    Q_m3s: Annotated[float, Field(ge=0, description="Steady-state flow rate [m³/s]")]
+    t_trip_s: Annotated[float, Field(gt=0, description="Trip duration [s]")]
+
+
+MOCBoundaryInput = Annotated[
+    Union[MOCBCReservoir, MOCBCPumpTrip, MOCBCValveClosure, MOCBCSuctionPumpTrip],
+    Field(discriminator="type"),
+]
+
+
+class MOCObservationPoint(BaseModel):
+    label: str = Field(default="")
+    frac: float = Field(ge=0.0, le=1.0, description="Fractional distance along pipeline [0–1]")
+
+
+class MOCRequest(BaseModel):
+    """Request body for POST /surge/moc."""
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    pipeline: Literal["suction", "discharge"] = Field(default="discharge")
+    wave_speed_ms: Annotated[float, Field(gt=0, description="Acoustic wave speed a [m/s]")]
+    Q_0_m3s: Annotated[float, Field(ge=0, description="Steady-state flow rate [m³/s]")]
+    H_0_m: float = Field(default=0.0, description="Steady-state upstream piezometric head [m]")
+    temperature_C: float = Field(default=20.0, ge=-10.0, le=100.0)
+    rho_kg_m3: float = Field(default=1000.0, gt=0)
+    pressure_rating_kPa: Optional[float] = Field(default=None, gt=0)
+    segments: List[MOCSegmentInput] = Field(min_length=1)
+    boundary_A: MOCBoundaryInput = Field(description="Upstream boundary condition (node 0)")
+    boundary_B: MOCBoundaryInput = Field(description="Downstream boundary condition (node N)")
+    observation_points: List[MOCObservationPoint] = Field(
+        default_factory=list, max_length=5,
+    )
+    n_reaches: Optional[int] = Field(default=None, ge=2, le=200)
+    t_total_s: Optional[float] = Field(default=None, gt=0)
+    unit_system: Literal["SI", "US"] = Field(default="SI")
+
+
+class MOCEnvelopePoint(BaseModel):
+    x_m: float
+    elev_m: float
+    H_max_m: float
+    H_min_m: float
+    P_max_kPa: float
+    P_min_kPa: float
+
+
+class MOCTimePoint(BaseModel):
+    t_s: float
+    H_m: float
+    P_kPa: float
+
+
+class MOCObservationResult(BaseModel):
+    label: str
+    frac: float
+    node_index: int
+    x_m: float
+    history: List[MOCTimePoint]
+
+
+class MOCResponse(BaseModel):
+    """Full response from the MOC transient solver."""
+    model_config = ConfigDict(frozen=True)
+
+    pipeline: str
+    N: int
+    dx_m: float
+    dt_s: float
+    courant: float
+    t_total_s: float
+    n_steps: int
+    D_m: float
+    f: float
+    T_char_s: float
+    envelope: List[MOCEnvelopePoint]
+    observations: List[MOCObservationResult]
+    global_max_H_m: float
+    global_min_H_m: float
+    global_max_P_kPa: float
+    global_min_P_kPa: float
+    cavitation_x_m: List[float]
+    h_vap_m: float
+    temperature_C: float
+    assumption_notes: List[str]
+    rating_check: Optional[PressureRatingCheck] = None
+    unit_system: str
 

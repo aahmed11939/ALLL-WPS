@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { computeWhatIf } from "../../utils/api";
+import { useState, useEffect } from "react";
+import { computeWhatIf, computeDeviceSize } from "../../utils/api";
 import type {
   WhatIfRequest,
   WhatIfResponse,
@@ -8,6 +8,71 @@ import type {
   MOCBoundaryBInput,
   ProtectionDeviceInput,
 } from "../../utils/api";
+
+// ---------------------------------------------------------------------------
+// Inline sizing preview — calls /surge/device-size (debounced, no MOC run)
+// ---------------------------------------------------------------------------
+
+function SizingPreview({
+  device,
+  segments,
+  Q_0_m3s,
+  wave_speed_ms,
+  H_0_m,
+}: {
+  device: ProtectionDeviceInput | null;
+  segments: MOCSegmentInput[];
+  Q_0_m3s: number;
+  wave_speed_ms: number;
+  H_0_m: number;
+}) {
+  const [result, setResult] = useState<Record<string, unknown> | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const deviceKey = JSON.stringify(device);
+
+  useEffect(() => {
+    if (!device || segments.length === 0) { setResult(null); return; }
+    setLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const data = await computeDeviceSize({ Q_0_m3s, wave_speed_ms, H_0_m, segments, device });
+        setResult(data);
+      } catch {
+        setResult(null);
+      } finally {
+        setLoading(false);
+      }
+    }, 700);
+    return () => { clearTimeout(timer); setLoading(false); };
+  }, [deviceKey, segments.length, Q_0_m3s, wave_speed_ms, H_0_m]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!device) return null;
+  if (loading) return <p className="text-[9px] text-slate-400 italic animate-pulse">Computing preliminary size…</p>;
+  if (!result)  return null;
+
+  const entries = Object.entries(result).filter(([k]) => k !== "notes");
+  const notes   = typeof result.notes === "string" ? result.notes : null;
+
+  return (
+    <div className="rounded border border-dashed border-blue-200 bg-blue-50/40 px-2.5 py-2 space-y-1.5">
+      <p className="text-[9px] font-bold text-blue-700 uppercase tracking-wide">
+        Preliminary size estimate (±30–50 %)
+      </p>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+        {entries.map(([k, v]) => (
+          <div key={k} className="flex justify-between text-[9px] gap-1">
+            <span className="text-slate-500 shrink-0">{k.replace(/_/g, " ")}</span>
+            <span className="font-mono font-semibold text-slate-800">
+              {typeof v === "number" ? (v < 10 ? v.toFixed(3) : v.toFixed(1)) : String(v)}
+            </span>
+          </div>
+        ))}
+      </div>
+      {notes && <p className="text-[8.5px] text-slate-400 leading-snug">{notes}</p>}
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // UI helpers

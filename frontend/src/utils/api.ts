@@ -856,6 +856,7 @@ export interface WhatIfEnvelopePoint {
 
 export interface WhatIfRunMetrics {
   label: string;
+  run_error?: string | null;
   global_max_H_m: number;
   global_min_H_m: number;
   global_max_P_kPa: number;

@@ -62,11 +62,29 @@ function PctBadge({ val }: { val: number | null }) {
   );
 }
 
-function RiskDeltaBadge({ baseRisk, devRisk }: { baseRisk: boolean; devRisk: boolean }) {
-  if (!baseRisk && !devRisk) return <span className="text-slate-400 text-[9px]">—</span>;
-  if (baseRisk && !devRisk)  return <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold bg-emerald-100 text-emerald-700">✓ Resolved</span>;
-  if (!baseRisk && devRisk)  return <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold bg-red-100 text-red-700">⚠ Introduced</span>;
-  return <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold bg-amber-100 text-amber-700">~ Persists</span>;
+function RiskDeltaBadge({
+  run,
+  baseline,
+}: {
+  run: WhatIfRunMetrics;
+  baseline: WhatIfRunMetrics;
+}) {
+  const cavImproved = baseline.cavitation_risk && !run.cavitation_risk;
+  const cavNeutral  = !baseline.cavitation_risk && !run.cavitation_risk;
+  const pressureImproved = run.global_max_H_m < baseline.global_max_H_m * 0.99;
+  const vacuumImproved   = run.global_min_H_m > baseline.global_min_H_m + 0.5;
+  const anyPressureImproved = pressureImproved || vacuumImproved;
+
+  // Green: both pressure and cavitation improve
+  if ((cavImproved || cavNeutral) && anyPressureImproved) {
+    return <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold bg-emerald-100 text-emerald-700">✓ Better</span>;
+  }
+  // Yellow: at least one dimension improves
+  if (cavImproved || anyPressureImproved) {
+    return <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold bg-amber-100 text-amber-700">~ Mixed</span>;
+  }
+  // Grey: no meaningful improvement
+  return <span className="text-slate-400 text-[9px]">— No change</span>;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,9 +145,12 @@ export interface WhatIfComparisonPanelProps {
 // ---------------------------------------------------------------------------
 
 export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIfComparisonPanelProps) {
-  const all: WhatIfRunMetrics[] = [result.baseline, ...result.device_runs];
+  // ── Separate valid runs from failed runs ──────────────────────────────────
+  const errorRuns = result.device_runs.filter(r => r.run_error);
+  const validRuns = result.device_runs.filter(r => !r.run_error);
+  const all       = [result.baseline, ...validRuns];
 
-  // ── Build overlay chart data ─────────────────────────────────────────────
+  // ── Build overlay chart data (using valid runs only) ─────────────────────
   const chartData = useMemo(() => {
     if (!result.baseline.envelope.length) return [];
     const ref = result.baseline.envelope;
@@ -158,6 +179,24 @@ export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIf
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5">
+
+      {/* ── Device configuration errors ─────────────────────────────────────── */}
+      {errorRuns.length > 0 && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 space-y-1.5">
+          <p className="text-xs font-bold text-red-800">
+            {errorRuns.length} device scenario{errorRuns.length > 1 ? "s" : ""} could not be computed
+          </p>
+          {errorRuns.map((r, i) => (
+            <div key={i} className="text-[10px] text-red-700 flex gap-2">
+              <span className="font-semibold shrink-0">{r.label}:</span>
+              <span className="break-words">{r.run_error}</span>
+            </div>
+          ))}
+          <p className="text-[9px] text-red-500">
+            These runs are excluded from all numeric comparisons below.
+          </p>
+        </div>
+      )}
 
       {/* ── Header row ─────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
@@ -245,7 +284,7 @@ export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIf
                   <td className="px-3 py-2 text-center">
                     {isBase
                       ? <span className="text-slate-400 text-[9px]">base</span>
-                      : <RiskDeltaBadge baseRisk={baseRisk} devRisk={devRisk} />}
+                      : <RiskDeltaBadge run={run} baseline={result.baseline} />}
                   </td>
                   <td className="px-3 py-2">
                     {!isBase && <SizingDrawer sizing={run.sizing_summary} label={run.label} />}

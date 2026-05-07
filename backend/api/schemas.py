@@ -2126,6 +2126,13 @@ class WhatIfRunMetrics(BaseModel):
     """Metrics for one scenario (baseline or a protection device)."""
 
     label: str
+    run_error: Optional[str] = Field(
+        default=None,
+        description=(
+            "If set, this run failed with the given error message. "
+            "All numeric fields are zeroed and MUST NOT be used as valid metrics."
+        ),
+    )
     global_max_H_m: float
     global_min_H_m: float
     global_max_P_kPa: float

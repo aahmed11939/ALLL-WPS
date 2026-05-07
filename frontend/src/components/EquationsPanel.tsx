@@ -576,11 +576,23 @@ export default function EquationsPanel({ results, lastReq, pumpResult }: Props) 
               </div>
             )}
 
-            <p className="text-[10px] text-slate-400 italic leading-relaxed">
-              Substituted values require a C_HW roughness coefficient input (add to the form to enable).
-              C_HW ranges: 60 (rough/old cast iron) → 100 (new cast/ductile iron) → 140 (new steel) → 150 (PVC/HDPE).
-              Valid 10–24 °C. Darcy-Weisbach + Colebrook-White (EQ.4) is the governing method for this calculation —
-              H-W shown here as a reference cross-check per AWWA M11.
+            {/* Explicit substitution placeholder — mirrors the row structure of EQ.1–6 */}
+            <div className="flex items-center gap-2 mt-1.5">
+              <span className="text-[10px] font-mono font-semibold text-amber-600 shrink-0">
+                RESULT
+              </span>
+              <div className="bg-amber-50 border border-amber-200 rounded px-3 py-1">
+                <span className="font-mono text-xs text-amber-800">
+                  h_f (H-W) — awaiting C_HW coefficient input
+                </span>
+              </div>
+            </div>
+
+            <p className="text-[10px] text-slate-400 italic leading-relaxed mt-2">
+              Add a C_HW roughness coefficient field to the form to see substituted values here.
+              C_HW: 60 (rough/old cast iron) · 100 (new ductile iron) · 140 (new steel) · 150 (PVC/HDPE).
+              Valid 10–24 °C. Darcy-Weisbach + Colebrook-White (EQ.4) is the governing method —
+              H-W shown as a reference cross-check per AWWA M11.
             </p>
           </div>
 

@@ -22,6 +22,15 @@ from fastapi.testclient import TestClient
 
 from backend.api.main import app
 from backend.export.word_export import _doc_to_bytes, build_document
+from backend.engine.word_figures import (
+    fig_system_curve,
+    fig_efficiency_power,
+    fig_npsh,
+    fig_surge_envelope_suction,
+    fig_surge_envelope_discharge,
+    fig_moc_histories,
+    fig_protection_comparison,
+)
 
 client = TestClient(app)
 
@@ -489,3 +498,197 @@ class TestExportWordEndpoint:
         doc  = Document(io.BytesIO(resp.content))
         text = _full_text(doc)
         assert "Test Project" in text
+
+
+# ===========================================================================
+# word_figures module — public API contract
+# Each function must return bytes (when data present) or None (when absent).
+# ===========================================================================
+
+
+class TestWordFiguresApiContract:
+    """Verify every public figure function honours its bytes | None contract."""
+
+    def test_fig_system_curve_returns_bytes_when_data_present(self):
+        result = fig_system_curve(full_draft())
+        assert isinstance(result, bytes) and len(result) > 100
+
+    def test_fig_system_curve_returns_none_when_no_curves(self):
+        result = fig_system_curve(EMPTY_DRAFT)
+        assert result is None
+
+    def test_fig_efficiency_power_returns_bytes_when_data_present(self):
+        result = fig_efficiency_power(full_draft())
+        assert isinstance(result, bytes) and len(result) > 100
+
+    def test_fig_efficiency_power_returns_none_when_no_eta(self):
+        result = fig_efficiency_power(EMPTY_DRAFT)
+        assert result is None
+
+    def test_fig_npsh_returns_bytes_when_data_present(self):
+        result = fig_npsh(full_draft())
+        assert isinstance(result, bytes) and len(result) > 100
+
+    def test_fig_npsh_returns_none_when_no_npshr(self):
+        result = fig_npsh(EMPTY_DRAFT)
+        assert result is None
+
+    def test_fig_surge_envelope_discharge_returns_bytes_when_data_present(self):
+        result = fig_surge_envelope_discharge(full_draft())
+        assert isinstance(result, bytes) and len(result) > 100
+
+    def test_fig_surge_envelope_suction_returns_none_for_discharge_data(self):
+        # MOC_RESULT has pipeline="discharge"; suction envelope should be None
+        result = fig_surge_envelope_suction(full_draft())
+        assert result is None
+
+    def test_fig_surge_envelope_suction_returns_bytes_for_suction_data(self):
+        d = full_draft()
+        d["mocResult"] = dict(MOC_RESULT, pipeline="suction")
+        result = fig_surge_envelope_suction(d)
+        assert isinstance(result, bytes) and len(result) > 100
+
+    def test_fig_moc_histories_returns_bytes_when_observations_present(self):
+        result = fig_moc_histories(full_draft())
+        assert isinstance(result, bytes) and len(result) > 100
+
+    def test_fig_moc_histories_returns_none_when_no_observations(self):
+        result = fig_moc_histories(EMPTY_DRAFT)
+        assert result is None
+
+    def test_fig_protection_comparison_returns_bytes_when_whatif_present(self):
+        result = fig_protection_comparison(full_draft())
+        assert isinstance(result, bytes) and len(result) > 100
+
+    def test_fig_protection_comparison_returns_none_when_no_whatif(self):
+        result = fig_protection_comparison(EMPTY_DRAFT)
+        assert result is None
+
+
+# ===========================================================================
+# Document structure contracts — revision table, system description,
+# appendices C and D, page numbering footer, Courier New equations.
+# ===========================================================================
+
+
+class TestDocumentStructureContracts:
+    """Verify required structural and styling elements are present."""
+
+    def _get_doc_and_text(self, draft: dict):
+        doc  = build_document(draft)
+        text = _full_text(doc)
+        return doc, text
+
+    # --- Revision table ---
+
+    def test_revision_table_has_rev_0_row(self):
+        doc, text = self._get_doc_and_text(EMPTY_DRAFT)
+        # Revision table must contain "Rev", "0", and "Preliminary"
+        assert "Rev" in text
+        assert "Preliminary" in text
+
+    def test_revision_table_has_rev_column_header(self):
+        doc, _ = self._get_doc_and_text(EMPTY_DRAFT)
+        # The revision table header cells must include "Rev"
+        found = any(
+            "Rev" in cell.text
+            for tbl in doc.tables
+            for row in tbl.rows
+            for cell in row.cells
+        )
+        assert found
+
+    def test_revision_table_has_date_column(self):
+        doc, _ = self._get_doc_and_text(EMPTY_DRAFT)
+        found = any(
+            "Date" in cell.text
+            for tbl in doc.tables
+            for row in tbl.rows
+            for cell in row.cells
+        )
+        assert found
+
+    def test_revision_table_has_prepared_by(self):
+        doc, _ = self._get_doc_and_text(EMPTY_DRAFT)
+        found = any(
+            "Prepared" in cell.text
+            for tbl in doc.tables
+            for row in tbl.rows
+            for cell in row.cells
+        )
+        assert found
+
+    # --- System Description section ---
+
+    def test_system_description_section_present(self):
+        doc, text = self._get_doc_and_text(EMPTY_DRAFT)
+        assert "System Description" in text
+
+    def test_system_description_mentions_pipeline_segments(self):
+        doc, text = self._get_doc_and_text(EMPTY_DRAFT)
+        # Must mention suction or discharge segment count
+        assert "segment" in text.lower()
+
+    def test_system_description_mentions_static_head(self):
+        _, text = self._get_doc_and_text(EMPTY_DRAFT)
+        assert "static head" in text.lower() or "30.00" in text
+
+    # --- Appendix C — surge time-series snapshot ---
+
+    def test_appendix_c_present(self):
+        _, text = self._get_doc_and_text(full_draft())
+        assert "Appendix C" in text
+
+    def test_appendix_c_has_timeseries_data(self):
+        doc, _ = self._get_doc_and_text(full_draft())
+        # Should have at least one row from the observation history
+        found = any(
+            "0.000" in cell.text or "38.5" in cell.text
+            for tbl in doc.tables
+            for row in tbl.rows
+            for cell in row.cells
+        )
+        assert found
+
+    def test_appendix_c_no_data_no_raise(self):
+        doc  = build_document(EMPTY_DRAFT)
+        data = _doc_to_bytes(doc)
+        assert len(data) > 100
+
+    # --- Appendix D — roughness reference ---
+
+    def test_appendix_d_present(self):
+        _, text = self._get_doc_and_text(full_draft())
+        assert "Appendix D" in text
+
+    def test_appendix_d_contains_roughness_data(self):
+        _, text = self._get_doc_and_text(full_draft())
+        assert "PVC" in text or "Roughness" in text
+
+    # --- Page numbering ---
+
+    def test_footer_has_page_field(self):
+        """Section footer must contain a PAGE fldChar XML element."""
+        from docx.oxml.ns import qn as _qn
+        doc = build_document(EMPTY_DRAFT)
+        found = False
+        for section in doc.sections:
+            footer = section.footer
+            for para in footer.paragraphs:
+                xml = para._p.xml
+                if "PAGE" in xml or "fldChar" in xml:
+                    found = True
+        assert found, "No PAGE field found in any section footer"
+
+    # --- Courier New equations ---
+
+    def test_equations_use_courier_new_font(self):
+        """At least one run must use Courier New (equation paragraphs)."""
+        from docx.oxml.ns import qn as _qn
+        doc   = build_document(full_draft())
+        found = any(
+            run.font.name == "Courier New"
+            for para in doc.paragraphs
+            for run in para.runs
+        )
+        assert found, "No Courier New run found — equation styling missing"

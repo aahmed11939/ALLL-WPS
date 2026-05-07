@@ -40,6 +40,7 @@ export default function CalculationForm({ onSubmit, loading }: Props) {
 
   const [pickedItems, setPickedItems] = useState<AccessoryItem[]>([]);
   const [pickedKSum, setPickedKSum] = useState(0);
+  const [legacyKStr, setLegacyKStr] = useState("");
 
   const { register, handleSubmit, control, watch, setValue, getValues, formState: { errors } } =
     useForm<FormValues, unknown, FormValues>({
@@ -102,6 +103,11 @@ export default function CalculationForm({ onSubmit, loading }: Props) {
     const length_m  = unitSystem === "US" ? values.pipe_length   * M_PER_FT  : values.pipe_length;
     const diam_mm   = unitSystem === "US" ? values.pipe_diameter * MM_PER_IN : values.pipe_diameter;
 
+    const legacyKArr = legacyKStr
+      .split(",")
+      .map((s) => parseFloat(s.trim()))
+      .filter((n) => isFinite(n) && n >= 0);
+
     onSubmit(
       {
         Q_m3h,
@@ -110,9 +116,14 @@ export default function CalculationForm({ onSubmit, loading }: Props) {
         pipe_length_m:    length_m,
         pipe_diameter_mm: diam_mm,
         material:         values.material,
-        K_values:         pickedItems.flatMap((item) =>
-          Array(item.count).fill(item.K_override != null ? item.K_override : 0)
-        ),
+        K_values:         [
+          ...pickedItems.flatMap((item) =>
+            Array(item.count).fill(
+              item.K_override != null ? item.K_override : (item.default_K ?? 0)
+            )
+          ),
+          ...legacyKArr,
+        ],
       },
       pickedItems,
       pickedKSum
@@ -295,6 +306,37 @@ export default function CalculationForm({ onSubmit, loading }: Props) {
         </div>
         <AccessoriesPicker onChange={handlePickerChange} />
       </div>
+
+      {/* Advanced K override (collapsed by default) */}
+      <details className="rounded-lg border border-slate-200">
+        <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide hover:bg-slate-50 rounded-lg">
+          Advanced — Raw K Values
+        </summary>
+        <div className="px-3 pb-3 pt-2 space-y-1.5">
+          <p className="text-[10px] text-slate-400 leading-relaxed">
+            Enter additional K coefficients as a comma-separated list (e.g. <span className="font-mono">0.5, 1.2, 0.3</span>).
+            These are appended to the accessory-picker values above and sent directly to the calculation engine.
+            Use this for site-specific fittings not covered by the library.
+          </p>
+          <input
+            type="text"
+            placeholder="e.g. 0.5, 1.2, 0.3"
+            value={legacyKStr}
+            onChange={(e) => setLegacyKStr(e.target.value)}
+            className={inputCls + " font-mono"}
+          />
+          {legacyKStr.trim() && (
+            <p className="text-[10px] font-mono text-teal-700">
+              Parsed:{" "}
+              {legacyKStr
+                .split(",")
+                .map((s) => parseFloat(s.trim()))
+                .filter((n) => isFinite(n) && n >= 0)
+                .join(", ") || "—"}
+            </p>
+          )}
+        </div>
+      </details>
 
       {/* Submit */}
       <button

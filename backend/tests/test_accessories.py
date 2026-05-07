@@ -237,7 +237,7 @@ def test_lossbreakdown_count_multiplies_k():
     assert abs(item["K_total"] - item["K_each"] * 5) < 1e-9
 
 
-def test_lossbreakdown_unknown_id_warns():
+def test_lossbreakdown_unknown_id_returns_422():
     req = {
         "Q_m3h": 100.0,
         "D_mm": 200.0,
@@ -247,9 +247,8 @@ def test_lossbreakdown_unknown_id_warns():
         "unit_system": "SI",
     }
     resp = client.post("/compute/lossbreakdown", json=req)
-    data = resp.json()
-    assert len(data["warnings"]) >= 1
-    assert "does_not_exist" in data["warnings"][0]
+    assert resp.status_code == 422
+    assert "does_not_exist" in resp.json()["detail"]
 
 
 def test_lossbreakdown_empty_accessories():
@@ -326,3 +325,115 @@ def test_lossbreakdown_all_categories_can_be_computed():
     data = resp.json()
     assert len(data["items"]) == len(items_to_test)
     assert data["K_sum"] > 0
+
+
+# ---------------------------------------------------------------------------
+# New fields: segments, category subtotals, major-vs-minor breakdown
+# ---------------------------------------------------------------------------
+
+
+def test_lossbreakdown_response_has_segment_fields():
+    resp = client.post("/compute/lossbreakdown", json=BASIC_REQUEST)
+    data = resp.json()
+    for field in (
+        "suction_minor_hm_m", "discharge_minor_hm_m",
+        "major_hm_m", "grand_total_hm_m",
+        "pct_minor_of_grand_total", "pct_major_of_grand_total",
+        "category_subtotals",
+    ):
+        assert field in data, f"Missing field: {field}"
+
+
+def test_lossbreakdown_segment_tagging():
+    req = {
+        "Q_m3h": 100.0,
+        "D_mm": 200.0,
+        "accessories": [
+            {"accessory_id": "cv_swing",       "count": 1, "segment": "discharge"},
+            {"accessory_id": "gate_fully_open", "count": 1, "segment": "suction"},
+        ],
+        "unit_system": "SI",
+    }
+    resp = client.post("/compute/lossbreakdown", json=req)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["suction_minor_hm_m"] > 0
+    assert data["discharge_minor_hm_m"] > 0
+    cv_item = next(it for it in data["items"] if it["accessory_id"] == "cv_swing")
+    gate_item = next(it for it in data["items"] if it["accessory_id"] == "gate_fully_open")
+    assert cv_item["segment"] == "discharge"
+    assert gate_item["segment"] == "suction"
+    assert abs(data["suction_minor_hm_m"] - gate_item["hm_m"]) < 1e-6
+    assert abs(data["discharge_minor_hm_m"] - cv_item["hm_m"]) < 1e-6
+
+
+def test_lossbreakdown_major_head_contribution():
+    req = {
+        **BASIC_REQUEST,
+        "suction_major_head_m":   1.5,
+        "discharge_major_head_m": 3.0,
+    }
+    resp = client.post("/compute/lossbreakdown", json=req)
+    data = resp.json()
+    assert abs(data["major_hm_m"] - 4.5) < 1e-6
+    assert abs(data["grand_total_hm_m"] - (data["total_hm_m"] + 4.5)) < 1e-6
+    assert data["pct_major_of_grand_total"] > 0
+    assert abs(data["pct_minor_of_grand_total"] + data["pct_major_of_grand_total"] - 100.0) < 0.1
+
+
+def test_lossbreakdown_category_subtotals_present():
+    resp = client.post("/compute/lossbreakdown", json=BASIC_REQUEST)
+    data = resp.json()
+    subtotals = data["category_subtotals"]
+    assert isinstance(subtotals, list)
+    assert len(subtotals) >= 1
+    first = subtotals[0]
+    for field in ("category", "label", "K_sum", "hm_m", "hm_display", "pct_of_total_minor"):
+        assert field in first, f"category_subtotals item missing: {field}"
+
+
+def test_lossbreakdown_category_subtotals_sum_to_total():
+    resp = client.post("/compute/lossbreakdown", json=BASIC_REQUEST)
+    data = resp.json()
+    subtotal_hm = sum(s["hm_m"] for s in data["category_subtotals"])
+    assert abs(subtotal_hm - data["total_hm_m"]) < 1e-5
+
+
+def test_lossbreakdown_no_segment_no_subtotal_penalty():
+    """Items without segment are included in total but suction/discharge subtotals stay 0."""
+    req = {
+        "Q_m3h": 100.0,
+        "D_mm": 200.0,
+        "accessories": [
+            {"accessory_id": "cv_swing", "count": 1},
+        ],
+        "unit_system": "SI",
+    }
+    resp = client.post("/compute/lossbreakdown", json=req)
+    data = resp.json()
+    assert data["suction_minor_hm_m"] == 0.0
+    assert data["discharge_minor_hm_m"] == 0.0
+    assert data["total_hm_m"] > 0
+
+
+def test_lossbreakdown_item_segment_echoed():
+    req = {
+        "Q_m3h": 100.0,
+        "D_mm": 200.0,
+        "accessories": [
+            {"accessory_id": "cv_swing", "count": 1, "segment": "discharge"},
+        ],
+        "unit_system": "SI",
+    }
+    resp = client.post("/compute/lossbreakdown", json=req)
+    item = resp.json()["items"][0]
+    assert item["segment"] == "discharge"
+
+
+def test_lossbreakdown_grand_total_no_major():
+    """When no major head provided, grand_total == total minor."""
+    resp = client.post("/compute/lossbreakdown", json=BASIC_REQUEST)
+    data = resp.json()
+    assert abs(data["grand_total_hm_m"] - data["total_hm_m"]) < 1e-6
+    assert data["major_hm_m"] == 0.0
+    assert data["pct_minor_of_grand_total"] == pytest.approx(100.0, abs=0.01) or data["total_hm_m"] == 0.0

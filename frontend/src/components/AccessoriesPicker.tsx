@@ -31,6 +31,7 @@ interface PickerItem extends AccessoryRecord {
   count: number;
   K_override: number | null;
   expanded: boolean;
+  segment: "suction" | "discharge";
 }
 
 interface Props {
@@ -41,6 +42,7 @@ export default function AccessoriesPicker({ onChange }: Props) {
   const [library, setLibrary] = useState<AccessoryRecord[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>("check_valve");
+  const [activeSegment, setActiveSegment] = useState<"suction" | "discharge">("discharge");
   const [selected, setSelected] = useState<Record<string, PickerItem>>({});
 
   useEffect(() => {
@@ -68,6 +70,8 @@ export default function AccessoriesPicker({ onChange }: Props) {
           accessory_id: item.id,
           count: item.count,
           K_override: item.K_override,
+          segment: item.segment,
+          default_K: item.default_K,
         });
         K_sum += K * item.count;
       }
@@ -80,9 +84,19 @@ export default function AccessoriesPicker({ onChange }: Props) {
     setSelected((prev) => {
       const next = { ...prev };
       if (next[acc.id]) {
-        next[acc.id] = { ...next[acc.id], count: next[acc.id].count + 1 };
+        next[acc.id] = {
+          ...next[acc.id],
+          count: next[acc.id].count + 1,
+          segment: activeSegment,
+        };
       } else {
-        next[acc.id] = { ...acc, count: 1, K_override: null, expanded: false };
+        next[acc.id] = {
+          ...acc,
+          count: 1,
+          K_override: null,
+          expanded: false,
+          segment: activeSegment,
+        };
       }
       notifyParent(next);
       return next;
@@ -166,6 +180,40 @@ export default function AccessoriesPicker({ onChange }: Props) {
 
   return (
     <div className="space-y-3">
+      {/* Segment selector: Suction / Discharge */}
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 shrink-0">
+          Segment
+        </span>
+        <div className="flex rounded overflow-hidden border border-slate-300">
+          {(["suction", "discharge"] as const).map((seg) => (
+            <button
+              key={seg}
+              type="button"
+              onClick={() => setActiveSegment(seg)}
+              className={`px-3 py-0.5 text-xs font-semibold transition-colors ${
+                activeSegment === seg
+                  ? seg === "suction"
+                    ? "bg-sky-600 text-white"
+                    : "bg-indigo-600 text-white"
+                  : "bg-white text-slate-600 hover:bg-slate-100"
+              }`}
+            >
+              {seg === "suction" ? "Suction" : "Discharge"}
+              {Object.values(selected).some((s) => s.segment === seg && s.count > 0) && (
+                <span className={`ml-1 rounded-full px-1 text-[10px] ${
+                  activeSegment === seg ? "bg-white/25" : "bg-slate-200"
+                }`}>
+                  {Object.values(selected)
+                    .filter((s) => s.segment === seg)
+                    .reduce((n, s) => n + s.count, 0)}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Category tabs */}
       <div className="flex flex-wrap gap-1">
         {CATEGORY_ORDER.filter((c) => (categorised[c]?.length ?? 0) > 0).map((cat) => {

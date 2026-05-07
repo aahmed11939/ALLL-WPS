@@ -20,6 +20,7 @@ from backend.api.schemas import (
     AccessoryRecord,
     CalculationRequest,
     CalculationResponse,
+    CategorySubtotal,
     ClearWellRequest,
     ClearWellResponse,
     ComputeSystemCurvePoint,
@@ -1441,24 +1442,40 @@ def get_accessory(accessory_id: str) -> AccessoryRecord:
     "/compute/lossbreakdown",
     response_model=LossBreakdownResponse,
     tags=["compute"],
-    summary="Compute per-accessory minor head-loss breakdown",
+    summary="Compute per-accessory minor head-loss breakdown with segment and category subtotals",
 )
 def compute_lossbreakdown(req: LossBreakdownRequest) -> LossBreakdownResponse:
     """
-    Resolve accessory IDs, apply count × K (or K_override), and compute
+    Resolve accessory IDs, apply count × (K_override or library default_K), and compute
     per-item and total minor head losses at the given Q and pipe diameter.
 
-    The response includes:
-    - Per-item breakdown sorted by head-loss contribution (descending)
+    Returns:
+    - Per-item breakdown tagged with segment (suction/discharge), sorted by head-loss descending
     - ΣK and total minor head loss h_m
+    - Per-segment (suction / discharge) minor-loss subtotals
+    - Major (friction) head loss contributions if suction_major_head_m / discharge_major_head_m provided
+    - Major-vs-minor percentage breakdown of the grand total
+    - Per-category subtotals sorted by contribution
     - Velocity and velocity head
     - Potable-water compliance notes per item
-    - Advisory warnings (unknown IDs, zero-loss items, etc.)
+
+    Raises 422 if any accessory_id is not found in the library.
     """
     D_m = req.D_mm / 1000.0
     Q_m3s = req.Q_m3h / 3600.0
     us = req.unit_system
     warnings: list[str] = []
+
+    # Validate all IDs upfront — return 422 immediately on first unknown
+    for acc_item in req.accessories:
+        if get_accessory_by_id(acc_item.accessory_id) is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Accessory ID '{acc_item.accessory_id}' not found in the library. "
+                    "Use GET /library/accessories to browse available IDs."
+                ),
+            )
 
     # Compute velocity and velocity head
     try:
@@ -1474,13 +1491,7 @@ def compute_lossbreakdown(req: LossBreakdownRequest) -> LossBreakdownResponse:
     K_sum_total = 0.0
 
     for acc_item in req.accessories:
-        raw = get_accessory_by_id(acc_item.accessory_id)
-        if raw is None:
-            warnings.append(
-                f"Accessory '{acc_item.accessory_id}' not found in library — skipped."
-            )
-            continue
-
+        raw = get_accessory_by_id(acc_item.accessory_id)  # already validated above
         K_each = (
             acc_item.K_override
             if acc_item.K_override is not None
@@ -1488,7 +1499,6 @@ def compute_lossbreakdown(req: LossBreakdownRequest) -> LossBreakdownResponse:
         )
         K_total = K_each * acc_item.count
         hm_item = K_total * vh
-
         K_sum_total += K_total
 
         items.append(
@@ -1496,6 +1506,7 @@ def compute_lossbreakdown(req: LossBreakdownRequest) -> LossBreakdownResponse:
                 accessory_id=acc_item.accessory_id,
                 name=raw["name"],
                 category=raw["category"],
+                segment=acc_item.segment,
                 count=acc_item.count,
                 K_each=round(K_each, 6),
                 K_total=round(K_total, 6),
@@ -1508,7 +1519,7 @@ def compute_lossbreakdown(req: LossBreakdownRequest) -> LossBreakdownResponse:
 
     total_hm = K_sum_total * vh
 
-    # Back-fill percentage contributions
+    # Back-fill percentage contributions and sort descending
     filled_items: list[LossBreakdownItem] = []
     for it in items:
         pct = (it.hm_m / total_hm * 100.0) if total_hm > 0 else 0.0
@@ -1517,6 +1528,7 @@ def compute_lossbreakdown(req: LossBreakdownRequest) -> LossBreakdownResponse:
                 accessory_id=it.accessory_id,
                 name=it.name,
                 category=it.category,
+                segment=it.segment,
                 count=it.count,
                 K_each=it.K_each,
                 K_total=it.K_total,
@@ -1526,13 +1538,52 @@ def compute_lossbreakdown(req: LossBreakdownRequest) -> LossBreakdownResponse:
                 potable_notes=it.potable_notes,
             )
         )
-
-    # Sort descending by head loss
     filled_items.sort(key=lambda x: x.hm_m, reverse=True)
 
-    if total_hm == 0.0 and len(req.accessories) > 0 and not warnings:
+    if total_hm == 0.0 and len(req.accessories) > 0:
         warnings.append(
             "All selected accessories have K = 0 — total minor loss is zero."
+        )
+
+    # Per-segment minor-loss subtotals
+    suction_minor = sum(it.hm_m for it in filled_items if it.segment == "suction")
+    discharge_minor = sum(it.hm_m for it in filled_items if it.segment == "discharge")
+
+    # Major (friction) head losses from caller
+    major_hm = req.suction_major_head_m + req.discharge_major_head_m
+    grand_total = round(total_hm + major_hm, 6)
+    pct_minor = (total_hm / grand_total * 100.0) if grand_total > 0 else 0.0
+    pct_major = (major_hm / grand_total * 100.0) if grand_total > 0 else 0.0
+
+    # Per-category subtotals
+    _cat_K: dict[str, float] = {}
+    _cat_hm: dict[str, float] = {}
+    _cat_label: dict[str, str] = {
+        "check_valve": "Check Valve",
+        "isolation_valve": "Isolation Valve",
+        "control_valve": "Control Valve",
+        "meter": "Meter / Instrument",
+        "suction_fitting": "Suction Fitting",
+        "discharge_fitting": "Discharge Fitting",
+        "station_special": "Station Special",
+        "pipe_transition": "Pipe Transition",
+    }
+    for it in filled_items:
+        _cat_K[it.category] = _cat_K.get(it.category, 0.0) + it.K_total
+        _cat_hm[it.category] = _cat_hm.get(it.category, 0.0) + it.hm_m
+
+    category_subtotals: list[CategorySubtotal] = []
+    for cat, hm_c in sorted(_cat_hm.items(), key=lambda kv: kv[1], reverse=True):
+        pct_c = (hm_c / total_hm * 100.0) if total_hm > 0 else 0.0
+        category_subtotals.append(
+            CategorySubtotal(
+                category=cat,
+                label=_cat_label.get(cat, cat),
+                K_sum=round(_cat_K[cat], 6),
+                hm_m=round(hm_c, 6),
+                hm_display=convert(round(hm_c, 6), "head", us),
+                pct_of_total_minor=round(pct_c, 2),
+            )
         )
 
     return LossBreakdownResponse(
@@ -1540,6 +1591,13 @@ def compute_lossbreakdown(req: LossBreakdownRequest) -> LossBreakdownResponse:
         K_sum=round(K_sum_total, 6),
         total_hm_m=round(total_hm, 6),
         total_hm_display=convert(round(total_hm, 6), "head", us),
+        suction_minor_hm_m=round(suction_minor, 6),
+        discharge_minor_hm_m=round(discharge_minor, 6),
+        major_hm_m=round(major_hm, 6),
+        grand_total_hm_m=grand_total,
+        pct_minor_of_grand_total=round(pct_minor, 2),
+        pct_major_of_grand_total=round(pct_major, 2),
+        category_subtotals=category_subtotals,
         velocity_ms=round(V, 4),
         velocity_head_m=round(vh, 6),
         design_Q_m3h=req.Q_m3h,

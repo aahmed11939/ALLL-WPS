@@ -1222,20 +1222,24 @@ class AccessoryItem(BaseModel):
             "Use when the engineer has site-specific data."
         ),
     )
-
-    @property
-    def effective_K(self) -> float:
-        """K value to use (override wins over library default)."""
-        return self.K_override if self.K_override is not None else 0.0
+    segment: Optional[Literal["suction", "discharge"]] = Field(
+        default=None,
+        description=(
+            "Which pipe segment this accessory belongs to. "
+            "'suction' = upstream of pump; 'discharge' = downstream of pump. "
+            "Optional — if omitted, item is counted in total but not segmented."
+        ),
+    )
 
 
 class LossBreakdownRequest(BaseModel):
     """
     Request for POST /compute/lossbreakdown.
 
-    Resolves accessory IDs against the library, applies count × K_override (or
-    default_K), then computes per-item and total head losses at the given
-    flow and pipe diameter.
+    Resolves accessory IDs against the library, applies count × (K_override or
+    default_K), and computes per-item and total head losses at the given flow
+    and pipe diameter.  Optionally accepts major friction head losses for suction
+    and discharge segments so the response can show major-vs-minor breakdown.
     """
 
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -1244,7 +1248,20 @@ class LossBreakdownRequest(BaseModel):
     D_mm: Annotated[float, Field(gt=0, description="Internal pipe diameter [mm] — SI")]
     accessories: List[AccessoryItem] = Field(
         default_factory=list,
-        description="List of accessories with optional count and K_override",
+        description=(
+            "List of accessories.  Set 'segment' to 'suction' or 'discharge' "
+            "to obtain per-segment minor-loss subtotals."
+        ),
+    )
+    suction_major_head_m: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Darcy-Weisbach friction (major) head loss in the suction pipe [m]",
+    )
+    discharge_major_head_m: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Darcy-Weisbach friction (major) head loss in the discharge pipe [m]",
     )
     unit_system: Literal["SI", "US"] = Field(
         default="SI",
@@ -1260,6 +1277,10 @@ class LossBreakdownItem(BaseModel):
     accessory_id: str = Field(description="Library ID")
     name: str = Field(description="Display name from library")
     category: str = Field(description="Category from library")
+    segment: Optional[str] = Field(
+        default=None,
+        description="Pipe segment: 'suction' | 'discharge' | None",
+    )
     count: int = Field(description="Number of identical items")
     K_each: float = Field(description="K coefficient per item (after override)")
     K_total: float = Field(description="count × K_each")
@@ -1274,6 +1295,19 @@ class LossBreakdownItem(BaseModel):
     )
 
 
+class CategorySubtotal(BaseModel):
+    """Aggregated head loss for one accessory category."""
+
+    model_config = ConfigDict(frozen=True)
+
+    category: str
+    label: str = Field(description="Human-readable category name")
+    K_sum: float
+    hm_m: float
+    hm_display: "UnitValue"
+    pct_of_total_minor: float
+
+
 class LossBreakdownResponse(BaseModel):
     """Full response from POST /compute/lossbreakdown."""
 
@@ -1285,6 +1319,36 @@ class LossBreakdownResponse(BaseModel):
     K_sum: float = Field(description="Total ΣK across all accessories [-]")
     total_hm_m: float = Field(description="Total minor head loss [m]")
     total_hm_display: "UnitValue" = Field(description="Total minor loss in display units")
+
+    suction_minor_hm_m: float = Field(
+        default=0.0,
+        description="Minor head loss for suction-segment accessories [m]",
+    )
+    discharge_minor_hm_m: float = Field(
+        default=0.0,
+        description="Minor head loss for discharge-segment accessories [m]",
+    )
+    major_hm_m: float = Field(
+        default=0.0,
+        description="Total major (friction) head loss = suction_major + discharge_major [m]",
+    )
+    grand_total_hm_m: float = Field(
+        default=0.0,
+        description="minor total + major total [m]",
+    )
+    pct_minor_of_grand_total: float = Field(
+        default=0.0,
+        description="Minor losses as % of grand total (minor + major) [%]",
+    )
+    pct_major_of_grand_total: float = Field(
+        default=0.0,
+        description="Major losses as % of grand total (minor + major) [%]",
+    )
+    category_subtotals: List[CategorySubtotal] = Field(
+        default_factory=list,
+        description="Per-category minor-loss subtotals, sorted by hm_m descending",
+    )
+
     velocity_ms: float = Field(description="Mean pipe velocity at design Q [m/s]")
     velocity_head_m: float = Field(description="Velocity head V²/(2g) [m]")
     design_Q_m3h: float = Field(description="Design flow rate echoed back [m³/h]")

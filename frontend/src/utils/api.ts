@@ -415,12 +415,16 @@ export interface AccessoryItem {
   accessory_id: string;
   count: number;
   K_override?: number | null;
+  segment?: "suction" | "discharge" | null;
+  default_K?: number;
 }
 
 export interface LossBreakdownRequest {
   Q_m3h: number;
   D_mm: number;
   accessories: AccessoryItem[];
+  suction_major_head_m?: number;
+  discharge_major_head_m?: number;
   unit_system?: "SI" | "US";
 }
 
@@ -428,6 +432,7 @@ export interface LossBreakdownItem {
   accessory_id: string;
   name: string;
   category: string;
+  segment?: string | null;
   count: number;
   K_each: number;
   K_total: number;
@@ -437,11 +442,27 @@ export interface LossBreakdownItem {
   potable_notes: string[];
 }
 
+export interface CategorySubtotal {
+  category: string;
+  label: string;
+  K_sum: number;
+  hm_m: number;
+  hm_display: UnitValue;
+  pct_of_total_minor: number;
+}
+
 export interface LossBreakdownResponse {
   items: LossBreakdownItem[];
   K_sum: number;
   total_hm_m: number;
   total_hm_display: UnitValue;
+  suction_minor_hm_m: number;
+  discharge_minor_hm_m: number;
+  major_hm_m: number;
+  grand_total_hm_m: number;
+  pct_minor_of_grand_total: number;
+  pct_major_of_grand_total: number;
+  category_subtotals: CategorySubtotal[];
   velocity_ms: number;
   velocity_head_m: number;
   design_Q_m3h: number;

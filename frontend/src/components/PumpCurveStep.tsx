@@ -13,6 +13,11 @@ import {
   type CurvePoint,
   type PumpRecord,
 } from "../utils/api";
+import { useUnitSystem } from "../contexts/UnitSystemContext";
+
+/** 1 kW = 1.34102 hp */
+const KW_TO_HP = 1.34102;
+const MAX_MANUAL_ROWS = 20;
 
 // ---------------------------------------------------------------------------
 // Types & constants
@@ -60,6 +65,8 @@ interface ChartConfig {
   systemPts?: CurvePoint[];
   speedCurves?: { speed_pct: number; hq_pts: CurvePoint[] }[];
   npshaM?: number;
+  /** If true, annotate the maximum-value point as BEP */
+  showBep?: boolean;
 }
 
 function PumpChart({ cfg }: { cfg: ChartConfig }) {
@@ -177,6 +184,21 @@ function PumpChart({ cfg }: { cfg: ChartConfig }) {
             />
           )}
 
+          {/* BEP marker: vertical line at max-η Q */}
+          {cfg.showBep && cfg.data.length > 0 && (() => {
+            const bepPt = cfg.data.reduce((best, pt) =>
+              pt.value > best.value ? pt : best, cfg.data[0]);
+            return (
+              <ReferenceLine
+                x={bepPt.Q_m3h}
+                stroke="#16a34a"
+                strokeDasharray="4 2"
+                strokeWidth={1.5}
+                label={{ value: `BEP ${bepPt.value.toFixed(0)}%`, position: "insideTopLeft", fontSize: 9, fill: "#16a34a", fontFamily: "monospace" }}
+              />
+            );
+          })()}
+
           {/* Operating point Q* vertical line */}
           {cfg.opQ !== undefined && (
             <ReferenceLine
@@ -187,7 +209,7 @@ function PumpChart({ cfg }: { cfg: ChartConfig }) {
               label={{ value: `Q*=${cfg.opQ.toFixed(1)}`, position: "top", fontSize: 9, fill: "#dc2626", fontFamily: "monospace" }}
             />
           )}
-          {/* Operating point H* horizontal line */}
+          {/* Operating point value horizontal line */}
           {cfg.opV !== undefined && (
             <ReferenceLine
               y={cfg.opV}
@@ -230,7 +252,10 @@ interface ManualCurveEditorProps {
 }
 
 function ManualCurveEditor({ rows, label, unit, onChange }: ManualCurveEditorProps) {
-  const add = () => onChange([...rows, { Q: "", value: "" }]);
+  const add = () => {
+    if (rows.length >= MAX_MANUAL_ROWS) return;
+    onChange([...rows, { Q: "", value: "" }]);
+  };
   const remove = (i: number) => onChange(rows.filter((_, idx) => idx !== i));
   const update = (i: number, key: "Q" | "value", val: string) => {
     onChange(rows.map((r, idx) => (idx === i ? { ...r, [key]: val } : r)));
@@ -295,6 +320,9 @@ function ManualCurveEditor({ rows, label, unit, onChange }: ManualCurveEditorPro
 // ---------------------------------------------------------------------------
 
 export default function PumpCurveStep({ systemCurve, staticHeadM }: PumpCurveStepProps) {
+  const { unitSystem } = useUnitSystem();
+  const isUS = unitSystem === "US";
+
   const [stepState, setStepState] = useState<StepState>("active");
   const [sourceTab, setSourceTab] = useState<SourceTab>("library");
 
@@ -838,7 +866,13 @@ export default function PumpCurveStep({ systemCurve, staticHeadM }: PumpCurveSte
                         <span>Q* = <strong>{op.Q_m3h.toFixed(1)} m³/h</strong></span>
                         <span>H* = <strong>{op.H_m.toFixed(1)} m</strong></span>
                         {op.eta_pct !== null && <span>η* = <strong>{op.eta_pct?.toFixed(1)}%</strong></span>}
-                        {op.power_kW !== null && <span>P* = <strong>{op.power_kW?.toFixed(1)} kW</strong></span>}
+                        {op.power_kW !== null && (
+                          <span>P* = <strong>
+                            {isUS
+                              ? `${(op.power_kW! * KW_TO_HP).toFixed(1)} hp`
+                              : `${op.power_kW?.toFixed(1)} kW`}
+                          </strong></span>
+                        )}
                         {op.npshr_m !== null && <span>NPSHr* = <strong>{op.npshr_m?.toFixed(2)} m</strong></span>}
                         {op.npsha_m !== null && <span>NPSHa = <strong>{op.npsha_m?.toFixed(2)} m</strong></span>}
                       </div>
@@ -877,16 +911,21 @@ export default function PumpCurveStep({ systemCurve, staticHeadM }: PumpCurveSte
                     data: result.eta_curve,
                     opQ: primaryOp?.Q_m3h,
                     opV: primaryOp?.eta_pct ?? undefined,
+                    showBep: result.eta_curve.length > 0,
                   }}
                 />
                 <PumpChart
                   cfg={{
-                    title: "Shaft Power P-Q",
-                    yLabel: "P (kW)",
+                    title: isUS ? "Shaft Power P-Q (hp)" : "Shaft Power P-Q",
+                    yLabel: isUS ? "P (hp)" : "P (kW)",
                     color: "#7c3aed",
-                    data: result.p_curve,
+                    data: isUS
+                      ? result.p_curve.map((pt) => ({ Q_m3h: pt.Q_m3h, value: pt.value * KW_TO_HP }))
+                      : result.p_curve,
                     opQ: primaryOp?.Q_m3h,
-                    opV: primaryOp?.power_kW ?? undefined,
+                    opV: primaryOp?.power_kW != null
+                      ? (isUS ? primaryOp.power_kW * KW_TO_HP : primaryOp.power_kW)
+                      : undefined,
                   }}
                 />
                 <PumpChart

@@ -46,8 +46,13 @@ export default function DesignPage() {
         // Darcy-Weisbach friction (major) head loss from first principles.
         // Suction accessories are passed in the flat list with segment tags so
         // they are still attributed correctly in the contribution matrix.
+        // Always send D_mm at the top level so that suction-tagged and
+        // untagged accessories (which use req.D_mm in the backend when no
+        // suction segment geometry is supplied) use the design pipe diameter
+        // rather than the schema default (200 mm).
         const bdReq = {
           Q_m3h: req.Q_m3h,
+          D_mm:  req.pipe_diameter_mm,
           discharge: {
             L_m:      req.pipe_length_m,
             D_mm:     req.pipe_diameter_mm,

@@ -363,6 +363,39 @@ def test_lossbreakdown_velocity_head_physics():
         assert abs(data["velocity_head_m"] - expected_vh) < 1e-6
 
 
+def test_lossbreakdown_suction_flat_items_use_D_mm_not_default():
+    """
+    When suction accessories are passed in the flat list (no suction segment
+    geometry), their velocity head must be computed from the supplied D_mm,
+    NOT from the 200 mm schema default.  A D_mm of 400 mm gives a velocity
+    that is (200/400)^2 = 0.25× the default-diameter velocity, so the
+    head loss must be ≤ 25 % of what the 200 mm default would give.
+    """
+    req_with_D = {
+        "Q_m3h": 100.0,
+        "D_mm":  400.0,   # explicit — should override schema default of 200 mm
+        "accessories": [{"accessory_id": "gate_fully_open", "count": 1, "segment": "suction"}],
+        "unit_system": "SI",
+    }
+    req_default_D = {
+        "Q_m3h": 100.0,
+        "D_mm":  200.0,   # explicit — matches schema default for comparison
+        "accessories": [{"accessory_id": "gate_fully_open", "count": 1, "segment": "suction"}],
+        "unit_system": "SI",
+    }
+    resp_400 = client.post("/compute/lossbreakdown", json=req_with_D)
+    resp_200 = client.post("/compute/lossbreakdown", json=req_default_D)
+    assert resp_400.status_code == 200
+    assert resp_200.status_code == 200
+    hm_400 = resp_400.json()["total_hm_m"]
+    hm_200 = resp_200.json()["total_hm_m"]
+    # v ~ 1/D^2, hm ~ v^2 ~ 1/D^4  →  ratio = (200/400)^4 = 1/16
+    assert hm_400 < hm_200, "Larger D must produce smaller minor loss"
+    expected_ratio = (200.0 / 400.0) ** 4
+    actual_ratio   = hm_400 / hm_200
+    assert abs(actual_ratio - expected_ratio) < 0.02 * expected_ratio
+
+
 def test_lossbreakdown_mixed_diameter_segments_physics():
     """
     When suction D > discharge D, suction velocity < discharge velocity.

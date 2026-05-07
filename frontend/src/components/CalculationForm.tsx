@@ -38,8 +38,10 @@ export default function CalculationForm({ onSubmit, loading }: Props) {
   const { unitSystem } = useUnitSystem();
   const prevUnitRef = useRef<"SI" | "US">(unitSystem);
 
-  const [pickedItems, setPickedItems] = useState<AccessoryItem[]>([]);
-  const [pickedKSum, setPickedKSum] = useState(0);
+  const [suctionItems,    setSuctionItems]    = useState<AccessoryItem[]>([]);
+  const [dischargeItems,  setDischargeItems]  = useState<AccessoryItem[]>([]);
+  const [suctionKSum,     setSuctionKSum]     = useState(0);
+  const [dischargeKSum,   setDischargeKSum]   = useState(0);
   const [legacyKStr, setLegacyKStr] = useState("");
 
   const { register, handleSubmit, control, watch, setValue, getValues, formState: { errors } } =
@@ -82,10 +84,18 @@ export default function CalculationForm({ onSubmit, loading }: Props) {
     }
   }, [unitSystem, getValues, setValue]);
 
-  const handlePickerChange = useCallback(
+  const handleSuctionChange = useCallback(
     (items: AccessoryItem[], kSum: number) => {
-      setPickedItems(items);
-      setPickedKSum(kSum);
+      setSuctionItems(items);
+      setSuctionKSum(kSum);
+    },
+    []
+  );
+
+  const handleDischargeChange = useCallback(
+    (items: AccessoryItem[], kSum: number) => {
+      setDischargeItems(items);
+      setDischargeKSum(kSum);
     },
     []
   );
@@ -108,6 +118,8 @@ export default function CalculationForm({ onSubmit, loading }: Props) {
       .map((s) => parseFloat(s.trim()))
       .filter((n) => isFinite(n) && n >= 0);
 
+    const allPickedItems = [...suctionItems, ...dischargeItems];
+
     onSubmit(
       {
         Q_m3h,
@@ -117,7 +129,7 @@ export default function CalculationForm({ onSubmit, loading }: Props) {
         pipe_diameter_mm: diam_mm,
         material:         values.material,
         K_values:         [
-          ...pickedItems.flatMap((item) =>
+          ...allPickedItems.flatMap((item) =>
             Array(item.count).fill(
               item.K_override != null ? item.K_override : (item.default_K ?? 0)
             )
@@ -125,8 +137,8 @@ export default function CalculationForm({ onSubmit, loading }: Props) {
           ...legacyKArr,
         ],
       },
-      pickedItems,
-      pickedKSum
+      allPickedItems,
+      suctionKSum + dischargeKSum
     );
   };
 
@@ -294,17 +306,20 @@ export default function CalculationForm({ onSubmit, loading }: Props) {
         {errors.material && <p className={errCls}>{errors.material.message}</p>}
       </div>
 
-      {/* Accessories picker */}
+      {/* Accessories picker — two explicit columns: suction | discharge */}
       <div>
         <div className="flex items-center justify-between mb-2">
           <label className={labelCls + " mb-0"}>Fittings &amp; Accessories</label>
-          {pickedKSum > 0 && (
+          {(suctionKSum + dischargeKSum) > 0 && (
             <span className="text-xs font-mono text-teal-700 font-semibold">
-              ΣK = {pickedKSum.toFixed(2)}
+              ΣK total = {(suctionKSum + dischargeKSum).toFixed(2)}
             </span>
           )}
         </div>
-        <AccessoriesPicker onChange={handlePickerChange} />
+        <div className="grid grid-cols-2 gap-3">
+          <AccessoriesPicker segment="suction"   onChange={handleSuctionChange} />
+          <AccessoriesPicker segment="discharge" onChange={handleDischargeChange} />
+        </div>
       </div>
 
       {/* Advanced K override (collapsed by default) */}

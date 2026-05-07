@@ -776,73 +776,110 @@ class TestComputePumpEndpoint:
 
 
 class TestCsvImportEndpoint:
+    """
+    CSV import tests for the redesigned multi-column endpoint.
+
+    CSV contract:
+    - Required: Q_m3h, H_m
+    - Optional: eta_pct, P_kW, NPSHr_m (any combination)
+    - Non-numeric H_m/Q_m3h cells → row skipped
+    - At least 2 valid H-Q rows required
+    """
+
     def _make_csv_file(self, content: str, filename: str = "curve.csv"):
         return ("file", (filename, io.BytesIO(content.encode()), "text/csv"))
 
-    def test_hq_csv_import_returns_200(self):
+    def test_hq_only_csv_returns_200(self):
         csv_content = "Q_m3h,H_m\n0,40\n50,35\n100,25\n150,10\n"
         resp = client.post(
             "/compute/pump-curves/import-csv",
             files=[self._make_csv_file(csv_content)],
-            data={"curve_type": "hq"},
         )
         assert resp.status_code == 200
         data = resp.json()
         assert "curve_data" in data
         assert len(data["curve_data"]["hq"]) == 4
+        assert data["curve_data"]["eta_q"] is None
+        assert data["curve_data"]["p_q"] is None
+        assert data["curve_data"]["npshr_q"] is None
 
-    def test_eta_csv_import_returns_200(self):
-        csv_content = "Q_m3h,eta_pct\n0,0\n50,60\n100,82\n150,70\n"
+    def test_full_multi_column_csv_returns_all_curves(self):
+        csv_content = (
+            "Q_m3h,H_m,eta_pct,P_kW,NPSHr_m\n"
+            "0,42.0,,2.5,1.5\n"
+            "30,40.8,52.0,6.4,1.7\n"
+            "60,38.5,70.0,9.0,2.1\n"
+            "90,35.5,79.0,11.0,2.7\n"
+            "120,32.0,82.0,12.8,3.5\n"
+            "150,27.3,79.0,14.2,4.6\n"
+            "175,22.5,71.0,15.2,5.8\n"
+        )
         resp = client.post(
             "/compute/pump-curves/import-csv",
             files=[self._make_csv_file(csv_content)],
-            data={"curve_type": "eta_q"},
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert "eta_q" in data["curve_data"]
+        assert len(data["curve_data"]["hq"]) == 7
+        # eta_pct row 0 is missing — only 6 rows have valid eta
+        assert data["curve_data"]["eta_q"] is not None
+        assert len(data["curve_data"]["eta_q"]) == 6
+        assert data["curve_data"]["p_q"] is not None
+        assert data["curve_data"]["npshr_q"] is not None
 
-    def test_npshr_csv_import_returns_200(self):
-        csv_content = "Q_m3h,NPSHr_m\n0,1.5\n50,2.0\n100,3.5\n150,5.0\n"
+    def test_hq_only_without_optional_columns(self):
+        """Optional columns absent → those curve_data fields are None."""
+        csv_content = "Q_m3h,H_m\n0,42\n60,38\n120,30\n"
         resp = client.post(
             "/compute/pump-curves/import-csv",
             files=[self._make_csv_file(csv_content)],
-            data={"curve_type": "npshr_q"},
         )
         assert resp.status_code == 200
+        cd = resp.json()["curve_data"]
+        assert cd["eta_q"] is None
+        assert cd["p_q"] is None
+        assert cd["npshr_q"] is None
 
-    def test_missing_required_column_returns_422(self):
-        csv_content = "Q_m3h,WrongColumn\n0,40\n50,35\n"
+    def test_missing_q_column_returns_422(self):
+        csv_content = "Flow,H_m\n0,40\n50,35\n"
         resp = client.post(
             "/compute/pump-curves/import-csv",
             files=[self._make_csv_file(csv_content)],
-            data={"curve_type": "hq"},
         )
         assert resp.status_code == 422
 
-    def test_fewer_than_two_rows_returns_422(self):
-        csv_content = "Q_m3h,H_m\n0,40\n"
+    def test_missing_h_column_returns_422(self):
+        csv_content = "Q_m3h,Head\n0,40\n50,35\n"
         resp = client.post(
             "/compute/pump-curves/import-csv",
             files=[self._make_csv_file(csv_content)],
-            data={"curve_type": "hq"},
         )
         assert resp.status_code == 422
 
-    def test_invalid_curve_type_returns_422(self):
-        csv_content = "Q_m3h,H_m\n0,40\n50,35\n100,25\n"
+    def test_fewer_than_two_valid_rows_returns_422(self):
+        csv_content = "Q_m3h,H_m\n0,40\n"  # only 1 valid row
         resp = client.post(
             "/compute/pump-curves/import-csv",
             files=[self._make_csv_file(csv_content)],
-            data={"curve_type": "invalid_type"},
         )
         assert resp.status_code == 422
 
-    def test_csv_with_non_numeric_values_returns_422(self):
-        csv_content = "Q_m3h,H_m\n0,forty\n50,35\n"
+    def test_all_rows_non_numeric_returns_422(self):
+        csv_content = "Q_m3h,H_m\nzero,forty\nfifty,thirty-five\n"
         resp = client.post(
             "/compute/pump-curves/import-csv",
             files=[self._make_csv_file(csv_content)],
-            data={"curve_type": "hq"},
         )
         assert resp.status_code == 422
+
+    def test_partial_non_numeric_h_rows_are_skipped(self):
+        """Non-numeric H_m rows are skipped; valid rows still returned."""
+        csv_content = "Q_m3h,H_m\n0,40\nbad_q,35\n100,25\n150,10\n"
+        resp = client.post(
+            "/compute/pump-curves/import-csv",
+            files=[self._make_csv_file(csv_content)],
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["curve_data"]["hq"]) == 3
+        assert len(data["warnings"]) >= 1

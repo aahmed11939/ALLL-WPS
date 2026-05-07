@@ -6,7 +6,7 @@ import PumpSelectionStep from "../components/PumpSelectionStep";
 import ResultsPanel from "../components/ResultsPanel";
 import SystemCurveChart from "../components/SystemCurveChart";
 import { useUnitSystem } from "../contexts/UnitSystemContext";
-import { calculate, type CalculationRequest, type CalculationResponse } from "../utils/api";
+import { calculate, type CalculationRequest, type CalculationResponse, type CurvePoint } from "../utils/api";
 
 export default function DesignPage() {
   const [results, setResults] = useState<CalculationResponse | null>(null);
@@ -151,7 +151,16 @@ export default function DesignPage() {
 
             {/* Pump Curves & Operating Point */}
             <div>
-              <PumpCurveStep />
+              <PumpCurveStep
+                systemCurve={
+                  results?.system_curve
+                    ? (results.system_curve as { Q_m3h: number; H_m: number }[]).map(
+                        (pt) => ({ Q_m3h: pt.Q_m3h, value: pt.H_m } as CurvePoint)
+                      )
+                    : undefined
+                }
+                staticHeadM={results?.static_head_m ?? undefined}
+              />
             </div>
 
             {/* Clear Well Sizing */}

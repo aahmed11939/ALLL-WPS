@@ -366,13 +366,9 @@ export async function computePump(
   return res.data;
 }
 
-export async function importPumpCurveCsv(
-  file: File,
-  curveType: "hq" | "eta_q" | "p_q" | "npshr_q"
-): Promise<CsvImportResponse> {
+export async function importPumpCurveCsv(file: File): Promise<CsvImportResponse> {
   const form = new FormData();
   form.append("file", file);
-  form.append("curve_type", curveType);
   const res = await axios.post<CsvImportResponse>(
     "/compute/pump-curves/import-csv",
     form,

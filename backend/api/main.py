@@ -1193,101 +1193,119 @@ _VALID_CURVE_TYPES = set(_CSV_CURVE_COLS.keys())
     "/compute/pump-curves/import-csv",
     response_model=CsvImportResponse,
     tags=["compute"],
-    summary="Parse a CSV file into tabular pump curve data",
+    summary="Parse a multi-column pump-curve CSV file into PumpCurveData",
     status_code=status.HTTP_200_OK,
 )
 async def import_pump_curve_csv(
-    file: UploadFile = File(..., description="CSV file with Q and value columns"),
-    curve_type: str = Form(
-        ...,
-        description="Curve type: 'hq', 'eta_q', 'p_q', or 'npshr_q'",
-    ),
+    file: UploadFile = File(..., description="CSV file with Q_m3h column and one or more curve columns"),
 ) -> CsvImportResponse:
     """
-    Parse a CSV file into ``PumpCurveData`` suitable for ``POST /compute/pump``.
+    Parse a multi-column CSV file into ``PumpCurveData`` suitable for ``POST /compute/pump``.
 
-    The CSV must have exactly 2 columns: the Q column (``Q_m3h``) and one
-    value column whose name depends on ``curve_type``:
+    The CSV must have a header row. The ``Q_m3h`` column is required.
+    ``H_m`` is required. ``eta_pct``, ``P_kW``, and ``NPSHr_m`` are optional.
+    Any additional columns are silently ignored.
 
-    | curve_type | Expected columns          |
-    |------------|---------------------------|
-    | hq         | Q_m3h, H_m                |
-    | eta_q      | Q_m3h, eta_pct            |
-    | p_q        | Q_m3h, P_kW               |
-    | npshr_q    | Q_m3h, NPSHr_m            |
+    Example CSV::
 
-    The first row must be a header row. Non-numeric rows are skipped with
-    a warning. At least 2 valid data rows are required.
+        Q_m3h,H_m,eta_pct,P_kW,NPSHr_m
+        0,42.0,,2.5,1.5
+        30,40.8,52.0,6.4,1.7
+        60,38.5,70.0,9.0,2.1
+        90,35.5,79.0,11.0,2.7
+        120,32.0,82.0,12.8,3.5
+        150,27.3,79.0,14.2,4.6
+        175,22.5,71.0,15.2,5.8
+
+    Non-numeric cells in optional columns are ignored for that column.
+    Non-numeric cells in ``Q_m3h`` or ``H_m`` cause the row to be skipped
+    with a warning. At least 2 valid rows (with both Q and H) are required.
     """
     import csv
     import io
 
-    if curve_type not in _VALID_CURVE_TYPES:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=(
-                f"Invalid curve_type '{curve_type}'. "
-                f"Must be one of: {sorted(_VALID_CURVE_TYPES)}"
-            ),
-        )
-
-    q_col, v_col = _CSV_CURVE_COLS[curve_type]
-
     raw = await file.read()
     try:
-        text = raw.decode("utf-8-sig")   # handle optional BOM
+        text = raw.decode("utf-8-sig")   # handle BOM
     except UnicodeDecodeError:
         text = raw.decode("latin-1")
 
     reader = csv.DictReader(io.StringIO(text))
-    if reader.fieldnames is None or q_col not in reader.fieldnames or v_col not in reader.fieldnames:
+    fieldnames = list(reader.fieldnames or [])
+
+    # Validate required columns
+    if "Q_m3h" not in fieldnames:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=(
-                f"CSV is missing required columns. "
-                f"Expected headers: '{q_col}', '{v_col}'. "
-                f"Found: {list(reader.fieldnames or [])}"
+                f"CSV is missing required 'Q_m3h' column. "
+                f"Found columns: {fieldnames}"
+            ),
+        )
+    if "H_m" not in fieldnames:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"CSV is missing required 'H_m' column. "
+                f"Found columns: {fieldnames}. "
+                f"At minimum the CSV must have Q_m3h and H_m columns."
             ),
         )
 
-    pts: list[CurvePoint] = []
+    has_eta   = "eta_pct"  in fieldnames
+    has_p     = "P_kW"     in fieldnames
+    has_npshr = "NPSHr_m"  in fieldnames
+
+    hq_pts:    list[CurvePoint] = []
+    eta_pts:   list[CurvePoint] = []
+    p_pts:     list[CurvePoint] = []
+    npshr_pts: list[CurvePoint] = []
     parse_warns: list[str] = []
 
     for row_num, row in enumerate(reader, start=2):
+        # Parse required Q and H
         try:
-            q = float(row[q_col])
-            v = float(row[v_col])
-            pts.append(CurvePoint(Q_m3h=q, value=v))
+            q = float(row["Q_m3h"])
+            h = float(row["H_m"])
         except (ValueError, KeyError):
-            parse_warns.append(f"Row {row_num}: non-numeric values skipped ({dict(row)})")
+            parse_warns.append(f"Row {row_num}: Q_m3h or H_m not numeric — row skipped.")
+            continue
 
-    if len(pts) < 2:
+        hq_pts.append(CurvePoint(Q_m3h=q, value=h))
+
+        # Parse optional columns (missing or non-numeric cells are silently skipped)
+        if has_eta:
+            try:
+                eta_pts.append(CurvePoint(Q_m3h=q, value=float(row.get("eta_pct", ""))))
+            except (ValueError, TypeError):
+                pass
+
+        if has_p:
+            try:
+                p_pts.append(CurvePoint(Q_m3h=q, value=float(row.get("P_kW", ""))))
+            except (ValueError, TypeError):
+                pass
+
+        if has_npshr:
+            try:
+                npshr_pts.append(CurvePoint(Q_m3h=q, value=float(row.get("NPSHr_m", ""))))
+            except (ValueError, TypeError):
+                pass
+
+    if len(hq_pts) < 2:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=(
-                f"CSV must contain at least 2 valid numeric data rows; "
-                f"found {len(pts)} after skipping non-numeric rows."
+                f"CSV must contain at least 2 valid rows with numeric Q_m3h and H_m; "
+                f"found {len(hq_pts)} after skipping invalid rows."
             ),
         )
 
-    # Build PumpCurveData — put parsed points in the correct slot
-    cd_kwargs: dict = {}
-    if curve_type == "hq":
-        cd_kwargs["hq"] = pts
-    elif curve_type == "eta_q":
-        # Need a placeholder HQ for PumpCurveData validation; use flat 0s
-        cd_kwargs["hq"] = [CurvePoint(Q_m3h=pts[0].Q_m3h, value=0.0),
-                           CurvePoint(Q_m3h=pts[-1].Q_m3h, value=0.0)]
-        cd_kwargs["eta_q"] = pts
-    elif curve_type == "p_q":
-        cd_kwargs["hq"] = [CurvePoint(Q_m3h=pts[0].Q_m3h, value=0.0),
-                           CurvePoint(Q_m3h=pts[-1].Q_m3h, value=0.0)]
-        cd_kwargs["p_q"] = pts
-    elif curve_type == "npshr_q":
-        cd_kwargs["hq"] = [CurvePoint(Q_m3h=pts[0].Q_m3h, value=0.0),
-                           CurvePoint(Q_m3h=pts[-1].Q_m3h, value=0.0)]
-        cd_kwargs["npshr_q"] = pts
-
-    curve_data = PumpCurveData(**cd_kwargs)
+    curve_data = PumpCurveData(
+        hq=hq_pts,
+        eta_q=eta_pts   if len(eta_pts)   >= 2 else None,
+        p_q=p_pts       if len(p_pts)     >= 2 else None,
+        npshr_q=npshr_pts if len(npshr_pts) >= 2 else None,
+    )
 
     return CsvImportResponse(curve_data=curve_data, warnings=parse_warns)

@@ -1,8 +1,9 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ReferenceLine, Legend, ResponsiveContainer,
 } from "recharts";
+import type { ValueType, NameType, Formatter } from "recharts/types/component/DefaultTooltipContent";
 import {
   computePump,
   importPumpCurveCsv,
@@ -21,12 +22,29 @@ type StepState = "active" | "bypassed" | "disabled";
 type SourceTab = "library" | "manual" | "csv";
 type Arrangement = "single" | "parallel" | "series";
 
+export interface PumpCurveStepProps {
+  /** System curve data from the hydraulic calculation (optional) */
+  systemCurve?: CurvePoint[];
+  /** Static head component from the hydraulic calculation [m] (optional) */
+  staticHeadM?: number;
+}
+
 const inputCls =
   "w-full rounded border border-slate-300 bg-white px-3 py-1.5 text-sm font-mono text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600";
 const labelCls =
   "block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1";
 
 const SPEED_COLORS = ["#0f766e", "#0891b2", "#7c3aed", "#b45309", "#dc2626"];
+
+// ---------------------------------------------------------------------------
+// Tooltip formatter (typed to satisfy Recharts generics)
+// ---------------------------------------------------------------------------
+
+const tooltipFormatter = ((val: unknown, name: unknown): [string, string] => {
+  if (val === undefined || val === null) return ["—", String(name ?? "")];
+  const num = typeof val === "number" ? val.toFixed(2) : String(val);
+  return [num, String(name ?? "")];
+}) as Formatter<ValueType, NameType>;
 
 // ---------------------------------------------------------------------------
 // Mini chart component
@@ -41,6 +59,7 @@ interface ChartConfig {
   opV?: number;
   systemPts?: CurvePoint[];
   speedCurves?: { speed_pct: number; hq_pts: CurvePoint[] }[];
+  npshaM?: number;
 }
 
 function PumpChart({ cfg }: { cfg: ChartConfig }) {
@@ -52,20 +71,22 @@ function PumpChart({ cfg }: { cfg: ChartConfig }) {
     );
   }
 
-  // Merge pump + system points for H-Q chart
-  const allQs = cfg.data.map((p) => p.Q_m3h);
-  const sysQs = (cfg.systemPts ?? []).map((p) => p.Q_m3h);
-  const allQUnion = Array.from(new Set([...allQs, ...sysQs])).sort((a, b) => a - b);
-
-  const dataMap = new Map(cfg.data.map((p) => [p.Q_m3h, p.value]));
+  const pumpMap = new Map(cfg.data.map((p) => [p.Q_m3h, p.value]));
   const sysMap  = new Map((cfg.systemPts ?? []).map((p) => [p.Q_m3h, p.value]));
   const speedMaps = (cfg.speedCurves ?? []).map(
     (sc) => ({ pct: sc.speed_pct, map: new Map(sc.hq_pts.map((p) => [p.Q_m3h, p.value])) })
   );
 
-  const chartData = allQUnion.map((q) => {
+  const allQs = [
+    ...cfg.data.map((p) => p.Q_m3h),
+    ...(cfg.systemPts ?? []).map((p) => p.Q_m3h),
+    ...(cfg.speedCurves ?? []).flatMap((sc) => sc.hq_pts.map((p) => p.Q_m3h)),
+  ];
+  const qUnion = Array.from(new Set(allQs)).sort((a, b) => a - b);
+
+  const chartData = qUnion.map((q) => {
     const row: Record<string, number> = { Q_m3h: q };
-    if (dataMap.has(q)) row["pump"] = dataMap.get(q)!;
+    if (pumpMap.has(q)) row["pump"] = pumpMap.get(q)!;
     if (sysMap.has(q))  row["system"] = sysMap.get(q)!;
     speedMaps.forEach((sm) => {
       if (sm.map.has(q)) row[`spd_${sm.pct}`] = sm.map.get(q)!;
@@ -73,18 +94,21 @@ function PumpChart({ cfg }: { cfg: ChartConfig }) {
     return row;
   });
 
-  // Also add simple pump data if no union
-  const simpleData = cfg.systemPts ? chartData : cfg.data.map((p) => ({ Q_m3h: p.Q_m3h, pump: p.value }));
+  // For simple charts without overlay, use raw pump data as-is
+  const renderData = (cfg.systemPts && cfg.systemPts.length > 0) || (cfg.speedCurves && cfg.speedCurves.length > 0)
+    ? chartData
+    : cfg.data.map((p) => ({ Q_m3h: p.Q_m3h, pump: p.value }));
 
   const allVals = cfg.data.map((p) => p.value).filter((v) => v > 0);
-  const vMax = allVals.length ? Math.max(...allVals) * 1.15 : 100;
+  const sysVals = (cfg.systemPts ?? []).map((p) => p.value);
+  const vMax = Math.max(...allVals, ...sysVals, 1) * 1.15;
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3">
       <p className="text-xs font-semibold text-slate-600 mb-2">{cfg.title}</p>
       <ResponsiveContainer width="100%" height={220}>
         <LineChart
-          data={cfg.systemPts ? chartData : simpleData}
+          data={renderData}
           margin={{ top: 8, right: 16, bottom: 24, left: 8 }}
         >
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -103,10 +127,10 @@ function PumpChart({ cfg }: { cfg: ChartConfig }) {
           />
           <Tooltip
             contentStyle={{ fontSize: 11, fontFamily: "monospace" }}
-            formatter={(val: number, name: string) => [val.toFixed(2), name]}
+            formatter={tooltipFormatter}
           />
 
-          {/* Speed curves (VFD fan) */}
+          {/* VFD speed curves */}
           {(cfg.speedCurves ?? []).map((sc, i) => (
             <Line
               key={`spd_${sc.speed_pct}`}
@@ -120,7 +144,7 @@ function PumpChart({ cfg }: { cfg: ChartConfig }) {
             />
           ))}
 
-          {/* System curve */}
+          {/* System curve overlay */}
           {cfg.systemPts && cfg.systemPts.length > 0 && (
             <Line
               dataKey="system"
@@ -142,7 +166,18 @@ function PumpChart({ cfg }: { cfg: ChartConfig }) {
             isAnimationActive={false}
           />
 
-          {/* Operating point */}
+          {/* NPSHa horizontal reference line (on NPSHr chart only) */}
+          {cfg.npshaM !== undefined && cfg.npshaM > 0 && (
+            <ReferenceLine
+              y={cfg.npshaM}
+              stroke="#16a34a"
+              strokeDasharray="6 3"
+              strokeWidth={1.5}
+              label={{ value: `NPSHa=${cfg.npshaM.toFixed(1)}m`, position: "right", fontSize: 9, fill: "#16a34a", fontFamily: "monospace" }}
+            />
+          )}
+
+          {/* Operating point Q* vertical line */}
           {cfg.opQ !== undefined && (
             <ReferenceLine
               x={cfg.opQ}
@@ -152,6 +187,7 @@ function PumpChart({ cfg }: { cfg: ChartConfig }) {
               label={{ value: `Q*=${cfg.opQ.toFixed(1)}`, position: "top", fontSize: 9, fill: "#dc2626", fontFamily: "monospace" }}
             />
           )}
+          {/* Operating point H* horizontal line */}
           {cfg.opV !== undefined && (
             <ReferenceLine
               y={cfg.opV}
@@ -197,8 +233,7 @@ function ManualCurveEditor({ rows, label, unit, onChange }: ManualCurveEditorPro
   const add = () => onChange([...rows, { Q: "", value: "" }]);
   const remove = (i: number) => onChange(rows.filter((_, idx) => idx !== i));
   const update = (i: number, key: "Q" | "value", val: string) => {
-    const next = rows.map((r, idx) => (idx === i ? { ...r, [key]: val } : r));
-    onChange(next);
+    onChange(rows.map((r, idx) => (idx === i ? { ...r, [key]: val } : r)));
   };
 
   return (
@@ -259,28 +294,49 @@ function ManualCurveEditor({ rows, label, unit, onChange }: ManualCurveEditorPro
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function PumpCurveStep() {
+export default function PumpCurveStep({ systemCurve, staticHeadM }: PumpCurveStepProps) {
   const [stepState, setStepState] = useState<StepState>("active");
   const [sourceTab, setSourceTab] = useState<SourceTab>("library");
 
-  // Library tab
+  // Library tab — load on mount, not lazily
   const [libraryPumps, setLibraryPumps] = useState<PumpRecord[]>([]);
   const [pumpsLoaded, setPumpsLoaded] = useState(false);
   const [selectedPumpId, setSelectedPumpId] = useState<string>("");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+
+  useEffect(() => {
+    fetchPumpLibrary()
+      .then((pumps) => {
+        setLibraryPumps(pumps);
+        if (pumps.length) setSelectedPumpId(pumps[0].id);
+      })
+      .catch(() => {/* silently ignore if backend not ready */})
+      .finally(() => setPumpsLoaded(true));
+  }, []);
+
+  // Derived: unique pump types for filter
+  const pumpTypes = Array.from(new Set(libraryPumps.map((p) => p.type)));
+  const filteredPumps = typeFilter === "all"
+    ? libraryPumps
+    : libraryPumps.filter((p) => p.type === typeFilter);
 
   // Manual tab
   const [hqRows, setHqRows]     = useState<ManualPoint[]>([
-    { Q: "0", value: "42" }, { Q: "60", value: "36" }, { Q: "120", value: "28" }, { Q: "160", value: "18" },
+    { Q: "0", value: "42" }, { Q: "60", value: "36" },
+    { Q: "120", value: "28" }, { Q: "160", value: "18" },
   ]);
   const [etaRows, setEtaRows]   = useState<ManualPoint[]>([]);
   const [pRows, setPRows]       = useState<ManualPoint[]>([]);
   const [npshRows, setNpshRows] = useState<ManualPoint[]>([]);
 
   // CSV tab
-  const [csvCurveType, setCsvCurveType] = useState<"hq" | "eta_q" | "p_q" | "npshr_q">("hq");
   const csvFileRef = useRef<HTMLInputElement>(null);
-  const [csvImported, setCsvImported] = useState(false);
-  const [csvPts, setCsvPts] = useState<CurvePoint[]>([]);
+  const [csvParsed, setCsvParsed] = useState<{
+    hq: CurvePoint[];
+    eta_q?: CurvePoint[];
+    p_q?: CurvePoint[];
+    npshr_q?: CurvePoint[];
+  } | null>(null);
 
   // Arrangement
   const [arrangement, setArrangement] = useState<Arrangement>("single");
@@ -293,46 +349,32 @@ export default function PumpCurveStep() {
   const [speedMin, setSpeedMin] = useState(50);
   const [speedMax, setSpeedMax] = useState(100);
 
-  // System curve link
-  const [staticHead, setStaticHead] = useState(10);
+  // NPSH
   const [npsha, setNpsha] = useState<string>("");
+
+  // Static head override (when no system curve from parent)
+  const [staticHeadOverride, setStaticHeadOverride] = useState(10);
 
   // Results
   const [result, setResult] = useState<PumpComputeResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load library lazily when user clicks Library tab
-  const loadLibrary = useCallback(async () => {
-    if (pumpsLoaded) return;
-    const pumps = await fetchPumpLibrary();
-    setLibraryPumps(pumps);
-    if (pumps.length) setSelectedPumpId(pumps[0].id);
-    setPumpsLoaded(true);
-  }, [pumpsLoaded]);
-
-  const handleTabChange = (tab: SourceTab) => {
-    setSourceTab(tab);
+  // When system curve arrives from parent, auto-clear stale result
+  useEffect(() => {
     setResult(null);
-    setError(null);
-    if (tab === "library") loadLibrary();
-  };
+  }, [systemCurve]);
 
-  // CSV import
+  // --------------- CSV import ---------------
+
   const handleCsvUpload = async () => {
     const file = csvFileRef.current?.files?.[0];
     if (!file) { setError("Please select a CSV file."); return; }
     setLoading(true);
     setError(null);
     try {
-      const resp = await importPumpCurveCsv(file, csvCurveType);
-      const pts = resp.curve_data.hq
-        ?? resp.curve_data.eta_q
-        ?? resp.curve_data.p_q
-        ?? resp.curve_data.npshr_q
-        ?? [];
-      setCsvPts(pts);
-      setCsvImported(true);
+      const resp = await importPumpCurveCsv(file);
+      setCsvParsed(resp.curve_data as typeof csvParsed);
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "CSV parse failed.";
       setError(typeof msg === "string" ? msg : JSON.stringify(msg));
@@ -341,83 +383,81 @@ export default function PumpCurveStep() {
     }
   };
 
-  // Build request and compute
-  const handleCompute = async () => {
+  // --------------- Build request ---------------
+
+  const buildRequest = useCallback((): PumpComputeRequest | null => {
+    const resolvedStaticHead = staticHeadM ?? staticHeadOverride;
+    const resolvedSystemCurve = systemCurve && systemCurve.length >= 2 ? systemCurve : undefined;
+
+    const common: Omit<PumpComputeRequest, "pump_id" | "curve_data"> = {
+      active: true,
+      arrangement,
+      n_pumps: nPumps,
+      staging: staging && arrangement === "parallel",
+      vfd,
+      speed_pct: speedPct,
+      speed_pct_min: speedMin,
+      speed_pct_max: speedMax,
+      n_speed_steps: 5,
+      system_curve_pts: resolvedSystemCurve,
+      static_head_m: resolvedStaticHead,
+      npsha_m: npsha !== "" ? parseFloat(npsha) : undefined,
+    };
+
+    if (sourceTab === "library") {
+      if (!selectedPumpId) return null;
+      return { ...common, pump_id: selectedPumpId };
+    }
+
+    if (sourceTab === "manual") {
+      const hqPts = parseManualPoints(hqRows);
+      if (!hqPts) return null;
+      const etaPts  = etaRows.length  >= 2 ? parseManualPoints(etaRows)   : undefined;
+      const pPts    = pRows.length    >= 2 ? parseManualPoints(pRows)     : undefined;
+      const npshPts = npshRows.length >= 2 ? parseManualPoints(npshRows)  : undefined;
+      return {
+        ...common,
+        curve_data: {
+          hq: hqPts,
+          eta_q: etaPts ?? undefined,
+          p_q: pPts ?? undefined,
+          npshr_q: npshPts ?? undefined,
+          interp_method: "linear",
+          poly_degree: 2,
+        },
+      };
+    }
+
+    // CSV tab
+    if (!csvParsed || !csvParsed.hq?.length) return null;
+    return {
+      ...common,
+      curve_data: {
+        hq: csvParsed.hq,
+        eta_q: csvParsed.eta_q,
+        p_q: csvParsed.p_q,
+        npshr_q: csvParsed.npshr_q,
+        interp_method: "linear",
+        poly_degree: 2,
+      },
+    };
+  }, [
+    sourceTab, selectedPumpId, hqRows, etaRows, pRows, npshRows, csvParsed,
+    arrangement, nPumps, staging, vfd, speedPct, speedMin, speedMax,
+    npsha, systemCurve, staticHeadM, staticHeadOverride,
+  ]);
+
+  const handleCompute = useCallback(async () => {
     setError(null);
+    const req = buildRequest();
+    if (!req) {
+      if (sourceTab === "library" && !selectedPumpId) setError("Select a pump from the library.");
+      else if (sourceTab === "manual") setError("H-Q table needs ≥ 2 valid numeric rows.");
+      else if (sourceTab === "csv") setError("Import a CSV file first.");
+      return;
+    }
     setLoading(true);
     try {
-      let req: PumpComputeRequest;
-
-      if (sourceTab === "library") {
-        if (!selectedPumpId) { setError("Select a pump from the library."); setLoading(false); return; }
-        req = {
-          active: true,
-          pump_id: selectedPumpId,
-          arrangement,
-          n_pumps: nPumps,
-          staging: staging && arrangement === "parallel",
-          vfd,
-          speed_pct: speedPct,
-          speed_pct_min: speedMin,
-          speed_pct_max: speedMax,
-          n_speed_steps: 5,
-          static_head_m: staticHead,
-          npsha_m: npsha !== "" ? parseFloat(npsha) : undefined,
-        };
-      } else if (sourceTab === "manual") {
-        const hqPts = parseManualPoints(hqRows);
-        if (!hqPts) { setError("H-Q table needs ≥ 2 valid rows."); setLoading(false); return; }
-        const etaPts = etaRows.length >= 2 ? parseManualPoints(etaRows) : null;
-        const pPts   = pRows.length   >= 2 ? parseManualPoints(pRows)   : null;
-        const npshPts = npshRows.length >= 2 ? parseManualPoints(npshRows) : null;
-
-        req = {
-          active: true,
-          curve_data: {
-            hq: hqPts,
-            eta_q: etaPts ?? undefined,
-            p_q: pPts ?? undefined,
-            npshr_q: npshPts ?? undefined,
-            interp_method: "linear",
-            poly_degree: 2,
-          },
-          arrangement,
-          n_pumps: nPumps,
-          staging: staging && arrangement === "parallel",
-          vfd,
-          speed_pct: speedPct,
-          speed_pct_min: speedMin,
-          speed_pct_max: speedMax,
-          n_speed_steps: 5,
-          static_head_m: staticHead,
-          npsha_m: npsha !== "" ? parseFloat(npsha) : undefined,
-        };
-      } else {
-        // CSV
-        if (!csvImported || !csvPts.length) { setError("Import a CSV file first."); setLoading(false); return; }
-        req = {
-          active: true,
-          curve_data: {
-            hq: csvCurveType === "hq" ? csvPts : [{ Q_m3h: 0, value: 0 }, { Q_m3h: 1, value: 0 }],
-            eta_q: csvCurveType === "eta_q" ? csvPts : undefined,
-            p_q: csvCurveType === "p_q" ? csvPts : undefined,
-            npshr_q: csvCurveType === "npshr_q" ? csvPts : undefined,
-            interp_method: "linear",
-            poly_degree: 2,
-          },
-          arrangement,
-          n_pumps: nPumps,
-          staging: staging && arrangement === "parallel",
-          vfd,
-          speed_pct: speedPct,
-          speed_pct_min: speedMin,
-          speed_pct_max: speedMax,
-          n_speed_steps: 5,
-          static_head_m: staticHead,
-          npsha_m: npsha !== "" ? parseFloat(npsha) : undefined,
-        };
-      }
-
       const data = await computePump(req);
       setResult(data);
     } catch (e: unknown) {
@@ -427,9 +467,17 @@ export default function PumpCurveStep() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [buildRequest, sourceTab, selectedPumpId]);
 
-  // ----- Render -----
+  // Auto-recompute when VFD speed changes (if we already have a result)
+  useEffect(() => {
+    if (result && vfd) {
+      handleCompute();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speedPct]);
+
+  // ----- Bypass / disabled state -----
 
   if (stepState !== "active") {
     return (
@@ -453,7 +501,8 @@ export default function PumpCurveStep() {
   }
 
   const primaryOp = result?.operating_points?.[0];
-  const hasSys = false; // system curve link is a future step; for now manual static head
+  const resolvedStaticHead = staticHeadM ?? staticHeadOverride;
+  const hasIncomingSystemCurve = systemCurve && systemCurve.length >= 2;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -471,6 +520,18 @@ export default function PumpCurveStep() {
       </div>
 
       <div className="p-5 space-y-5">
+        {/* System curve link status */}
+        {hasIncomingSystemCurve && (
+          <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-2 text-xs text-emerald-700 font-mono">
+            ✓ System curve linked from hydraulic calculation ({systemCurve!.length} pts · static head {resolvedStaticHead.toFixed(1)} m)
+          </div>
+        )}
+        {!hasIncomingSystemCurve && (
+          <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-2 text-xs text-slate-500">
+            Run the hydraulic calculation above to link the system curve — or enter static head manually below.
+          </div>
+        )}
+
         {/* Source tabs */}
         <div>
           <div className="flex border-b border-slate-200 mb-4">
@@ -478,7 +539,7 @@ export default function PumpCurveStep() {
               <button
                 key={tab}
                 type="button"
-                onClick={() => handleTabChange(tab)}
+                onClick={() => { setSourceTab(tab); setResult(null); setError(null); }}
                 className={`px-4 py-2 text-xs font-semibold uppercase tracking-wide border-b-2 -mb-px transition-colors ${
                   sourceTab === tab
                     ? "border-teal-600 text-teal-700"
@@ -492,25 +553,61 @@ export default function PumpCurveStep() {
 
           {/* Library tab */}
           {sourceTab === "library" && (
-            <div>
-              <label className={labelCls}>Select pump from library</label>
-              <select
-                value={selectedPumpId}
-                onChange={(e) => setSelectedPumpId(e.target.value)}
-                className={inputCls}
-              >
-                {libraryPumps.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} — {p.manufacturer} · {p.rated_flow_m3h} m³/h @ {p.rated_head_m} m
-                  </option>
-                ))}
-                {!pumpsLoaded && <option value="">Loading…</option>}
-              </select>
+            <div className="space-y-3">
+              {/* Type filter */}
+              <div>
+                <label className={labelCls}>Filter by pump type</label>
+                <select
+                  value={typeFilter}
+                  onChange={(e) => {
+                    setTypeFilter(e.target.value);
+                    const first = libraryPumps.find(
+                      (p) => e.target.value === "all" || p.type === e.target.value
+                    );
+                    if (first) setSelectedPumpId(first.id);
+                  }}
+                  className={inputCls}
+                >
+                  <option value="all">All types</option>
+                  {pumpTypes.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Pump selector */}
+              <div>
+                <label className={labelCls}>
+                  Select pump
+                  <span className="ml-1 text-slate-400 normal-case font-normal tracking-normal">
+                    ({filteredPumps.length} matching)
+                  </span>
+                </label>
+                {!pumpsLoaded ? (
+                  <div className="text-xs text-slate-400 font-mono py-2">Loading pump library…</div>
+                ) : (
+                  <select
+                    value={selectedPumpId}
+                    onChange={(e) => { setSelectedPumpId(e.target.value); setResult(null); }}
+                    className={inputCls}
+                    size={Math.min(4, filteredPumps.length)}
+                  >
+                    {filteredPumps.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} — {p.manufacturer} · {p.rated_flow_m3h} m³/h @ {p.rated_head_m} m
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
               {selectedPumpId && libraryPumps.length > 0 && (
-                <div className="mt-2 text-xs text-slate-400 font-mono">
+                <div className="text-xs text-slate-400 font-mono bg-slate-50 rounded px-3 py-1.5">
                   {(() => {
                     const p = libraryPumps.find((x) => x.id === selectedPumpId);
-                    return p ? `${p.type} · η=${p.rated_efficiency_pct}% · ${p.rated_power_kW} kW · ${p.rated_speed_rpm} rpm` : "";
+                    return p
+                      ? `${p.type} · η=${p.rated_efficiency_pct}% · ${p.rated_power_kW} kW · ${p.rated_speed_rpm} rpm`
+                      : "";
                   })()}
                 </div>
               )}
@@ -531,25 +628,12 @@ export default function PumpCurveStep() {
           {sourceTab === "csv" && (
             <div className="space-y-3">
               <div>
-                <label className={labelCls}>Curve type</label>
-                <select
-                  value={csvCurveType}
-                  onChange={(e) => { setCsvCurveType(e.target.value as typeof csvCurveType); setCsvImported(false); }}
-                  className={inputCls}
-                >
-                  <option value="hq">H-Q curve (Q_m3h, H_m)</option>
-                  <option value="eta_q">Efficiency curve (Q_m3h, eta_pct)</option>
-                  <option value="p_q">Power curve (Q_m3h, P_kW)</option>
-                  <option value="npshr_q">NPSHr curve (Q_m3h, NPSHr_m)</option>
-                </select>
-              </div>
-              <div>
                 <label className={labelCls}>CSV file</label>
                 <input
                   ref={csvFileRef}
                   type="file"
                   accept=".csv,text/csv"
-                  onChange={() => setCsvImported(false)}
+                  onChange={() => setCsvParsed(null)}
                   className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border file:border-slate-300 file:bg-slate-50 file:text-slate-600 file:text-xs cursor-pointer"
                 />
               </div>
@@ -561,17 +645,22 @@ export default function PumpCurveStep() {
               >
                 Parse CSV
               </button>
-              {csvImported && (
+              {csvParsed && (
                 <p className="text-xs text-emerald-600 font-mono">
-                  ✓ {csvPts.length} points imported from CSV
+                  ✓ Parsed: {csvParsed.hq?.length ?? 0} H-Q pts
+                  {csvParsed.eta_q   ? `, ${csvParsed.eta_q.length} η pts`   : ""}
+                  {csvParsed.p_q     ? `, ${csvParsed.p_q.length} P pts`     : ""}
+                  {csvParsed.npshr_q ? `, ${csvParsed.npshr_q.length} NPSHr pts` : ""}
                 </p>
               )}
               <div className="text-xs text-slate-400 bg-slate-50 rounded p-2 font-mono">
-                <p className="font-semibold text-slate-500 mb-1">Expected CSV format:</p>
-                <p>Q_m3h,H_m</p>
-                <p>0,42.0</p>
-                <p>60,38.5</p>
-                <p>120,32.0</p>
+                <p className="font-semibold text-slate-500 mb-1">
+                  Expected CSV — first row is header, H_m required, others optional:
+                </p>
+                <p>Q_m3h,H_m,eta_pct,P_kW,NPSHr_m</p>
+                <p>0,42.0,,2.5,1.5</p>
+                <p>60,38.5,70.0,9.0,2.1</p>
+                <p>120,32.0,82.0,12.8,3.5</p>
               </div>
             </div>
           )}
@@ -615,18 +704,24 @@ export default function PumpCurveStep() {
                 <label htmlFor="staging-cb" className="text-xs text-slate-600">Staging analysis</label>
               </div>
             )}
+            {/* Static head override (only shown when no system curve from parent) */}
+            {!hasIncomingSystemCurve && (
+              <div>
+                <label className={labelCls}>Static head (m)</label>
+                <input
+                  type="number"
+                  min={0} step={0.5}
+                  value={staticHeadOverride}
+                  onChange={(e) => setStaticHeadOverride(parseFloat(e.target.value) || 0)}
+                  className={inputCls}
+                />
+              </div>
+            )}
             <div>
-              <label className={labelCls}>Static head (m)</label>
-              <input
-                type="number"
-                min={0} step={0.5}
-                value={staticHead}
-                onChange={(e) => setStaticHead(parseFloat(e.target.value) || 0)}
-                className={inputCls}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>NPSHa (m) <span className="text-slate-400 normal-case font-normal">optional</span></label>
+              <label className={labelCls}>
+                NPSHa (m)
+                <span className="text-slate-400 normal-case font-normal ml-1">optional</span>
+              </label>
               <input
                 type="number"
                 min={0} step={0.1}
@@ -668,18 +763,19 @@ export default function PumpCurveStep() {
                   onChange={(e) => setSpeedPct(parseInt(e.target.value))}
                   className="flex-1 h-1.5 accent-teal-600"
                 />
+                <span className="text-xs text-slate-400 font-mono">{speedMin}–{speedMax}%</span>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={labelCls}>Min speed (%)</label>
                   <input type="number" min={10} max={100} value={speedMin}
-                    onChange={(e) => { const v = parseInt(e.target.value); setSpeedMin(v); if (v > speedMax) setSpeedMax(v); }}
+                    onChange={(e) => { const v = parseInt(e.target.value); setSpeedMin(v); if (v > speedMax) setSpeedMax(v); if (v > speedPct) setSpeedPct(v); }}
                     className={inputCls} />
                 </div>
                 <div>
                   <label className={labelCls}>Max speed (%)</label>
                   <input type="number" min={10} max={110} value={speedMax}
-                    onChange={(e) => { const v = parseInt(e.target.value); setSpeedMax(v); if (v < speedMin) setSpeedMin(v); }}
+                    onChange={(e) => { const v = parseInt(e.target.value); setSpeedMax(v); if (v < speedMin) setSpeedMin(v); if (v < speedPct) setSpeedPct(v); }}
                     className={inputCls} />
                 </div>
               </div>
@@ -755,7 +851,7 @@ export default function PumpCurveStep() {
               </div>
             )}
 
-            {/* 4 charts */}
+            {/* 4 performance charts */}
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200 pb-1 mb-3">
                 Performance Curves
@@ -763,13 +859,14 @@ export default function PumpCurveStep() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <PumpChart
                   cfg={{
-                    title: "H-Q Curve",
+                    title: "H-Q Curve" + (hasIncomingSystemCurve ? " (with system curve)" : ""),
                     yLabel: "H (m)",
                     color: "#0f766e",
                     data: result.hq_curve,
                     opQ: primaryOp?.Q_m3h,
                     opV: primaryOp?.H_m,
                     speedCurves: vfd ? result.speed_curves : undefined,
+                    systemPts: systemCurve,
                   }}
                 />
                 <PumpChart
@@ -794,12 +891,13 @@ export default function PumpCurveStep() {
                 />
                 <PumpChart
                   cfg={{
-                    title: "NPSHr-Q",
+                    title: "NPSHr-Q" + (npsha !== "" ? " (vs NPSHa)" : ""),
                     yLabel: "NPSHr (m)",
                     color: "#b45309",
                     data: result.npshr_curve,
                     opQ: primaryOp?.Q_m3h,
                     opV: primaryOp?.npshr_m ?? undefined,
+                    npshaM: npsha !== "" ? parseFloat(npsha) : undefined,
                   }}
                 />
               </div>

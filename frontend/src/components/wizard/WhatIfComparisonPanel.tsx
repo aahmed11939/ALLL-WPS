@@ -185,8 +185,9 @@ export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIf
               <th className="px-3 py-2 font-semibold text-slate-600 text-right">Max P</th>
               <th className="px-3 py-2 font-semibold text-slate-600 text-right">Min H</th>
               <th className="px-3 py-2 font-semibold text-slate-600 text-right">Surge Reduction</th>
-              <th className="px-3 py-2 font-semibold text-slate-600 text-right">Reduction %</th>
+              <th className="px-3 py-2 font-semibold text-slate-600 text-right">Envelope Δ%</th>
               <th className="px-3 py-2 font-semibold text-slate-600 text-center">Cavitation</th>
+              <th className="px-3 py-2 font-semibold text-slate-600 text-right">Risk Duration</th>
               <th className="px-3 py-2 font-semibold text-slate-600">Sizing</th>
             </tr>
           </thead>
@@ -213,10 +214,17 @@ export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIf
                     {isBase ? <span className="text-slate-400">—</span> : <ReductionBadge val={run.max_surge_reduction_m} />}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    {isBase ? <span className="text-slate-400">—</span> : <PctBadge val={run.max_surge_reduction_pct} />}
+                    {isBase
+                      ? <span className="text-slate-400">—</span>
+                      : <PctBadge val={run.envelope_reduction_pct} />}
                   </td>
                   <td className="px-3 py-2 text-center">
-                    <Badge ok={run.cavitation_x_m.length === 0} />
+                    <Badge ok={!run.cavitation_risk} />
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-[9px]">
+                    {run.cavitation_risk
+                      ? <span className="text-red-600 font-semibold">~{run.risk_duration_s.toFixed(2)} s</span>
+                      : <span className="text-slate-400">—</span>}
                   </td>
                   <td className="px-3 py-2">
                     {!isBase && <SizingDrawer sizing={run.sizing_summary} label={run.label} />}

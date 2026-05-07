@@ -2335,8 +2335,33 @@ async def surge_whatif(req: WhatIfRequest) -> WhatIfResponse:
                 label  = f"Vacuum Relief (H_admit = {dev.H_admit_m:.1f} m)"
 
             elif isinstance(dev, SlowCheckValveDeviceConfig):
-                q0     = dev.Q_0_m3s or req.Q_0_m3s
-                vc     = ValveClosureBC(Q_0=q0, t_close=dev.t_close_s, profile=dev.profile)
+                # Resolve the BC at the selected boundary side
+                side_bc_raw = req.boundary_A if dev.boundary_side == "A" else req.boundary_B
+                bc_type_str = getattr(side_bc_raw, "type", "")
+
+                # Validate: slow-closing check valve requires a closing event at
+                # the selected boundary (valve_closure, pump_trip, suction_pump_trip).
+                # A downstream reservoir BC has no closing event — reject it.
+                _VALID_SLOW_CHK = {"valve_closure", "pump_trip", "suction_pump_trip"}
+                if bc_type_str not in _VALID_SLOW_CHK:
+                    raise ValueError(
+                        f"Slow-closing check valve at boundary {dev.boundary_side}: "
+                        f"the baseline BC is '{bc_type_str}', which does not have a "
+                        "valve/check-valve closing event. Use boundary_side='A' when "
+                        "boundary A is pump_trip/valve_closure, or supply a "
+                        "valve_closure BC at the selected boundary."
+                    )
+
+                # Inherit Q_0 from the existing BC when available, else use request Q_0
+                existing_Q = getattr(side_bc_raw, "Q_m3s", None) or \
+                             getattr(side_bc_raw, "Q_0_m3s", None)
+                q0     = dev.Q_0_m3s or existing_Q or req.Q_0_m3s
+
+                # If the existing BC is valve_closure, inherit profile/Q unless overridden
+                existing_profile = getattr(side_bc_raw, "profile", None)
+                profile = dev.profile or existing_profile or "linear"
+
+                vc     = ValveClosureBC(Q_0=q0, t_close=dev.t_close_s, profile=profile)
                 bc_a_d = vc if dev.boundary_side == "A" else _build_moc_bc(req.boundary_A)
                 bc_b_d = vc if dev.boundary_side == "B" else _build_moc_bc(req.boundary_B)
                 raw_d  = run_moc(boundary_A=bc_a_d, boundary_B=bc_b_d, **base_kwargs)
@@ -2344,12 +2369,15 @@ async def surge_whatif(req: WhatIfRequest) -> WhatIfResponse:
                     Q_0_m3s=req.Q_0_m3s, a_ms=req.wave_speed_ms,
                     L_m=L_m, D_m=D_m, H_0_m=req.H_0_m, H_max_target_m=H_target,
                 )
-                label  = f"Slow Check Valve {dev.t_close_s:.0f} s ({dev.profile})"
+                label  = f"Slow Check Valve {dev.t_close_s:.0f} s ({profile})"
 
             else:
                 continue
 
-            m   = extract_whatif_metrics(raw_d, label, base_max_H, base_min_H, req.rho_kg_m3)
+            m   = extract_whatif_metrics(
+                raw_d, label, base_max_H, base_min_H, req.rho_kg_m3,
+                baseline_envelope=raw_base.get("envelope"),
+            )
             env = [WhatIfEnvelopePoint(**pt) for pt in m.pop("envelope")]
             rc  = m.pop("rating_check", None)
             m.pop("sizing_summary", None)   # supplied by device sizing below

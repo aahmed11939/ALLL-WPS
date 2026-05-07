@@ -864,6 +864,9 @@ export interface WhatIfRunMetrics {
   max_surge_reduction_pct: number | null;
   min_head_improvement_m: number | null;
   cavitation_x_m: number[];
+  cavitation_risk: boolean;
+  risk_duration_s: number;
+  envelope_reduction_pct: number | null;
   rating_check: PressureRatingCheck | null;
   sizing_summary: Record<string, unknown> | null;
   envelope: WhatIfEnvelopePoint[];

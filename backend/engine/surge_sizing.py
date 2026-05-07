@@ -468,22 +468,26 @@ def extract_whatif_metrics(
     baseline_max_H: float | None,
     baseline_min_H: float | None,
     rho_kg_m3: float = 1000.0,
+    baseline_envelope: list | None = None,
 ) -> dict:
     """
     Build a WhatIfRunMetrics-compatible dict from a run_moc() raw result.
 
     Parameters
     ----------
-    raw            : raw result dict from run_moc()
-    label          : scenario display name
-    baseline_max_H : baseline global_max_H_m (None = this IS the baseline)
-    baseline_min_H : baseline global_min_H_m
-    rho_kg_m3      : fluid density
+    raw               : raw result dict from run_moc()
+    label             : scenario display name
+    baseline_max_H    : baseline global_max_H_m (None = this IS the baseline)
+    baseline_min_H    : baseline global_min_H_m
+    rho_kg_m3         : fluid density
+    baseline_envelope : list of envelope dicts from baseline run (for pointwise
+                        comparison); None when this IS the baseline run.
     """
     max_H = raw["global_max_H_m"]
     min_H = raw["global_min_H_m"]
     max_P = raw["global_max_P_kPa"]
     min_P = raw["global_min_P_kPa"]
+    T_char = raw.get("T_char_s", 1.0)
 
     reduction_m    = None
     reduction_pct  = None
@@ -496,6 +500,35 @@ def extract_whatif_metrics(
     if baseline_min_H is not None:
         improvement_m = round(min_H - baseline_min_H, 3)
 
+    # ── Cavitation risk metrics ──────────────────────────────────────────────
+    cav_x = raw["cavitation_x_m"]
+    cavitation_risk = len(cav_x) > 0
+
+    # Screening estimate of risk duration:
+    # Fraction of envelope nodes in cavitation × T_char (one wave period).
+    # This is conservative (worst-case duration) — full time-domain tracking
+    # would require storing the time series for every node.
+    n_nodes = max(len(raw.get("envelope", [])), 1)
+    n_cav   = len(cav_x)
+    risk_duration_s = round((n_cav / n_nodes) * T_char, 3)
+
+    # ── Pointwise envelope reduction percentage ──────────────────────────────
+    # Mean of (baseline_H_max[i] - dev_H_max[i]) / baseline_H_max[i] × 100.
+    # Only meaningful for device runs where we have a baseline envelope.
+    envelope_reduction_pct: float | None = None
+    if baseline_envelope is not None and len(baseline_envelope) > 0:
+        dev_env = raw.get("envelope", [])
+        n_pts   = min(len(baseline_envelope), len(dev_env))
+        if n_pts > 0:
+            reductions = []
+            for i in range(n_pts):
+                b_H = baseline_envelope[i].get("H_max_m", 0.0)
+                d_H = dev_env[i].get("H_max_m", 0.0)
+                if abs(b_H) > 1.0e-6:
+                    reductions.append((b_H - d_H) / abs(b_H) * 100.0)
+            if reductions:
+                envelope_reduction_pct = round(sum(reductions) / len(reductions), 1)
+
     # Lightweight envelope — all columns included for chart overlay
     env_lite = [
         {
@@ -506,20 +539,23 @@ def extract_whatif_metrics(
             "P_max_kPa": pt["P_max_kPa"],
             "P_min_kPa": pt["P_min_kPa"],
         }
-        for pt in raw["envelope"]
+        for pt in raw.get("envelope", [])
     ]
 
     return {
-        "label":                   label,
-        "global_max_H_m":          round(max_H, 3),
-        "global_min_H_m":          round(min_H, 3),
-        "global_max_P_kPa":        round(max_P, 2),
-        "global_min_P_kPa":        round(min_P, 2),
-        "max_surge_reduction_m":   reduction_m,
-        "max_surge_reduction_pct": reduction_pct,
-        "min_head_improvement_m":  improvement_m,
-        "cavitation_x_m":          raw["cavitation_x_m"],
-        "rating_check":            raw.get("rating_check"),
-        "envelope":                env_lite,
-        "sizing_summary":          None,   # filled by caller
+        "label":                    label,
+        "global_max_H_m":           round(max_H, 3),
+        "global_min_H_m":           round(min_H, 3),
+        "global_max_P_kPa":         round(max_P, 2),
+        "global_min_P_kPa":         round(min_P, 2),
+        "max_surge_reduction_m":    reduction_m,
+        "max_surge_reduction_pct":  reduction_pct,
+        "min_head_improvement_m":   improvement_m,
+        "cavitation_x_m":           cav_x,
+        "cavitation_risk":          cavitation_risk,
+        "risk_duration_s":          risk_duration_s,
+        "envelope_reduction_pct":   envelope_reduction_pct,
+        "rating_check":             raw.get("rating_check"),
+        "envelope":                 env_lite,
+        "sizing_summary":           None,   # filled by caller
     }

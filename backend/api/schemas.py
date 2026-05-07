@@ -2132,6 +2132,25 @@ class WhatIfRunMetrics(BaseModel):
         default_factory=list,
         description="X-positions [m] where column separation was detected",
     )
+    cavitation_risk: bool = Field(
+        default=False,
+        description="True if any node experienced column separation (H < h_vap)",
+    )
+    risk_duration_s: float = Field(
+        default=0.0,
+        description=(
+            "Screening estimate of cavitation risk duration [s]. "
+            "Computed as (n_cav_nodes / n_total_nodes) × T_char. "
+            "Screening-level only — use full time-domain output for precision."
+        ),
+    )
+    envelope_reduction_pct: Optional[float] = Field(
+        default=None,
+        description=(
+            "Mean pointwise reduction of max-head envelope vs baseline [%]. "
+            "None for baseline. Positive = device reduced peak heads across the pipe."
+        ),
+    )
     rating_check: Optional[PressureRatingCheck] = None
     sizing_summary: Optional[dict] = Field(
         default=None,

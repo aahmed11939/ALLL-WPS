@@ -437,11 +437,12 @@ class TestWhatIfEndpoint:
         assert len(data["device_runs"]) == 1
 
     def test_slow_check_valve_device(self):
+        # boundary_side="A" is pump_trip — valid for slow check valve
         req = self._req(devices=[
             {
                 "type": "slow_check_valve",
                 "enabled": True,
-                "boundary_side": "B",
+                "boundary_side": "A",
                 "t_close_s": 30.0,
                 "profile": "linear",
             }
@@ -450,6 +451,8 @@ class TestWhatIfEndpoint:
         assert r.status_code == 200
         data = r.json()
         assert len(data["device_runs"]) == 1
+        run = data["device_runs"][0]
+        assert "ERROR" not in run["label"]
 
     def test_multiple_devices(self):
         req = self._req(devices=[
@@ -512,6 +515,45 @@ class TestWhatIfEndpoint:
         assert isinstance(data["assumption_notes"], list)
         assert len(data["assumption_notes"]) > 0
 
+    def test_baseline_has_cavitation_risk_field(self):
+        r = client.post("/surge/whatif", json=self._req(devices=[]))
+        assert r.status_code == 200
+        baseline = r.json()["baseline"]
+        assert "cavitation_risk" in baseline
+        assert isinstance(baseline["cavitation_risk"], bool)
+        assert "risk_duration_s" in baseline
+        assert isinstance(baseline["risk_duration_s"], float)
+        assert baseline["risk_duration_s"] >= 0.0
+        # baseline must NOT have envelope_reduction_pct (it's None)
+        assert baseline["envelope_reduction_pct"] is None
+
+    def test_device_run_has_envelope_reduction_pct(self):
+        req = self._req(devices=[
+            {"type": "prv", "enabled": True, "H_set_m": 60.0}
+        ])
+        r = client.post("/surge/whatif", json=req)
+        assert r.status_code == 200
+        run = r.json()["device_runs"][0]
+        # Device run must expose the envelope_reduction_pct field
+        assert "envelope_reduction_pct" in run
+        # PRV reduces peak head → should be non-None and >= 0
+        assert run["envelope_reduction_pct"] is not None
+        assert run["envelope_reduction_pct"] >= 0.0
+
+    def test_slow_check_valve_reservoir_boundary_rejected(self):
+        # boundary_side="B" is reservoir — should be caught as error row (not 422)
+        req = self._req(devices=[
+            {
+                "type": "slow_check_valve", "enabled": True, "boundary_side": "B",
+                "t_close_s": 20.0, "profile": "linear",
+            }
+        ])
+        r = client.post("/surge/whatif", json=req)
+        assert r.status_code == 200
+        run = r.json()["device_runs"][0]
+        # The device loop catches ValueError and emits an error-labelled row
+        assert "ERROR" in run["label"]
+
     def test_max_5_devices(self):
         devices = [{"type": "prv", "enabled": True, "H_set_m": 60.0}] * 6
         r = client.post("/surge/whatif", json=self._req(devices=devices))
@@ -555,9 +597,10 @@ class TestWhatIfEndpoint:
         assert "D_equiv_m" in s
 
     def test_slow_check_valve_sizing_summary(self):
+        # boundary_side="A" (pump_trip) — valid for slow-closing check valve
         req = self._req(devices=[
             {
-                "type": "slow_check_valve", "enabled": True, "boundary_side": "B",
+                "type": "slow_check_valve", "enabled": True, "boundary_side": "A",
                 "t_close_s": 20.0, "profile": "equal_percentage",
             }
         ])

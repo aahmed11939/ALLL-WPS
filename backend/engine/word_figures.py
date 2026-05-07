@@ -5,6 +5,24 @@ Each public function accepts the raw ``draft`` dict (serialised ProjectDraft)
 and returns a PNG byte string ready for embedding, or ``None`` when the
 required data is absent.
 
+Design note — full-draft coupling
+----------------------------------
+All public functions accept the complete ``draft`` dict rather than the
+individual result sub-dict for each calculation.  This is intentional:
+
+* Several figures need data from multiple sub-results simultaneously
+  (e.g. ``fig_system_curve`` needs both ``hydraulicsResult.system_curve``
+  and ``pumpResult.hq_curve``; ``fig_npsh`` combines ``npshr_curve`` with
+  ``operating_points``).
+* Passing the full draft avoids N distinct function signatures and lets the
+  caller (``word_export.build_document``) forward a single object.
+* The caller is always ``build_document``, which already holds the full
+  draft — there is no abstraction cost.
+
+If the figure helpers are ever reused outside the Word exporter, the
+relevant sub-dicts can be extracted at the call site and wrapped in a
+minimal dict (e.g. ``{"pumpResult": pump_result, ...}``).
+
 Public API
 ----------
 fig_system_curve(draft, us="SI") -> bytes | None

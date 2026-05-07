@@ -82,11 +82,6 @@ export default function StepExports() {
   const [wordError,    setWordError]    = useState<string | null>(null);
   const [wordSuccess,  setWordSuccess]  = useState(false);
 
-  const showToast = (label: string) => {
-    setToast(label);
-    setTimeout(() => setToast(null), 4000);
-  };
-
   const handleExportWord = async () => {
     setWordError(null);
     setWordSuccess(false);
@@ -376,7 +371,7 @@ export default function StepExports() {
               disabled={wordLoading}
               className="shrink-0 rounded-lg bg-indigo-700 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-600 transition-colors disabled:opacity-60 disabled:cursor-wait"
             >
-              {wordLoading ? "Building…" : "Export Word"}
+              {wordLoading ? "Building…" : "Download Word Report"}
             </button>
           </div>
 

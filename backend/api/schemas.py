@@ -1730,10 +1730,17 @@ class MOCBCSuctionPumpTrip(BaseModel):
     t_trip_s: Annotated[float, Field(gt=0, description="Trip duration [s]")]
 
 
-MOCBoundaryInput = Annotated[
-    Union[MOCBCReservoir, MOCBCPumpTrip, MOCBCValveClosure, MOCBCSuctionPumpTrip],
+MOCBoundaryAInput = Annotated[
+    Union[MOCBCReservoir, MOCBCPumpTrip],
     Field(discriminator="type"),
 ]
+"""Upstream boundary (node 0). Valid types: reservoir, pump_trip."""
+
+MOCBoundaryBInput = Annotated[
+    Union[MOCBCReservoir, MOCBCValveClosure, MOCBCSuctionPumpTrip],
+    Field(discriminator="type"),
+]
+"""Downstream boundary (node N). Valid types: reservoir, valve_closure, suction_pump_trip."""
 
 
 class MOCObservationPoint(BaseModel):
@@ -1753,8 +1760,12 @@ class MOCRequest(BaseModel):
     rho_kg_m3: float = Field(default=1000.0, gt=0)
     pressure_rating_kPa: Optional[float] = Field(default=None, gt=0)
     segments: List[MOCSegmentInput] = Field(min_length=1)
-    boundary_A: MOCBoundaryInput = Field(description="Upstream boundary condition (node 0)")
-    boundary_B: MOCBoundaryInput = Field(description="Downstream boundary condition (node N)")
+    boundary_A: MOCBoundaryAInput = Field(
+        description="Upstream boundary condition (node 0). Valid types: reservoir, pump_trip.",
+    )
+    boundary_B: MOCBoundaryBInput = Field(
+        description="Downstream boundary condition (node N). Valid types: reservoir, valve_closure, suction_pump_trip.",
+    )
     observation_points: List[MOCObservationPoint] = Field(
         default_factory=list, max_length=3,
     )

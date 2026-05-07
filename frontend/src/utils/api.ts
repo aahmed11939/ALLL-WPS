@@ -635,11 +635,19 @@ export interface MOCSegmentInput {
   elev_end_m?: number;
 }
 
-export type MOCBoundaryInput =
+/** Upstream boundary (node 0): reservoir or pump_trip only. */
+export type MOCBoundaryAInput =
   | { type: "reservoir"; H_m: number }
-  | { type: "pump_trip"; H_pump_m: number; Q_m3s: number; t_trip_s: number; H_reservoir_m?: number }
+  | { type: "pump_trip"; H_pump_m: number; Q_m3s: number; t_trip_s: number; H_reservoir_m?: number };
+
+/** Downstream boundary (node N): reservoir, valve_closure, or suction_pump_trip. */
+export type MOCBoundaryBInput =
+  | { type: "reservoir"; H_m: number }
   | { type: "valve_closure"; Q_m3s: number; t_close_s: number; profile: "linear" | "equal_percentage" }
   | { type: "suction_pump_trip"; H_sump_m: number; Q_m3s: number; t_trip_s: number };
+
+/** Union of all boundary types — for legacy/shared usage. */
+export type MOCBoundaryInput = MOCBoundaryAInput | MOCBoundaryBInput;
 
 export interface MOCObservationPoint {
   label?: string;
@@ -655,8 +663,8 @@ export interface MOCRequest {
   rho_kg_m3?: number;
   pressure_rating_kPa?: number | null;
   segments: MOCSegmentInput[];
-  boundary_A: MOCBoundaryInput;
-  boundary_B: MOCBoundaryInput;
+  boundary_A: MOCBoundaryAInput;
+  boundary_B: MOCBoundaryBInput;
   observation_points?: MOCObservationPoint[];
   n_reaches?: number | null;
   t_total_s?: number | null;

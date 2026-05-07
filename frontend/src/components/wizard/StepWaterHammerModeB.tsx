@@ -587,13 +587,24 @@ export default function StepWaterHammerModeB() {
     if (!bcA) { setError("Boundary A configuration is incomplete — check required fields."); return; }
     if (!bcB) { setError("Boundary B configuration is incomplete — check required fields."); return; }
 
-    const builtSegs = segs.map((sg, i) => ({
-      L_m:         sg.length_m,
-      D_m:         sg.diameter_mm / 1000,
-      roughness_m: MATERIAL_ROUGHNESS[sg.material] ?? 1e-4,
-      elev_start_m: i === 0 ? draft.upstreamNode.elevation_m : 0,
-      elev_end_m:   i === segs.length - 1 ? draft.downstreamNode.elevation_m : 0,
-    }));
+    const elevA   = draft.upstreamNode.elevation_m;
+    const elevB   = draft.downstreamNode.elevation_m;
+    const totalLen = segs.reduce((s, sg) => s + sg.length_m, 0) || 1;
+    let cumLen = 0;
+    const builtSegs = segs.map((sg) => {
+      const fracStart  = cumLen / totalLen;
+      const elevStart  = elevA + fracStart * (elevB - elevA);
+      cumLen          += sg.length_m;
+      const fracEnd    = cumLen / totalLen;
+      const elevEnd    = elevA + fracEnd   * (elevB - elevA);
+      return {
+        L_m:          sg.length_m,
+        D_m:          sg.diameter_mm / 1000,
+        roughness_m:  MATERIAL_ROUGHNESS[sg.material] ?? 1e-4,
+        elev_start_m: elevStart,
+        elev_end_m:   elevEnd,
+      };
+    });
 
     const ratingV = parseFloat(pressRating);
     const nR = parseInt(nReaches) || undefined;

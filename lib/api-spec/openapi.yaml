@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: surge
+    description: Hydraulic transient (water-hammer) simulation
 paths:
   /healthz:
     get:
@@ -24,6 +26,36 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /surge/moc:
+    post:
+      operationId: runMOC
+      tags: [surge]
+      summary: Method-of-Characteristics transient simulation
+      description: >
+        Runs a full MOC water-hammer simulation on a single-pipeline system.
+        Supports multi-segment pipelines with piecewise-linear elevation profiles,
+        configurable upstream/downstream boundary conditions, and up to 3 observation
+        points. Returns an envelope (H_max / H_min per node), time-histories at each
+        observation point, a pressure-rating check, and assumption notes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MOCRequest"
+      responses:
+        "200":
+          description: Simulation completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MOCResponse"
+        "422":
+          description: Validation error (invalid request parameters)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
 components:
   schemas:
     HealthStatus:
@@ -34,3 +66,263 @@ components:
       required:
         - status
 
+    MOCSegmentInput:
+      type: object
+      description: One pipe segment in the multi-segment pipeline.
+      properties:
+        L_m:
+          type: number
+          description: Segment length [m]
+        D_m:
+          type: number
+          description: Internal diameter [m]
+        roughness_m:
+          type: number
+          description: Hazen-Williams absolute roughness [m]
+        elev_start_m:
+          type: number
+          default: 0.0
+          description: Elevation at segment start [m]
+        elev_end_m:
+          type: number
+          default: 0.0
+          description: Elevation at segment end [m]
+      required: [L_m, D_m, roughness_m]
+
+    MOCBCReservoir:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [reservoir]
+        H_m:
+          type: number
+          description: Reservoir piezometric head [m]
+      required: [type, H_m]
+
+    MOCBCPumpTrip:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [pump_trip]
+        H_pump_m:
+          type: number
+          description: Steady-state pump head [m]
+        Q_m3s:
+          type: number
+          description: Steady-state flow rate [m³/s]
+        t_trip_s:
+          type: number
+          description: Trip duration [s]
+        H_reservoir_m:
+          type: number
+          default: 0.0
+          description: Suction reservoir HGL post-trip [m]
+      required: [type, H_pump_m, Q_m3s, t_trip_s]
+
+    MOCBCValveClosure:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [valve_closure]
+        Q_m3s:
+          type: number
+          description: Steady-state flow rate [m³/s]
+        t_close_s:
+          type: number
+          description: Closure time [s]
+        profile:
+          type: string
+          enum: [linear, equal_percentage]
+          default: linear
+      required: [type, Q_m3s, t_close_s]
+
+    MOCBCSuctionPumpTrip:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [suction_pump_trip]
+        H_sump_m:
+          type: number
+          description: Sump piezometric head [m]
+        Q_m3s:
+          type: number
+          description: Steady-state flow rate [m³/s]
+        t_trip_s:
+          type: number
+          description: Trip duration [s]
+      required: [type, H_sump_m, Q_m3s, t_trip_s]
+
+    MOCBoundaryAInput:
+      description: "Upstream boundary (node 0). Valid types: reservoir, pump_trip."
+      oneOf:
+        - $ref: "#/components/schemas/MOCBCReservoir"
+        - $ref: "#/components/schemas/MOCBCPumpTrip"
+      discriminator:
+        propertyName: type
+
+    MOCBoundaryBInput:
+      description: "Downstream boundary (node N). Valid types: reservoir, valve_closure, suction_pump_trip."
+      oneOf:
+        - $ref: "#/components/schemas/MOCBCReservoir"
+        - $ref: "#/components/schemas/MOCBCValveClosure"
+        - $ref: "#/components/schemas/MOCBCSuctionPumpTrip"
+      discriminator:
+        propertyName: type
+
+    MOCObservationPoint:
+      type: object
+      properties:
+        label:
+          type: string
+          default: ""
+        frac:
+          type: number
+          minimum: 0.0
+          maximum: 1.0
+          description: Fractional distance along pipeline [0–1]
+      required: [frac]
+
+    MOCRequest:
+      type: object
+      description: Request body for POST /surge/moc
+      properties:
+        pipeline:
+          type: string
+          enum: [suction, discharge]
+          default: discharge
+        wave_speed_ms:
+          type: number
+          description: Acoustic wave speed a [m/s]
+        Q_0_m3s:
+          type: number
+          description: Steady-state flow rate [m³/s]
+        H_0_m:
+          type: number
+          default: 0.0
+          description: Steady-state upstream piezometric head [m]
+        temperature_C:
+          type: number
+          default: 20.0
+        rho_kg_m3:
+          type: number
+          default: 1000.0
+        pressure_rating_kPa:
+          type: number
+          nullable: true
+        segments:
+          type: array
+          items:
+            $ref: "#/components/schemas/MOCSegmentInput"
+          minItems: 1
+        boundary_A:
+          $ref: "#/components/schemas/MOCBoundaryAInput"
+        boundary_B:
+          $ref: "#/components/schemas/MOCBoundaryBInput"
+        observation_points:
+          type: array
+          items:
+            $ref: "#/components/schemas/MOCObservationPoint"
+          maxItems: 3
+        n_reaches:
+          type: integer
+          minimum: 10
+          maximum: 200
+          nullable: true
+        t_total_s:
+          type: number
+          nullable: true
+        unit_system:
+          type: string
+          enum: [SI, US]
+          default: SI
+      required: [wave_speed_ms, Q_0_m3s, segments, boundary_A, boundary_B]
+
+    MOCEnvelopePoint:
+      type: object
+      properties:
+        x_m: { type: number }
+        elev_m: { type: number }
+        H_max_m: { type: number }
+        H_min_m: { type: number }
+        P_max_kPa: { type: number }
+        P_min_kPa: { type: number }
+      required: [x_m, elev_m, H_max_m, H_min_m, P_max_kPa, P_min_kPa]
+
+    MOCTimePoint:
+      type: object
+      properties:
+        t_s: { type: number }
+        H_m: { type: number }
+        P_kPa: { type: number }
+      required: [t_s, H_m, P_kPa]
+
+    MOCObservationResult:
+      type: object
+      properties:
+        label: { type: string }
+        frac: { type: number }
+        node_index: { type: integer }
+        time_history:
+          type: array
+          items:
+            $ref: "#/components/schemas/MOCTimePoint"
+      required: [label, frac, node_index, time_history]
+
+    MOCPressureRatingCheck:
+      type: object
+      properties:
+        rating_kPa: { type: number }
+        max_P_kPa: { type: number }
+        passes: { type: boolean }
+        margin_pct: { type: number }
+      required: [rating_kPa, max_P_kPa, passes, margin_pct]
+
+    MOCResponse:
+      type: object
+      properties:
+        status_code:
+          type: integer
+          description: HTTP echo (always 200 on success)
+        envelope:
+          type: array
+          items:
+            $ref: "#/components/schemas/MOCEnvelopePoint"
+        observations:
+          type: array
+          items:
+            $ref: "#/components/schemas/MOCObservationResult"
+        metadata:
+          type: object
+          description: Simulation metadata (n_nodes, dt_s, T_char_s, courant, etc.)
+        rating_check:
+          $ref: "#/components/schemas/MOCPressureRatingCheck"
+          nullable: true
+        assumption_notes:
+          type: array
+          items:
+            type: string
+        unit_system:
+          type: string
+          enum: [SI, US]
+      required: [status_code, envelope, observations, metadata, assumption_notes, unit_system]
+
+    HTTPValidationError:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            properties:
+              loc:
+                type: array
+                items:
+                  oneOf:
+                    - type: string
+                    - type: integer
+              msg: { type: string }
+              type: { type: string }

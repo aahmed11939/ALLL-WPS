@@ -2,18 +2,20 @@ import { useState } from "react";
 import CalculationForm from "../components/CalculationForm";
 import ResultsPanel from "../components/ResultsPanel";
 import SystemCurveChart from "../components/SystemCurveChart";
+import { useUnitSystem } from "../contexts/UnitSystemContext";
 import { calculate, type CalculationRequest, type CalculationResponse } from "../utils/api";
 
 export default function DesignPage() {
   const [results, setResults] = useState<CalculationResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { unitSystem, setUnitSystem, showBoth, setShowBoth } = useUnitSystem();
 
   const handleSubmit = async (req: CalculationRequest) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await calculate(req);
+      const data = await calculate({ ...req, unit_system: unitSystem });
       setResults(data);
     } catch (err: unknown) {
       const msg =
@@ -42,16 +44,57 @@ export default function DesignPage() {
               Municipal Drinking-Water Pump Station Design Tool · v0.1
             </p>
           </div>
-          <div className="ml-auto flex items-center gap-2 text-xs text-slate-400 font-mono">
-            <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5">
-              Darcy-Weisbach
-            </span>
-            <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5">
-              Colebrook-White
-            </span>
-            <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5">
-              AWWA M11
-            </span>
+
+          {/* Unit system toggle */}
+          <div className="ml-auto flex items-center gap-3">
+            {/* Show-both toggle (only relevant when US is active) */}
+            {unitSystem === "US" && (
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showBoth}
+                  onChange={(e) => setShowBoth(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                />
+                <span className="text-xs text-slate-500 font-mono">show SI too</span>
+              </label>
+            )}
+
+            {/* SI / US toggle */}
+            <div className="flex rounded overflow-hidden border border-slate-300 text-xs font-semibold">
+              <button
+                onClick={() => setUnitSystem("SI")}
+                className={`px-3 py-1.5 transition-colors ${
+                  unitSystem === "SI"
+                    ? "bg-teal-700 text-white"
+                    : "bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                SI
+              </button>
+              <button
+                onClick={() => setUnitSystem("US")}
+                className={`px-3 py-1.5 border-l border-slate-300 transition-colors ${
+                  unitSystem === "US"
+                    ? "bg-teal-700 text-white"
+                    : "bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                US
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
+              <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5">
+                Darcy-Weisbach
+              </span>
+              <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5">
+                Colebrook-White
+              </span>
+              <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5">
+                AWWA M11
+              </span>
+            </div>
           </div>
         </div>
       </header>
@@ -65,6 +108,9 @@ export default function DesignPage() {
             <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-6">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 mb-5">
                 Design Inputs
+                <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-mono text-slate-400 normal-case tracking-normal">
+                  {unitSystem === "SI" ? "SI (m, m³/h)" : "US Customary (ft, gpm)"}
+                </span>
               </h2>
               <CalculationForm onSubmit={handleSubmit} loading={loading} />
             </div>
@@ -73,7 +119,7 @@ export default function DesignPage() {
             <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500 leading-relaxed">
               <strong className="text-slate-600">Method:</strong> Darcy-Weisbach friction loss with
               Colebrook-White iterative friction factor (convergence 10⁻⁹). Minor losses via ΣK·V²/2g.
-              Kinematic viscosity ν = 1.004×10⁻⁶ m²/s (20 °C).
+              Kinematic viscosity ν = 1.004×10⁻⁶ m²/s (20 °C). All inputs converted to SI before calculation.
             </div>
           </div>
 

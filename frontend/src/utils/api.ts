@@ -1,4 +1,5 @@
 import axios from "axios";
+import type { UnitSystem } from "./units";
 
 const BASE = "/api/v1";
 
@@ -10,11 +11,29 @@ export interface CalculationRequest {
   pipe_diameter_mm: number;
   material: string;
   K_values: number[];
+  unit_system?: UnitSystem;
+}
+
+export interface UnitValue {
+  si_value: number;
+  display_value: number;
+  unit: string;
 }
 
 export interface SystemCurvePoint {
   Q_m3h: number;
   H_m: number;
+  Q_display: UnitValue;
+  H_display: UnitValue;
+}
+
+export interface DisplayValues {
+  velocity: UnitValue;
+  static_head: UnitValue;
+  friction_head: UnitValue;
+  minor_head: UnitValue;
+  tdh: UnitValue;
+  design_flow: UnitValue;
 }
 
 export interface CalculationResponse {
@@ -28,6 +47,8 @@ export interface CalculationResponse {
   system_curve: SystemCurvePoint[];
   design_Q_m3h: number;
   K_sum: number;
+  display: DisplayValues;
+  unit_system: UnitSystem;
 }
 
 export interface MaterialOption {

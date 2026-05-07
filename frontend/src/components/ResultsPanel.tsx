@@ -1,4 +1,5 @@
-import type { CalculationResponse } from "../utils/api";
+import type { CalculationResponse, UnitValue } from "../utils/api";
+import { useUnitSystem } from "../contexts/UnitSystemContext";
 
 interface Props {
   results: CalculationResponse | null;
@@ -17,13 +18,14 @@ function SkeletonCard() {
 
 interface MetricCardProps {
   label: string;
-  value: number;
-  unit: string;
+  primary: UnitValue;
   highlight?: boolean;
   note?: string;
+  showBoth?: boolean;
 }
 
-function MetricCard({ label, value, unit, highlight, note }: MetricCardProps) {
+function MetricCard({ label, primary, highlight, note, showBoth }: MetricCardProps) {
+  const hasSiAlt = showBoth && primary.unit !== primary.unit;
   return (
     <div
       className={`rounded-lg border p-4 ${
@@ -40,15 +42,29 @@ function MetricCard({ label, value, unit, highlight, note }: MetricCardProps) {
           highlight ? "text-teal-800" : "text-slate-800"
         }`}
       >
-        {value.toFixed(3)}
-        <span className="ml-1.5 text-sm font-normal text-slate-500">{unit}</span>
+        {primary.display_value.toFixed(3)}
+        <span className="ml-1.5 text-sm font-normal text-slate-500">{primary.unit}</span>
       </p>
+      {showBoth && Math.abs(primary.si_value - primary.display_value) > 1e-9 && (
+        <p className="mt-0.5 text-xs font-mono text-slate-400">
+          = {primary.si_value.toFixed(3)} {
+            primary.unit === "ft"  ? "m" :
+            primary.unit === "gpm" ? "m³/h" :
+            primary.unit === "fps" ? "m/s" :
+            primary.unit === "psi" ? "kPa" :
+            primary.unit === "hp"  ? "kW" :
+            primary.unit === "in"  ? "mm" : "SI"
+          }
+        </p>
+      )}
       {note && <p className="mt-1 text-xs text-slate-400">{note}</p>}
     </div>
   );
 }
 
 export default function ResultsPanel({ results, loading, error }: Props) {
+  const { showBoth } = useUnitSystem();
+
   if (error) {
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -75,11 +91,16 @@ export default function ResultsPanel({ results, loading, error }: Props) {
     );
   }
 
+  const d = results.display;
+  const isUS = results.unit_system === "US";
+
   const headLossBudget =
     results.friction_head_m + results.minor_head_m > 0
-      ? ((results.friction_head_m / (results.friction_head_m + results.minor_head_m)) * 100).toFixed(
-          1
-        )
+      ? (
+          (results.friction_head_m /
+            (results.friction_head_m + results.minor_head_m)) *
+          100
+        ).toFixed(1)
       : "—";
 
   return (
@@ -88,20 +109,40 @@ export default function ResultsPanel({ results, loading, error }: Props) {
       <div className="grid grid-cols-2 gap-3">
         <MetricCard
           label="TDH (Total Dynamic Head)"
-          value={results.tdh_m}
-          unit="m"
+          primary={d.tdh}
           highlight
+          showBoth={showBoth}
         />
-        <MetricCard label="Static Head" value={results.static_head_m} unit="m" />
+        <MetricCard
+          label="Static Head"
+          primary={d.static_head}
+          showBoth={showBoth}
+        />
         <MetricCard
           label="Friction Head Loss"
-          value={results.friction_head_m}
-          unit="m"
+          primary={d.friction_head}
           note={`${headLossBudget}% of dynamic losses`}
+          showBoth={showBoth}
         />
-        <MetricCard label="Minor Head Loss" value={results.minor_head_m} unit="m" />
-        <MetricCard label="Pipe Velocity" value={results.velocity_ms} unit="m/s" />
-        <MetricCard label="ΣK (fittings)" value={results.K_sum} unit="—" />
+        <MetricCard
+          label="Minor Head Loss"
+          primary={d.minor_head}
+          showBoth={showBoth}
+        />
+        <MetricCard
+          label="Pipe Velocity"
+          primary={d.velocity}
+          showBoth={showBoth}
+        />
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+            ΣK (fittings)
+          </p>
+          <p className="font-mono text-2xl font-bold text-slate-800">
+            {results.K_sum.toFixed(3)}
+            <span className="ml-1.5 text-sm font-normal text-slate-500">—</span>
+          </p>
+        </div>
       </div>
 
       {/* Secondary engineering details */}
@@ -133,11 +174,18 @@ export default function ResultsPanel({ results, loading, error }: Props) {
           <div>
             <p className="text-xs text-slate-400">Design Flow</p>
             <p className="font-mono font-semibold text-slate-700">
-              {results.design_Q_m3h.toFixed(2)} m³/h
+              {d.design_flow.display_value.toFixed(2)}{" "}
+              <span className="text-xs font-normal text-slate-400">{d.design_flow.unit}</span>
             </p>
-            <p className="text-xs text-slate-400 mt-0.5">
-              {(results.design_Q_m3h / 3.6).toFixed(3)} L/s
-            </p>
+            {isUS ? (
+              <p className="text-xs text-slate-400 mt-0.5">
+                {d.design_flow.si_value.toFixed(2)} m³/h
+              </p>
+            ) : (
+              <p className="text-xs text-slate-400 mt-0.5">
+                {(results.design_Q_m3h / 3.6).toFixed(3)} L/s
+              </p>
+            )}
           </div>
         </div>
       </div>

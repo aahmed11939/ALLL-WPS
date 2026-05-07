@@ -7,7 +7,6 @@ Run with:
 
 from __future__ import annotations
 
-import math
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request, status
@@ -18,6 +17,7 @@ from backend.api.domain_models import ProjectModel, ValidationResult
 from backend.api.schemas import (
     CalculationRequest,
     CalculationResponse,
+    DisplayValues,
     MaterialOption,
     MaterialOptionsResponse,
     PumpLibraryResponse,
@@ -30,7 +30,6 @@ from backend.data.loader import (
     load_pump_library,
 )
 from backend.engine.hydraulics import (
-    NU_WATER,
     friction_factor_colebrook,
     friction_head_loss,
     minor_head_loss,
@@ -40,6 +39,7 @@ from backend.engine.hydraulics import (
     tdh,
     velocity,
 )
+from backend.engine.units import convert
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -112,12 +112,15 @@ def get_pump_library() -> PumpLibraryResponse:
 )
 def calculate(req: CalculationRequest) -> CalculationResponse:
     """
-    Accept hydraulic design inputs and return:
+    Accept hydraulic design inputs (all numeric fields in SI) and return:
     - Pipe velocity, Reynolds number, friction factor
     - Static head, friction loss, minor loss, TDH
     - 8-point H-Q system curve from Q=0 to Q=1.5×Q_design
+    - ``display`` block with all results in the requested unit system (SI or US)
+
+    The ``unit_system`` request field controls the ``display`` block only.
+    All numeric input fields must be in SI regardless of unit_system.
     """
-    # Validate material and resolve roughness
     try:
         roughness_m = get_roughness_m(req.material)
     except KeyError as exc:
@@ -126,19 +129,17 @@ def calculate(req: CalculationRequest) -> CalculationResponse:
             detail=str(exc),
         )
 
-    # Convert inputs to SI
     Q_m3s = req.Q_m3h / 3600.0
     D_m = req.pipe_diameter_mm / 1000.0
     K_sum = sum(req.K_values)
 
-    # Hydraulic calculations
     try:
         V = velocity(Q_m3s, D_m)
         Re = reynolds_number(Q_m3s, D_m)
         eps_D = roughness_m / D_m
         f = friction_factor_colebrook(Re, eps_D)
         h_s = static_head(req.elev_ds_m, req.elev_us_m)
-        h_f = friction_head_loss(req.Q_m3h / 3600.0, D_m, req.pipe_length_m, roughness_m)
+        h_f = friction_head_loss(Q_m3s, D_m, req.pipe_length_m, roughness_m)
         h_m = minor_head_loss(Q_m3s, D_m, req.K_values)
         H_tdh = tdh(h_s, h_f, h_m)
 
@@ -157,7 +158,26 @@ def calculate(req: CalculationRequest) -> CalculationResponse:
             detail=f"Hydraulic calculation error: {exc}",
         )
 
-    curve_points = [SystemCurvePoint(**pt) for pt in curve_raw]
+    us = req.unit_system
+
+    display = DisplayValues(
+        velocity=convert(round(V, 4), "velocity", us),
+        static_head=convert(round(h_s, 4), "head", us),
+        friction_head=convert(round(h_f, 4), "head", us),
+        minor_head=convert(round(h_m, 4), "head", us),
+        tdh=convert(round(H_tdh, 4), "head", us),
+        design_flow=convert(round(req.Q_m3h, 4), "flow_m3h", us),
+    )
+
+    curve_points = [
+        SystemCurvePoint(
+            Q_m3h=pt["Q_m3h"],
+            H_m=pt["H_m"],
+            Q_display=convert(pt["Q_m3h"], "flow_m3h", us),
+            H_display=convert(pt["H_m"], "head", us),
+        )
+        for pt in curve_raw
+    ]
 
     return CalculationResponse(
         velocity_ms=round(V, 4),
@@ -170,6 +190,8 @@ def calculate(req: CalculationRequest) -> CalculationResponse:
         system_curve=curve_points,
         design_Q_m3h=req.Q_m3h,
         K_sum=K_sum,
+        display=display,
+        unit_system=us,
     )
 
 
@@ -202,9 +224,6 @@ async def validate_project(request: Request) -> ValidationResult:
     - ``valid``: False if Pydantic raised hard validation errors.
     - ``errors``: Human-readable list of hard errors (empty when valid).
     - ``warnings``: Non-blocking advisory messages (potable-service guidelines).
-
-    Use this endpoint to drive client-side form feedback without relying on
-    FastAPI's default 422 response shape.
     """
     try:
         body: Any = await request.json()
@@ -237,10 +256,5 @@ async def validate_project(request: Request) -> ValidationResult:
     status_code=status.HTTP_200_OK,
 )
 def project_schema() -> dict:
-    """
-    Return the JSON Schema for ``ProjectModel``.
-
-    Useful for client-side form generation, validation libraries, and
-    API documentation tooling.
-    """
+    """Return the JSON Schema for ``ProjectModel``."""
     return ProjectModel.model_json_schema()

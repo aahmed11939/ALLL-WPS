@@ -1,5 +1,10 @@
+import { UnitSystemProvider } from "./contexts/UnitSystemContext";
 import DesignPage from "./pages/DesignPage";
 
 export default function App() {
-  return <DesignPage />;
+  return (
+    <UnitSystemProvider>
+      <DesignPage />
+    </UnitSystemProvider>
+  );
 }

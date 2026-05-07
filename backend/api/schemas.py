@@ -4,9 +4,11 @@ Pydantic v2 request/response schemas for the ALLL WPS Designer API.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from backend.engine.units import UnitValue
 
 
 # ---------------------------------------------------------------------------
@@ -17,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 class CalculationRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    Q_m3h: Annotated[float, Field(gt=0, description="Design flow rate [m³/h]")]
+    Q_m3h: Annotated[float, Field(gt=0, description="Design flow rate [m³/h] — always SI")]
     elev_us_m: Annotated[float, Field(description="Upstream (suction) elevation above datum [m]")]
     elev_ds_m: Annotated[float, Field(description="Downstream (delivery) elevation above datum [m]")]
     pipe_length_m: Annotated[float, Field(gt=0, description="Pipe length [m]")]
@@ -26,6 +28,13 @@ class CalculationRequest(BaseModel):
     K_values: list[float] = Field(
         default=[],
         description="Minor-loss K coefficients for each fitting/valve [-]",
+    )
+    unit_system: Literal["SI", "US"] = Field(
+        default="SI",
+        description=(
+            "Display unit system for the response 'display' block. "
+            "All numeric inputs MUST be in SI regardless of this field."
+        ),
     )
 
     @field_validator("K_values", mode="before")
@@ -40,21 +49,49 @@ class CalculationRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Response
+# Response — display block
+# ---------------------------------------------------------------------------
+
+
+class DisplayValues(BaseModel):
+    """
+    All primary hydraulic results expressed in the requested display unit system.
+    Each field is a UnitValue with si_value, display_value, and unit string.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    velocity: UnitValue = Field(description="Mean pipe velocity at design Q")
+    static_head: UnitValue = Field(description="Static (elevation) head")
+    friction_head: UnitValue = Field(description="Darcy-Weisbach friction head loss at design Q")
+    minor_head: UnitValue = Field(description="Total minor (fitting) head loss at design Q")
+    tdh: UnitValue = Field(description="Total Dynamic Head at design Q")
+    design_flow: UnitValue = Field(description="Design flow rate (echoed)")
+
+
+# ---------------------------------------------------------------------------
+# Response — system curve point
 # ---------------------------------------------------------------------------
 
 
 class SystemCurvePoint(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    Q_m3h: float = Field(description="Flow rate [m³/h]")
-    H_m: float = Field(description="System head at this flow [m]")
+    Q_m3h: float = Field(description="Flow rate — SI [m³/h]")
+    H_m: float = Field(description="System head at this flow — SI [m]")
+    Q_display: UnitValue = Field(description="Flow rate in display units")
+    H_display: UnitValue = Field(description="System head in display units")
+
+
+# ---------------------------------------------------------------------------
+# Response — top-level
+# ---------------------------------------------------------------------------
 
 
 class CalculationResponse(BaseModel):
     model_config = ConfigDict()
 
-    # Primary hydraulic results
+    # Primary hydraulic results — canonical SI (kept for backward-compat)
     velocity_ms: float = Field(description="Mean pipe velocity at design Q [m/s]")
     reynolds_number: float = Field(description="Reynolds number at design Q [-]")
     friction_factor: float = Field(description="Darcy-Weisbach friction factor at design Q [-]")
@@ -64,7 +101,7 @@ class CalculationResponse(BaseModel):
     minor_head_m: float = Field(description="Total minor (fitting) head loss at design Q [m]")
     tdh_m: float = Field(description="Total Dynamic Head at design Q [m]")
 
-    # System curve dataset (8 points, Q from 0 to 1.5×Q_design)
+    # System curve dataset
     system_curve: list[SystemCurvePoint] = Field(
         description="H-Q system curve: 8 points from Q=0 to Q=1.5×Q_design"
     )
@@ -72,6 +109,15 @@ class CalculationResponse(BaseModel):
     # Echo inputs for traceability
     design_Q_m3h: float = Field(description="Design flow rate echoed back [m³/h]")
     K_sum: float = Field(description="Sum of all minor-loss K values [-]")
+
+    # Display block — values in the requested unit system
+    display: DisplayValues = Field(
+        description="All primary results in the requested display unit system"
+    )
+    unit_system: Literal["SI", "US"] = Field(
+        default="SI",
+        description="Display unit system echoed from the request",
+    )
 
 
 # ---------------------------------------------------------------------------

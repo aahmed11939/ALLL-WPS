@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import ChartErrorBoundary from "../ChartErrorBoundary";
 import {
   LineChart,
   Line,
@@ -320,6 +321,7 @@ export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIf
         <p className="text-[10px] font-bold text-slate-600 mb-3">
           {showMin ? "Minimum head envelope — column separation risk" : "Maximum head envelope — overpressure risk"}
         </p>
+        <ChartErrorBoundary label="Surge Comparison">
         <ResponsiveContainer width="100%" height={280}>
           <LineChart data={chartData} margin={{ top: 4, right: 16, bottom: 4, left: 8 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -358,6 +360,7 @@ export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIf
             <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="2 2" />
           </LineChart>
         </ResponsiveContainer>
+        </ChartErrorBoundary>
         <p className="text-[9px] text-slate-400 mt-2 text-center">
           Dashed lines = protection device scenarios · Solid grey = baseline · Dotted grey = pipe elevation
         </p>

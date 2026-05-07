@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
+import ChartErrorBoundary from "../ChartErrorBoundary";
 import {
   ComposedChart,
   Area,
@@ -1001,6 +1002,7 @@ export default function StepWaterHammerModeB() {
               Red = max transient head; Blue = min transient head; shaded = pipe elevation profile.
               Dashed amber = vapour pressure. Dashed green = pipe pressure class (if set).
             </p>
+            <ChartErrorBoundary label="Pressure Envelope">
             <ResponsiveContainer width="100%" height={290}>
               <ComposedChart data={envelopeData} margin={{ top: 8, right: 20, left: 0, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -1048,11 +1050,13 @@ export default function StepWaterHammerModeB() {
                 )}
               </ComposedChart>
             </ResponsiveContainer>
+            </ChartErrorBoundary>
           </Section>
 
           {/* Time-history chart */}
           {historyData.length > 0 && (
             <Section title="Time History — Piezometric Head at Observation Points">
+              <ChartErrorBoundary label="Observation Point Histories">
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={historyData} margin={{ top: 4, right: 20, left: 0, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -1089,6 +1093,7 @@ export default function StepWaterHammerModeB() {
                   />
                 </LineChart>
               </ResponsiveContainer>
+              </ChartErrorBoundary>
             </Section>
           )}
 

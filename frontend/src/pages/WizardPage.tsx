@@ -8,6 +8,7 @@ import { SAMPLE_PROJECT_VT } from "../data/sampleProjectVT";
 import { SAMPLE_PROJECT_BOOSTER } from "../data/sampleProjectBooster";
 import type { ProjectDraft } from "../types/project";
 import { DEFAULT_DRAFT } from "../types/project";
+import { calculate } from "../utils/api";
 
 import StepMeta        from "../components/wizard/StepMeta";
 import StepNodes       from "../components/wizard/StepNodes";
@@ -301,7 +302,7 @@ export default function WizardPage() {
     },
   ];
 
-  const loadSample = (sample: ProjectDraft) => {
+  const loadSample = async (sample: ProjectDraft) => {
     dispatch({ type: "LOAD", draft: sample });
     setUnitSystem(sample.unitSystem);
     setShowBoth(sample.showBoth);
@@ -312,6 +313,28 @@ export default function WizardPage() {
     setShowRestoreBanner(false);
     setProjectVersion((v) => v + 1);
     setShowSampleMenu(false);
+
+    // Auto-compute hydraulics so results appear immediately on load
+    const suctionSegs   = sample.suction.segments;
+    const dischargeSegs = sample.discharge.segments;
+    const primarySeg    = dischargeSegs[0] ?? suctionSegs[0];
+    if (!primarySeg) return;
+    const totalLength = [...suctionSegs, ...dischargeSegs].reduce((a, s) => a + s.length_m, 0);
+    try {
+      const result = await calculate({
+        Q_m3h:            sample.designFlow_m3h,
+        elev_us_m:        sample.upstreamNode.elevation_m,
+        elev_ds_m:        sample.downstreamNode.elevation_m,
+        pipe_length_m:    totalLength,
+        pipe_diameter_mm: primarySeg.diameter_mm,
+        material:         primarySeg.material,
+        K_values:         [],
+        unit_system:      sample.unitSystem,
+      });
+      dispatch({ type: "SET_HYDRAULICS", result, error: null });
+    } catch {
+      // Silent — user can manually compute if auto-compute fails
+    }
   };
 
   // ---------- New project ----------

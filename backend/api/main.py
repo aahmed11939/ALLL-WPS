@@ -1422,6 +1422,8 @@ def get_accessories_library() -> AccessoryLibraryResponse:
         "isolation_valve",
         "control_valve",
         "meter",
+        "strainer",
+        "air_valve",
         "suction_fitting",
         "discharge_fitting",
         "station_special",
@@ -1432,6 +1434,8 @@ def get_accessories_library() -> AccessoryLibraryResponse:
         "isolation_valve":   "Isolation Valves",
         "control_valve":     "Control Valves",
         "meter":             "Meters & Instruments",
+        "strainer":          "Strainers",
+        "air_valve":         "Air Valves",
         "suction_fitting":   "Suction Fittings",
         "discharge_fitting": "Discharge Fittings",
         "station_special":   "Station Specials",
@@ -1530,14 +1534,16 @@ def compute_lossbreakdown(req: LossBreakdownRequest) -> LossBreakdownResponse:  
     warnings: list[str] = []
 
     _CATEGORY_LABELS: dict[str, str] = {
-        "check_valve": "Check Valve",
-        "isolation_valve": "Isolation Valve",
-        "control_valve": "Control Valve",
-        "meter": "Meter / Instrument",
-        "suction_fitting": "Suction Fitting",
-        "discharge_fitting": "Discharge Fitting",
-        "station_special": "Station Special",
-        "pipe_transition": "Pipe Transition",
+        "check_valve":      "Check Valve",
+        "isolation_valve":  "Isolation Valve",
+        "control_valve":    "Control Valve",
+        "meter":            "Meter / Instrument",
+        "strainer":         "Strainer",
+        "air_valve":        "Air Valve",
+        "suction_fitting":  "Suction Fitting",
+        "discharge_fitting":"Discharge Fitting",
+        "station_special":  "Station Special",
+        "pipe_transition":  "Pipe Transition",
     }
 
     # ── Helper: resolve and validate accessory list; return 422 on unknown ID ─
@@ -1601,7 +1607,27 @@ def compute_lossbreakdown(req: LossBreakdownRequest) -> LossBreakdownResponse:  
     else:
         discharge_major_hm = round(req.discharge_major_head_m, 6)
 
-    # ── Choose reference D for velocity head (segment D_mm or request D_mm) ──
+    # ── Per-segment velocity head lookup ─────────────────────────────────────
+    # Each segment uses its own pipe diameter so that K·V²/(2g) is physically
+    # correct when suction and discharge pipes differ in size.
+    def _vh_for_seg(seg_key: str | None) -> float:
+        """Return V²/(2g) [m] using the correct diameter for this segment."""
+        if seg_key == "suction" and req.suction is not None:
+            D_m = req.suction.D_mm / 1000.0
+        elif seg_key == "discharge" and req.discharge is not None:
+            D_m = req.discharge.D_mm / 1000.0
+        else:
+            D_m = req.D_mm / 1000.0
+        try:
+            V_seg = velocity(Q_m3s, D_m)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"Velocity calculation error for segment '{seg_key}': {exc}",
+            )
+        return V_seg ** 2 / (2.0 * G)
+
+    # Reference velocity / vh for display (discharge preferred, then suction, then flat)
     ref_D_mm = req.D_mm
     if req.discharge is not None:
         ref_D_mm = req.discharge.D_mm
@@ -1623,13 +1649,14 @@ def compute_lossbreakdown(req: LossBreakdownRequest) -> LossBreakdownResponse:  
     K_sum_total = 0.0
 
     for acc_item, raw, seg in all_resolved:
+        vh_item = _vh_for_seg(seg)   # use this segment's pipe diameter
         K_each = (
             acc_item.K_override
             if acc_item.K_override is not None
             else raw["default_K"]
         )
         K_total = K_each * acc_item.count
-        hm_item = K_total * vh
+        hm_item = K_total * vh_item
         K_sum_total += K_total
 
         items.append(
@@ -1648,7 +1675,9 @@ def compute_lossbreakdown(req: LossBreakdownRequest) -> LossBreakdownResponse:  
             )
         )
 
-    total_hm = K_sum_total * vh
+    # Total minor loss is the sum of individual item losses (not K_sum × single_vh,
+    # which would be wrong when suction and discharge diameters differ)
+    total_hm = sum(it.hm_m for it in items)
 
     # Back-fill % of total minor and sort descending
     filled_items: list[LossBreakdownItem] = []

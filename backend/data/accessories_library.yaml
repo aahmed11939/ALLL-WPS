@@ -324,9 +324,9 @@ accessories:
       - "Wetted materials must be NSF/ANSI 61 certified."
       - "Gradual increaser preferred to recover velocity head on large-Q systems."
 
-  # ── PUMP STATION SPECIALS ─────────────────────────────────────────────────
+  # ── STRAINERS ─────────────────────────────────────────────────────────────
   - id: y_strainer
-    category: station_special
+    category: strainer
     name: "Y-Strainer (Clean)"
     default_K: 1.5
     K_min: 0.5
@@ -340,7 +340,7 @@ accessories:
       - "Provide isolation valves for blow-down without dewatering the station."
 
   - id: basket_strainer
-    category: station_special
+    category: strainer
     name: "Basket Strainer (Clean)"
     default_K: 1.0
     K_min: 0.4
@@ -365,8 +365,9 @@ accessories:
       - "EPDM or PTFE-lined elastomer; verify NSF/ANSI 61 for the liner material."
       - "Avoid natural rubber or neoprene in chlorinated service > 2 mg/L."
 
+  # ── AIR VALVES ────────────────────────────────────────────────────────────
   - id: air_valve
-    category: station_special
+    category: air_valve
     name: "Air Release / Vacuum Break Valve (Tapping)"
     default_K: 0.2
     K_min: 0.1

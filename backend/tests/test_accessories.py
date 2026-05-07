@@ -52,6 +52,8 @@ def test_all_categories_present():
         "isolation_valve",
         "control_valve",
         "meter",
+        "strainer",
+        "air_valve",
         "suction_fitting",
         "discharge_fitting",
         "station_special",
@@ -127,6 +129,9 @@ def test_potable_notes_are_lists():
     ("pressure_transmitter", "meter"),
     ("flow_transmitter",     "meter"),
     ("level_sensor",         "meter"),
+    ("y_strainer",           "strainer"),
+    ("basket_strainer",      "strainer"),
+    ("air_valve",            "air_valve"),
 ])
 def test_new_catalogue_items_present(acc_id: str, expected_category: str):
     rec = get_accessory_by_id(acc_id)
@@ -173,7 +178,14 @@ def test_get_library_accessories_has_categories_field():
     data = resp.json()
     assert "categories" in data, "Response missing 'categories' field"
     assert isinstance(data["categories"], list)
-    assert len(data["categories"]) >= 7, "Expected ≥ 7 category groups"
+    assert len(data["categories"]) >= 9, "Expected ≥ 9 category groups (including strainer and air_valve)"
+
+
+def test_get_library_accessories_strainer_and_air_valve_groups():
+    resp = client.get("/library/accessories")
+    cats = {grp["category"] for grp in resp.json()["categories"]}
+    assert "strainer"  in cats, "Expected explicit 'strainer' category group"
+    assert "air_valve" in cats, "Expected explicit 'air_valve' category group"
 
 
 def test_get_library_accessories_categories_structure():
@@ -343,12 +355,49 @@ def test_lossbreakdown_empty_accessories():
 
 
 def test_lossbreakdown_velocity_head_physics():
-    """V²/(2g) must equal total_hm / K_sum when K_sum > 0."""
+    """In flat mode with uniform D, V²/(2g) must equal total_hm / K_sum."""
     resp = client.post("/compute/lossbreakdown", json=BASIC_REQUEST)
     data = resp.json()
     if data["K_sum"] > 0:
         expected_vh = data["total_hm_m"] / data["K_sum"]
         assert abs(data["velocity_head_m"] - expected_vh) < 1e-6
+
+
+def test_lossbreakdown_mixed_diameter_segments_physics():
+    """
+    When suction D > discharge D, suction velocity < discharge velocity.
+    Suction minor losses (same K) must therefore be smaller than discharge minor losses.
+    """
+    req = {
+        "Q_m3h": 100.0,
+        "suction": {
+            "L_m": 20.0,
+            "D_mm": 300.0,   # larger pipe → lower velocity
+            "material": "ductile_iron",
+            "accessories": [{"accessory_id": "gate_fully_open", "count": 1}],
+        },
+        "discharge": {
+            "L_m": 100.0,
+            "D_mm": 200.0,   # smaller pipe → higher velocity
+            "material": "ductile_iron",
+            "accessories": [{"accessory_id": "gate_fully_open", "count": 1}],
+        },
+        "unit_system": "SI",
+    }
+    resp = client.post("/compute/lossbreakdown", json=req)
+    assert resp.status_code == 200
+    data = resp.json()
+    # Same K, different D → suction loss must be less than discharge loss
+    assert data["suction_minor_hm_m"] < data["discharge_minor_hm_m"], (
+        f"Suction loss {data['suction_minor_hm_m']:.6f} should be less than "
+        f"discharge loss {data['discharge_minor_hm_m']:.6f} (larger pipe → lower velocity)"
+    )
+    # Verify physics: ratio of losses ≈ (D_discharge/D_suction)^4 (same K, same Q)
+    ratio_actual   = data["discharge_minor_hm_m"] / data["suction_minor_hm_m"]
+    ratio_expected = (300.0 / 200.0) ** 4  # (D_s/D_d)^4
+    assert abs(ratio_actual - ratio_expected) < 0.05 * ratio_expected, (
+        f"Loss ratio {ratio_actual:.4f} deviates from expected (D_s/D_d)^4 = {ratio_expected:.4f}"
+    )
 
 
 def test_lossbreakdown_us_unit_system():

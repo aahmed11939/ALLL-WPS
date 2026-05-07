@@ -398,12 +398,12 @@ export interface AccessoryLibraryResponse {
 }
 
 export async function fetchAccessoriesLibrary(): Promise<AccessoryLibraryResponse> {
-  const res = await axios.get<AccessoryLibraryResponse>("/library/accessories");
+  const res = await axios.get<AccessoryLibraryResponse>(`${BASE}/library/accessories`);
   return res.data;
 }
 
 export async function fetchAccessoryById(id: string): Promise<AccessoryRecord> {
-  const res = await axios.get<AccessoryRecord>(`/library/accessories/${id}`);
+  const res = await axios.get<AccessoryRecord>(`${BASE}/library/accessories/${id}`);
   return res.data;
 }
 
@@ -496,6 +496,6 @@ export interface LossBreakdownResponse {
 export async function computeLossBreakdown(
   req: LossBreakdownRequest
 ): Promise<LossBreakdownResponse> {
-  const res = await axios.post<LossBreakdownResponse>("/compute/lossbreakdown", req);
+  const res = await axios.post<LossBreakdownResponse>(`${BASE}/compute/lossbreakdown`, req);
   return res.data;
 }

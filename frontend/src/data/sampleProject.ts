@@ -101,4 +101,5 @@ export const SAMPLE_PROJECT: ProjectDraft = {
   suctionSurgeConfig: null,
   suctionSurgeResult: null,
   whatIfResult: null,
+  hydraulicsFieldErrors: [],
 };

@@ -218,8 +218,34 @@ class StructuredErrorResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Global validation-error handler — structured {loc, msg, type} list
+# Global error handlers — all 422 responses use {detail, errors:[{loc,msg,type}]}
 # ---------------------------------------------------------------------------
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(
+    request: Request, exc: HTTPException
+) -> JSONResponse:
+    """
+    Normalize HTTP 422 exceptions raised by business logic into the same
+    structured schema as Pydantic validation errors, so callers always receive:
+
+        {"detail": "...", "errors": [{"loc": ["body"], "msg": "...", "type": "value_error"}]}
+    """
+    if exc.status_code == 422:
+        detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": detail,
+                "errors": [{"loc": ["body"], "msg": detail, "type": "value_error"}],
+            },
+        )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=getattr(exc, "headers", None) or {},
+    )
 
 
 @app.exception_handler(RequestValidationError)
@@ -2283,7 +2309,10 @@ async def surge_whatif(req: WhatIfRequest) -> WhatIfResponse:
     try:
         grid = build_grid(segs, req.wave_speed_ms, n_reaches_override=req.n_reaches)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+        return JSONResponse(
+            status_code=422,
+            content={"detail": str(exc), "errors": [{"loc": ["body"], "msg": str(exc), "type": "value_error"}]},
+        )
 
     dt_s   = grid["dt_s"]
     A_pipe = grid["A_m2"]
@@ -2319,7 +2348,10 @@ async def surge_whatif(req: WhatIfRequest) -> WhatIfResponse:
             **base_kwargs,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+        return JSONResponse(
+            status_code=422,
+            content={"detail": str(exc), "errors": [{"loc": ["body"], "msg": str(exc), "type": "value_error"}]},
+        )
 
     base_max_H = raw_base["global_max_H_m"]
     base_min_H = raw_base["global_min_H_m"]

@@ -100,4 +100,5 @@ export const SAMPLE_PROJECT_VT: ProjectDraft = {
   suctionSurgeConfig: null,
   suctionSurgeResult: null,
   whatIfResult: null,
+  hydraulicsFieldErrors: [],
 };

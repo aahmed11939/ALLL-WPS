@@ -99,4 +99,5 @@ export const SAMPLE_PROJECT_BOOSTER: ProjectDraft = {
   suctionSurgeConfig: null,
   suctionSurgeResult: null,
   whatIfResult: null,
+  hydraulicsFieldErrors: [],
 };

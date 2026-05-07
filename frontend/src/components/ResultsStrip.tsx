@@ -70,7 +70,7 @@ export default function ResultsStrip() {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur-sm shadow-[0_-2px_8px_rgba(0,0,0,0.07)]">
+    <div className="shrink-0 border-t border-slate-200 bg-white shadow-[0_-2px_6px_rgba(0,0,0,0.05)]">
       <div className="flex items-center gap-0.5 px-4 py-1.5 overflow-x-auto">
         <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 shrink-0 mr-2 select-none">
           LIVE RESULTS

@@ -188,7 +188,7 @@ export default function StepHydraulics() {
           <h2 className="text-base font-bold text-slate-800 mb-1">Hydraulic Results</h2>
           <p className="text-xs text-slate-500">
             Assemble all pipeline inputs and compute TDH, velocity, friction factor,
-            and minor losses using Darcy-Weisbach / Colebrook-White.
+            and minor losses using Darcy-Weisbach / Colebrook-White (<TermTip term="ε" />).
           </p>
         </div>
         <button

@@ -177,3 +177,102 @@ export async function computeClearWell(
   const res = await axios.post<ClearWellResponse>("/compute/clearwell", req);
   return res.data;
 }
+
+// ---------------------------------------------------------------------------
+// Pump selection
+// ---------------------------------------------------------------------------
+
+export interface HeadFlowRange {
+  min: number;
+  max: number;
+}
+
+export type PotableTag = "recommended" | "conditional" | "niche";
+
+export interface PumpTypeInfo {
+  key: string;
+  display_name: string;
+  family: string;
+  potable_tag: PotableTag;
+  description: string;
+  typical_head_range_m: HeadFlowRange;
+  typical_flow_range_m3h: HeadFlowRange;
+  constraints: string[];
+  potable_notes: string[];
+  extras_schema: string | null;
+}
+
+export interface PumpTypesResponse {
+  pump_types: PumpTypeInfo[];
+  count: number;
+}
+
+export interface VerticalTurbineExtras {
+  bowl_model?: string;
+  bowl_count: number;
+  column_length_m: number;
+  min_submergence_m: number;
+  bowl_efficiency_pct?: number;
+}
+
+export interface SubmersibleExtras {
+  installation_depth_m: number;
+  motor_cooling: "fluid_cooled" | "shroud" | "air" | "none";
+  min_flow_cooling_m3h?: number;
+}
+
+export interface BoosterSetExtras {
+  setpoint_pressure_kPa: number;
+  num_pumps_in_set: number;
+  vfd_equipped: boolean;
+}
+
+export interface PDPumpExtras {
+  displacement_L_per_rev: number;
+  max_pressure_kPa: number;
+  pulsation_dampener: boolean;
+}
+
+export interface FirePumpExtras {
+  nfpa20_compliance: boolean;
+}
+
+export type PumpExtras =
+  | VerticalTurbineExtras
+  | SubmersibleExtras
+  | BoosterSetExtras
+  | PDPumpExtras
+  | FirePumpExtras
+  | Record<string, unknown>;
+
+export interface PumpSelectionRequest {
+  active: boolean;
+  pump_type_key?: string;
+  control_mode?: "constant_speed" | "vfd";
+  n_duty?: number;
+  n_standby?: number;
+  extras?: PumpExtras | null;
+}
+
+export interface PumpSelectionResponse {
+  active: boolean;
+  type_info: PumpTypeInfo | null;
+  config_summary: string | null;
+  potable_notes: string[];
+  warnings: string[];
+}
+
+export async function fetchPumpTypes(): Promise<PumpTypesResponse> {
+  const res = await axios.get<PumpTypesResponse>("/compute/pump-types");
+  return res.data;
+}
+
+export async function computePumpSelection(
+  req: PumpSelectionRequest
+): Promise<PumpSelectionResponse> {
+  const res = await axios.post<PumpSelectionResponse>(
+    "/compute/pump-selection",
+    req
+  );
+  return res.data;
+}

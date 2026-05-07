@@ -1,6 +1,7 @@
 import { useState } from "react";
 import CalculationForm from "../components/CalculationForm";
 import ClearWellStep from "../components/ClearWellStep";
+import PumpSelectionStep from "../components/PumpSelectionStep";
 import ResultsPanel from "../components/ResultsPanel";
 import SystemCurveChart from "../components/SystemCurveChart";
 import { useUnitSystem } from "../contexts/UnitSystemContext";
@@ -141,6 +142,11 @@ export default function DesignPage() {
                 <SystemCurveChart results={results} />
               </div>
             )}
+
+            {/* Pump Type Selection */}
+            <div>
+              <PumpSelectionStep />
+            </div>
 
             {/* Clear Well Sizing */}
             <div>

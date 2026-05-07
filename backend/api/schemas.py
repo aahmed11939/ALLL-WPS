@@ -639,3 +639,216 @@ class ClearWellResponse(BaseModel):
         default_factory=list,
         description="Actionable advisory warnings with suggested remedies",
     )
+
+
+# ---------------------------------------------------------------------------
+# Pump selection — type catalogue response
+# ---------------------------------------------------------------------------
+
+
+class HeadFlowRange(BaseModel):
+    """Typical operating range for head or flow."""
+
+    model_config = ConfigDict(frozen=True)
+
+    min: float
+    max: float
+
+
+class PumpTypeInfo(BaseModel):
+    """Full metadata record for one pump type in the catalogue."""
+
+    model_config = ConfigDict(frozen=True)
+
+    key: str = Field(description="Unique identifier used in API requests")
+    display_name: str = Field(description="Human-readable name shown in the UI")
+    family: str = Field(
+        description=(
+            "Pump family: centrifugal | vertical_turbine | booster | "
+            "submersible | axial_flow | positive_displacement | fire_pump"
+        )
+    )
+    potable_tag: Literal["recommended", "conditional", "niche"] = Field(
+        description=(
+            "Potable-water suitability: "
+            "'recommended' = standard first choice; "
+            "'conditional' = acceptable with specific constraints; "
+            "'niche' = unusual for municipal potable service"
+        )
+    )
+    description: str = Field(description="Brief engineering description of this pump type")
+    typical_head_range_m: HeadFlowRange = Field(description="Typical TDH range [m]")
+    typical_flow_range_m3h: HeadFlowRange = Field(description="Typical flow range [m³/h]")
+    constraints: List[str] = Field(
+        default_factory=list,
+        description="Engineering constraints and sizing considerations",
+    )
+    potable_notes: List[str] = Field(
+        default_factory=list,
+        description="Potable-water compliance notes and AHJ guidance",
+    )
+    extras_schema: Optional[str] = Field(
+        default=None,
+        description=(
+            "Name of the type-specific extras schema required for this pump type, "
+            "or null if no extras are required."
+        ),
+    )
+
+
+class PumpTypesResponse(BaseModel):
+    """Response from GET /compute/pump-types."""
+
+    pump_types: List[PumpTypeInfo] = Field(description="All 16 pump types, sorted by family then name")
+    count: int = Field(description="Total number of pump types in the catalogue")
+
+
+# ---------------------------------------------------------------------------
+# Pump selection — type-specific extras models
+# ---------------------------------------------------------------------------
+
+
+class VerticalTurbineExtras(BaseModel):
+    """Extra design parameters required for vertical turbine pumps."""
+
+    model_config = ConfigDict()
+
+    bowl_model: Optional[str] = Field(
+        default=None,
+        description="Bowl assembly model designation (optional — for traceability)",
+    )
+    bowl_count: Annotated[int, Field(ge=1, description="Number of bowl stages")] = 1
+    column_length_m: Annotated[float, Field(gt=0, description="Column pipe setting length [m]")] = 10.0
+    min_submergence_m: Annotated[float, Field(ge=0, description="Minimum required bowl submergence [m]")] = 1.0
+    bowl_efficiency_pct: Optional[float] = Field(
+        default=None,
+        ge=1.0,
+        le=100.0,
+        description="Bowl assembly efficiency at BEP [%] — optional",
+    )
+
+
+class SubmersibleExtras(BaseModel):
+    """Extra design parameters required for submersible pumps."""
+
+    model_config = ConfigDict()
+
+    installation_depth_m: Annotated[float, Field(gt=0, description="Pump centreline depth below water surface [m]")] = 5.0
+    motor_cooling: Literal["fluid_cooled", "shroud", "air", "none"] = Field(
+        default="fluid_cooled",
+        description=(
+            "Motor cooling method: "
+            "'fluid_cooled' = through-flow over motor; "
+            "'shroud' = cooling shroud forces flow past motor; "
+            "'air' = air-cooled (dry-pit); "
+            "'none' = no forced cooling"
+        ),
+    )
+    min_flow_cooling_m3h: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="Minimum flow required to cool the motor [m³/h] — from manufacturer's data sheet",
+    )
+
+
+class BoosterSetExtras(BaseModel):
+    """Extra design parameters required for inline booster / booster-set pumps."""
+
+    model_config = ConfigDict()
+
+    setpoint_pressure_kPa: Annotated[float, Field(gt=0, description="Discharge pressure setpoint [kPa]")] = 500.0
+    num_pumps_in_set: Annotated[int, Field(ge=1, description="Number of pump units in the factory set")] = 2
+    vfd_equipped: bool = Field(default=True, description="True if the booster set includes variable-frequency drives")
+
+
+class PDPumpExtras(BaseModel):
+    """Extra design parameters required for positive-displacement pumps (all sub-types)."""
+
+    model_config = ConfigDict()
+
+    displacement_L_per_rev: Annotated[float, Field(gt=0, description="Volumetric displacement per revolution [L/rev]")] = 1.0
+    max_pressure_kPa: Annotated[float, Field(gt=0, description="Maximum rated differential pressure [kPa]")] = 700.0
+    pulsation_dampener: bool = Field(
+        default=False,
+        description="True if a pulsation dampener is specified on the discharge line",
+    )
+
+
+class FirePumpExtras(BaseModel):
+    """Extra design parameters for fire pumps."""
+
+    model_config = ConfigDict()
+
+    nfpa20_compliance: bool = Field(
+        default=False,
+        description="Confirm the pump is listed and labeled per NFPA 20",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Pump selection — request / response
+# ---------------------------------------------------------------------------
+
+
+class PumpSelectionRequest(BaseModel):
+    """
+    Pump selection input.
+
+    When ``active=False`` the endpoint returns immediately with an empty
+    response — matching the bypass pattern used by ClearWell and other steps.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    active: bool = Field(
+        default=True,
+        description="True = perform selection logic. False = skip (bypassed/disabled state).",
+    )
+    pump_type_key: Optional[str] = Field(
+        default=None,
+        description="Catalogue key identifying the chosen pump type. Required when active=True.",
+    )
+    control_mode: Literal["constant_speed", "vfd"] = Field(
+        default="constant_speed",
+        description="Speed control: 'constant_speed' (DOL/soft-start) or 'vfd' (variable-frequency drive)",
+    )
+    n_duty: Annotated[int, Field(ge=1, description="Number of duty pumps")] = 1
+    n_standby: Annotated[int, Field(ge=0, description="Number of standby pumps")] = 1
+    extras: Optional[dict] = Field(
+        default=None,
+        description=(
+            "Type-specific extra parameters. "
+            "Required for: vertical_turbine, submersible, inline_booster, "
+            "pd_* types, fire_pump. Pass null for centrifugal / axial_flow types."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def check_active_fields(self) -> "PumpSelectionRequest":
+        if self.active and not self.pump_type_key:
+            raise ValueError("pump_type_key is required when active=True")
+        return self
+
+
+class PumpSelectionResponse(BaseModel):
+    """Response from POST /compute/pump-selection."""
+
+    model_config = ConfigDict()
+
+    active: bool = Field(description="Mirrors the request active flag")
+    type_info: Optional[PumpTypeInfo] = Field(
+        default=None,
+        description="Full catalogue record for the selected pump type",
+    )
+    config_summary: Optional[str] = Field(
+        default=None,
+        description="Human-readable configuration summary (e.g. '2+1 duty/standby | VFD | End-Suction Centrifugal')",
+    )
+    potable_notes: List[str] = Field(
+        default_factory=list,
+        description="Potable-water compliance notes for the selected type",
+    )
+    warnings: List[str] = Field(
+        default_factory=list,
+        description="Actionable advisory warnings for this pump selection",
+    )

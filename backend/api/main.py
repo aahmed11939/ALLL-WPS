@@ -26,12 +26,26 @@ from backend.api.schemas import (
     HydraulicComputeResponse,
     MaterialOption,
     MaterialOptionsResponse,
+    PDPumpExtras,
     PipeSegment,
+    BoosterSetExtras,
+    FirePumpExtras,
+    HeadFlowRange,
     PumpLibraryResponse,
     PumpRecord,
+    PumpSelectionRequest,
+    PumpSelectionResponse,
+    PumpTypeInfo,
+    PumpTypesResponse,
     SegmentResult,
+    SubmersibleExtras,
     SystemCurvePoint,
+    VerticalTurbineExtras,
     VolumeCurvePoint,
+)
+from backend.engine.pump_types import (
+    get_pump_type,
+    list_pump_types,
 )
 from backend.data.loader import (
     get_material_options,
@@ -632,5 +646,207 @@ def compute_clearwell(req: ClearWellRequest) -> ClearWellResponse:
         detention_time_min=det["detention_time_min"],
         required_detention_min=req.required_detention_min,
         detention_ok=det["detention_ok"],
+        warnings=warns,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Pump type catalogue
+# ---------------------------------------------------------------------------
+
+
+def _build_pump_type_info(entry: dict) -> PumpTypeInfo:
+    """Convert a raw catalogue dict into a PumpTypeInfo response model."""
+    return PumpTypeInfo(
+        key=entry["key"],
+        display_name=entry["display_name"],
+        family=entry["family"],
+        potable_tag=entry["potable_tag"],
+        description=entry["description"],
+        typical_head_range_m=HeadFlowRange(**entry["typical_head_range_m"]),
+        typical_flow_range_m3h=HeadFlowRange(**entry["typical_flow_range_m3h"]),
+        constraints=entry["constraints"],
+        potable_notes=entry["potable_notes"],
+        extras_schema=entry.get("extras_schema"),
+    )
+
+
+@app.get(
+    "/compute/pump-types",
+    response_model=PumpTypesResponse,
+    tags=["compute"],
+    summary="Return the full pump type catalogue (16 types)",
+    status_code=status.HTTP_200_OK,
+)
+def get_pump_types() -> PumpTypesResponse:
+    """
+    Return all 16 pump types with potable-suitability metadata, typical H-Q ranges,
+    engineering constraints, and compliance notes.
+
+    Types are sorted by family then display name.
+    """
+    entries = list_pump_types(sort_by_family=True)
+    pump_types = [_build_pump_type_info(e) for e in entries]
+    return PumpTypesResponse(pump_types=pump_types, count=len(pump_types))
+
+
+# ---------------------------------------------------------------------------
+# Pump selection
+# ---------------------------------------------------------------------------
+
+_EXTRAS_SCHEMA_MAP = {
+    "vertical_turbine": VerticalTurbineExtras,
+    "submersible": SubmersibleExtras,
+    "booster_set": BoosterSetExtras,
+    "pd_pump": PDPumpExtras,
+    "fire_pump": FirePumpExtras,
+}
+
+
+def _validate_and_parse_extras(
+    pump_type_key: str,
+    extras_schema: str | None,
+    extras: dict | None,
+) -> Any:
+    """
+    Validate type-specific extras against their Pydantic model.
+
+    Returns the parsed extras model (or None if no extras are required).
+    Raises HTTPException 422 if extras are required but missing/invalid.
+    """
+    if extras_schema is None:
+        return None
+
+    model_cls = _EXTRAS_SCHEMA_MAP.get(extras_schema)
+    if model_cls is None:
+        return None
+
+    if extras is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Pump type '{pump_type_key}' requires additional parameters "
+                f"(extras_schema='{extras_schema}'). "
+                f"Please supply the 'extras' field."
+            ),
+        )
+    try:
+        return model_cls.model_validate(extras)
+    except ValidationError as exc:
+        messages = _fmt_validation_error(exc)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid extras for '{pump_type_key}': {'; '.join(messages)}",
+        )
+
+
+def _generate_selection_warnings(
+    entry: dict,
+    n_duty: int,
+    n_standby: int,
+    control_mode: str,
+    parsed_extras: Any,
+) -> list[str]:
+    """Generate advisory warnings for the pump selection configuration."""
+    warns: list[str] = []
+
+    if entry["potable_tag"] == "niche":
+        warns.append(
+            f"'{entry['display_name']}' is niche / unusual for municipal potable water service. "
+            "Verify suitability with the project engineer and authority having jurisdiction (AHJ)."
+        )
+
+    if n_standby == 0:
+        warns.append(
+            "No standby pump is configured. AWWA and most utility standards require at least "
+            "one standby pump for duty-critical potable water supply — verify with AHJ."
+        )
+
+    if control_mode == "constant_speed" and entry["family"] == "positive_displacement":
+        warns.append(
+            "Constant-speed positive displacement pumps must never dead-head — "
+            "a pressure relief valve (PRV) on the discharge is mandatory."
+        )
+
+    if (
+        entry["extras_schema"] == "submersible"
+        and parsed_extras is not None
+        and hasattr(parsed_extras, "motor_cooling")
+        and parsed_extras.motor_cooling == "none"
+    ):
+        warns.append(
+            "Motor cooling is set to 'none'. Submersible motors require adequate "
+            "cooling flow past the motor casing — risk of thermal failure."
+        )
+
+    return warns
+
+
+@app.post(
+    "/compute/pump-selection",
+    response_model=PumpSelectionResponse,
+    tags=["compute"],
+    summary="Validate and confirm pump type selection",
+    status_code=status.HTTP_200_OK,
+)
+def compute_pump_selection(req: PumpSelectionRequest) -> PumpSelectionResponse:
+    """
+    Validate a pump type selection against the 16-type catalogue.
+
+    When ``active=False`` returns an empty response (bypass pattern).
+
+    For types requiring extras (vertical turbine, submersible, booster set,
+    PD types, fire pump) the ``extras`` field must be populated — a 422 is
+    returned if it is absent or invalid.
+
+    Returns:
+    - Full ``type_info`` catalogue record for the selected type
+    - ``config_summary`` human-readable string
+    - ``potable_notes`` compliance guidance
+    - ``warnings`` advisory messages
+    """
+    if not req.active:
+        return PumpSelectionResponse(active=False)
+
+    # Look up catalogue entry — raises 422 on unknown key
+    try:
+        entry = get_pump_type(req.pump_type_key)  # type: ignore[arg-type]
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
+
+    # Validate type-specific extras
+    parsed_extras = _validate_and_parse_extras(
+        pump_type_key=req.pump_type_key,  # type: ignore[arg-type]
+        extras_schema=entry["extras_schema"],
+        extras=req.extras,
+    )
+
+    # Build type_info response model
+    type_info = _build_pump_type_info(entry)
+
+    # Configuration summary
+    control_label = "VFD" if req.control_mode == "vfd" else "Constant speed"
+    config_summary = (
+        f"{req.n_duty}+{req.n_standby} ({req.n_duty} duty, {req.n_standby} standby) "
+        f"| {control_label} | {entry['display_name']}"
+    )
+
+    # Warnings
+    warns = _generate_selection_warnings(
+        entry=entry,
+        n_duty=req.n_duty,
+        n_standby=req.n_standby,
+        control_mode=req.control_mode,
+        parsed_extras=parsed_extras,
+    )
+
+    return PumpSelectionResponse(
+        active=True,
+        type_info=type_info,
+        config_summary=config_summary,
+        potable_notes=entry["potable_notes"],
         warnings=warns,
     )

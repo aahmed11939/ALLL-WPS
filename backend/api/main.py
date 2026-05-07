@@ -56,6 +56,9 @@ from backend.api.schemas import (
     SegmentResult,
     SpeedCurve,
     SubmersibleExtras,
+    SurgeEnvelopePoint,
+    SurgeQuickRequest,
+    SurgeQuickResponse,
     SystemCurvePoint,
     TypeSpecificField,
     VerticalTurbineExtras,
@@ -90,6 +93,7 @@ from backend.engine.pump_curves import (
     pump_q_max,
     series_hq_fn,
 )
+from backend.engine.surge import surge_quick
 from backend.engine.clearwell import (
     clearwell_volume_curve,
     cycle_analysis,
@@ -1804,4 +1808,62 @@ def compute_lossbreakdown(req: LossBreakdownRequest) -> LossBreakdownResponse:  
         D_mm=ref_D_mm,
         unit_system=us,
         warnings=warnings,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Surge / Water Hammer — Mode A Quick Check
+# ---------------------------------------------------------------------------
+
+
+@app.post(
+    "/surge/quick",
+    response_model=SurgeQuickResponse,
+    tags=["surge"],
+    summary="Water-hammer quick check (Mode A — Joukowsky + slow-closure reduction)",
+    status_code=status.HTTP_200_OK,
+)
+def surge_quick_check(req: SurgeQuickRequest) -> SurgeQuickResponse:
+    """
+    Mode A quick-check water-hammer analysis using the Joukowsky equation.
+
+    **ΔH = a·ΔV/g** [m], **ΔP = ρ·a·ΔV** [kPa]
+
+    For slow closures (tc > T = 2L/a) the Allievi/Bergeron linear reduction
+    factor **K = T/tc** is applied → **ΔH_eff = K·ΔH_Joukowsky**.
+
+    Returns a preliminary pressure envelope at each pipe end and risk flags
+    for sub-atmospheric (vacuum) and cavitation conditions.
+    """
+    try:
+        result = surge_quick(
+            pipeline=req.pipeline,
+            wave_speed_ms=req.wave_speed_ms,
+            V0_ms=req.V0_ms,
+            event_type=req.event_type,
+            pipe_length_m=req.pipe_length_m,
+            closure_time_s=req.closure_time_s,
+            rho_kg_m3=req.rho_kg_m3,
+            H_operating_m=req.H_operating_m,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
+
+    envelope_points = [SurgeEnvelopePoint(**pt) for pt in result.pop("envelope")]
+
+    return SurgeQuickResponse(
+        pipeline=req.pipeline,
+        event_type=req.event_type,
+        wave_speed_ms=req.wave_speed_ms,
+        V0_ms=req.V0_ms,
+        pipe_length_m=req.pipe_length_m,
+        rho_kg_m3=req.rho_kg_m3,
+        H_operating_m=req.H_operating_m,
+        closure_time_s=req.closure_time_s,
+        unit_system=req.unit_system,
+        envelope=envelope_points,
+        **result,
     )

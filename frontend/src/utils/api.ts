@@ -506,3 +506,68 @@ export async function computeLossBreakdown(
   const res = await axios.post<LossBreakdownResponse>(`${BASE}/compute/lossbreakdown`, req);
   return res.data;
 }
+
+// ---------------------------------------------------------------------------
+// Surge / Water Hammer — Mode A Quick Check
+// ---------------------------------------------------------------------------
+
+export interface SurgeEnvelopePoint {
+  location: string;
+  max_head_m: number;
+  min_head_m: number;
+  max_pressure_kPa: number;
+  min_pressure_kPa: number;
+}
+
+export type SurgeEventType =
+  | "pump_trip"
+  | "valve_closure_downstream"
+  | "valve_closure_upstream"
+  | "check_valve_slam";
+
+export interface SurgeQuickRequest {
+  pipeline: "suction" | "discharge";
+  wave_speed_ms: number;
+  V0_ms: number;
+  event_type: SurgeEventType;
+  closure_time_s?: number | null;
+  pipe_length_m: number;
+  rho_kg_m3: number;
+  H_operating_m: number;
+  unit_system: "SI" | "US";
+}
+
+export interface SurgeQuickResponse {
+  pipeline: string;
+  event_type: string;
+  wave_speed_ms: number;
+  V0_ms: number;
+  pipe_length_m: number;
+  rho_kg_m3: number;
+  H_operating_m: number;
+  delta_V_ms: number;
+  delta_H_joukowsky_m: number;
+  delta_P_joukowsky_kPa: number;
+  T_char_s: number;
+  closure_time_s: number | null;
+  reduction_factor: number;
+  reduction_method: string;
+  delta_H_m: number;
+  delta_P_kPa: number;
+  envelope: SurgeEnvelopePoint[];
+  min_pressure_head_m: number;
+  max_pressure_head_m: number;
+  min_pressure_kPa: number;
+  max_pressure_kPa: number;
+  cavitation_risk: boolean;
+  vacuum_risk: boolean;
+  vapor_pressure_head_m: number;
+  unit_system: string;
+}
+
+export async function computeSurgeQuick(
+  req: SurgeQuickRequest
+): Promise<SurgeQuickResponse> {
+  const res = await axios.post<SurgeQuickResponse>("/surge/quick", req);
+  return res.data;
+}

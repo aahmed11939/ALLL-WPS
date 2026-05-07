@@ -15,10 +15,11 @@ import type {
   ClearwellFormConfig,
   PumpSelectionConfig,
   PumpCurveConfig,
+  WaterHammerConfig,
 } from "../types/project";
 import { DEFAULT_DRAFT } from "../types/project";
 import type { UnitSystem } from "../utils/units";
-import type { CalculationResponse, ClearWellResponse, PumpComputeResponse } from "../utils/api";
+import type { CalculationResponse, ClearWellResponse, PumpComputeResponse, SurgeQuickResponse } from "../utils/api";
 
 // ---------------------------------------------------------------------------
 // Actions
@@ -39,6 +40,8 @@ type Action =
   | { type: "SET_HYDRAULICS";            result: CalculationResponse | null; error: string | null }
   | { type: "SET_PUMP_RESULT";           result: PumpComputeResponse | null }
   | { type: "SET_CLEARWELL_RESULT";      result: ClearWellResponse | null }
+  | { type: "SET_WATER_HAMMER_CONFIG";   config: WaterHammerConfig | null }
+  | { type: "SET_WATER_HAMMER_RESULT";   result: SurgeQuickResponse | null }
   | { type: "LOAD";                      draft: ProjectDraft };
 
 function reducer(state: ProjectDraft, action: Action): ProjectDraft {
@@ -58,6 +61,8 @@ function reducer(state: ProjectDraft, action: Action): ProjectDraft {
       return { ...state, hydraulicsResult: action.result, hydraulicsError: action.error };
     case "SET_PUMP_RESULT":           return { ...state, pumpResult: action.result };
     case "SET_CLEARWELL_RESULT":      return { ...state, clearwellResult: action.result };
+    case "SET_WATER_HAMMER_CONFIG":   return { ...state, waterHammerConfig: action.config };
+    case "SET_WATER_HAMMER_RESULT":   return { ...state, waterHammerResult: action.result };
     case "LOAD":                      return { ...action.draft };
     default:                          return state;
   }
@@ -89,6 +94,8 @@ function parseDraft(raw: string): ProjectDraft {
     hydraulicsError:      parsed.hydraulicsError      ?? null,
     pumpResult:           parsed.pumpResult           ?? null,
     clearwellResult:      parsed.clearwellResult      ?? null,
+    waterHammerConfig:    parsed.waterHammerConfig    ?? null,
+    waterHammerResult:    parsed.waterHammerResult    ?? null,
   };
 }
 

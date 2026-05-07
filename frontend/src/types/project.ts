@@ -1,5 +1,5 @@
 import type { UnitSystem } from "../utils/units";
-import type { AccessoryItem, CalculationResponse, ClearWellResponse, PumpComputeResponse } from "../utils/api";
+import type { AccessoryItem, CalculationResponse, ClearWellResponse, PumpComputeResponse, SurgeQuickResponse, SurgeEventType } from "../utils/api";
 
 export interface ProjectMeta {
   name: string;
@@ -78,6 +78,17 @@ export interface PumpCurveConfig {
   staticHeadOverride: number;
 }
 
+/** Persisted form state for the Water Hammer step. */
+export interface WaterHammerConfig {
+  pipeline: "suction" | "discharge";
+  wave_speed_ms: number;
+  V0_override: string;
+  event_type: SurgeEventType;
+  closure_time_s: string;
+  H_operating_override: string;
+  rho_kg_m3: number;
+}
+
 // ---------------------------------------------------------------------------
 // Top-level draft
 // ---------------------------------------------------------------------------
@@ -103,6 +114,10 @@ export interface ProjectDraft {
   pumpResult: PumpComputeResponse | null;
   /** Cached clearwell compute result — used by Engineering Checks for cycling analysis. */
   clearwellResult: ClearWellResponse | null;
+  /** Editable state of Water Hammer step (Step 8). Null until user visits step. */
+  waterHammerConfig: WaterHammerConfig | null;
+  /** Cached water hammer compute result. */
+  waterHammerResult: SurgeQuickResponse | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -194,4 +209,6 @@ export const DEFAULT_DRAFT: ProjectDraft = {
   hydraulicsError: null,
   pumpResult: null,
   clearwellResult: null,
+  waterHammerConfig: null,
+  waterHammerResult: null,
 };

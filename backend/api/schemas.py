@@ -1,6 +1,7 @@
 """
 Pydantic v2 request/response schemas for the ALLL WPS Designer API.
 """
+# (surge schemas appended at end of file)
 
 from __future__ import annotations
 
@@ -1465,3 +1466,93 @@ class LossBreakdownResponse(BaseModel):
     D_mm: float = Field(description="Reference pipe diameter echoed back [mm]")
     unit_system: Literal["SI", "US"] = Field(description="Display unit system echoed from request")
     warnings: List[str] = Field(default_factory=list, description="Advisory warnings")
+
+
+# ---------------------------------------------------------------------------
+# Surge / Water Hammer — Mode A Quick Check
+# ---------------------------------------------------------------------------
+
+
+class SurgeEnvelopePoint(BaseModel):
+    """Pressure envelope at one pipe end."""
+    model_config = ConfigDict(frozen=True)
+
+    location: str = Field(description="Descriptive label for the pipe end")
+    max_head_m: float = Field(description="Maximum transient head at this location [m gauge]")
+    min_head_m: float = Field(description="Minimum transient head at this location [m gauge]")
+    max_pressure_kPa: float = Field(description="Maximum transient pressure [kPa gauge]")
+    min_pressure_kPa: float = Field(description="Minimum transient pressure [kPa gauge]")
+
+
+class SurgeQuickRequest(BaseModel):
+    """Mode A quick-check water-hammer request."""
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    pipeline: Literal["suction", "discharge"] = Field(
+        description="Which pipeline to analyse"
+    )
+    wave_speed_ms: Annotated[float, Field(gt=0, description="Acoustic wave speed a [m/s]")]
+    V0_ms: Annotated[float, Field(ge=0, description="Initial steady-state pipe velocity V₀ [m/s]")]
+    event_type: Literal[
+        "pump_trip",
+        "valve_closure_downstream",
+        "valve_closure_upstream",
+        "check_valve_slam",
+    ] = Field(description="Transient event type")
+    closure_time_s: Optional[float] = Field(
+        default=None,
+        description="Valve/event closure time tc [s] — omit for instantaneous events",
+    )
+    pipe_length_m: Annotated[float, Field(gt=0, description="Pipe length L [m]")]
+    rho_kg_m3: float = Field(
+        default=1000.0,
+        gt=0,
+        description="Fluid density ρ [kg/m³] — default 1000 for potable water at 20 °C",
+    )
+    H_operating_m: float = Field(
+        default=0.0,
+        description="Steady-state operating head at point of interest [m gauge]",
+    )
+    unit_system: Literal["SI", "US"] = Field(
+        default="SI",
+        description="Display unit system (controls display fields only; all inputs in SI)",
+    )
+
+
+class SurgeQuickResponse(BaseModel):
+    """Mode A quick-check water-hammer response."""
+    model_config = ConfigDict(frozen=True)
+
+    pipeline: str
+    event_type: str
+    wave_speed_ms: float
+    V0_ms: float
+    pipe_length_m: float
+    rho_kg_m3: float
+    H_operating_m: float
+
+    delta_V_ms: float = Field(description="Velocity change ΔV [m/s] (= V₀ in Mode A)")
+    delta_H_joukowsky_m: float = Field(description="Full Joukowsky surge ΔH = a·ΔV/g [m]")
+    delta_P_joukowsky_kPa: float = Field(description="Full Joukowsky pressure rise ΔP = ρ·a·ΔV [kPa]")
+
+    T_char_s: float = Field(description="Pipe characteristic time T = 2L/a [s]")
+
+    closure_time_s: Optional[float] = Field(default=None)
+    reduction_factor: float = Field(description="Reduction factor K (1.0 = no reduction)")
+    reduction_method: str = Field(description="Description of the reduction method applied")
+
+    delta_H_m: float = Field(description="Effective surge head ΔH = K × ΔH_Joukowsky [m]")
+    delta_P_kPa: float = Field(description="Effective pressure surge ΔP [kPa]")
+
+    envelope: List[SurgeEnvelopePoint]
+    min_pressure_head_m: float
+    max_pressure_head_m: float
+    min_pressure_kPa: float
+    max_pressure_kPa: float
+
+    cavitation_risk: bool = Field(description="True if min head < vapour pressure head at 20 °C")
+    vacuum_risk: bool = Field(description="True if min head < 0 m gauge (sub-atmospheric)")
+    vapor_pressure_head_m: float = Field(
+        description="Vapour pressure head at 20 °C [m gauge] ≈ −10.1 m"
+    )
+    unit_system: str

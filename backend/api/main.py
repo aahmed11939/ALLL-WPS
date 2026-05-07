@@ -356,26 +356,27 @@ def compute_hydraulics(req: HydraulicComputeRequest) -> HydraulicComputeResponse
     discharge_segs = req.discharge.segments
 
     def _tdh_at_q(Q_i: float) -> float:
+        """
+        Re-evaluate full-system TDH at an arbitrary flow Q_i [m³/s].
+        Called only with validated geometry; errors propagate as-is.
+        """
         hf_i = 0.0
         hm_i = 0.0
         _velocities: list[float] = []
-        try:
-            for seg in suction_segs:
-                if seg.method == "darcy_weisbach":
-                    hf_i += friction_head_loss(Q_i, seg.D_m, seg.L_m, seg.roughness_m) if Q_i > 0 else 0.0
-                else:
-                    hf_i += hazen_williams_head_loss(Q_i, seg.D_m, seg.L_m, seg.C_hw) if Q_i > 0 else 0.0
-                hm_i += minor_head_loss(Q_i, seg.D_m, seg.K_values)
-                _velocities.append(velocity(Q_i, seg.D_m) if Q_i > 0 else 0.0)
-            for seg in discharge_segs:
-                if seg.method == "darcy_weisbach":
-                    hf_i += friction_head_loss(Q_i, seg.D_m, seg.L_m, seg.roughness_m) if Q_i > 0 else 0.0
-                else:
-                    hf_i += hazen_williams_head_loss(Q_i, seg.D_m, seg.L_m, seg.C_hw) if Q_i > 0 else 0.0
-                hm_i += minor_head_loss(Q_i, seg.D_m, seg.K_values)
-                _velocities.append(velocity(Q_i, seg.D_m) if Q_i > 0 else 0.0)
-        except (ValueError, ZeroDivisionError):
-            return h_static + h_dp
+        for seg in suction_segs:
+            if seg.method == "darcy_weisbach":
+                hf_i += friction_head_loss(Q_i, seg.D_m, seg.L_m, seg.roughness_m) if Q_i > 0 else 0.0
+            else:
+                hf_i += hazen_williams_head_loss(Q_i, seg.D_m, seg.L_m, seg.C_hw) if Q_i > 0 else 0.0
+            hm_i += minor_head_loss(Q_i, seg.D_m, seg.K_values)
+            _velocities.append(velocity(Q_i, seg.D_m) if Q_i > 0 else 0.0)
+        for seg in discharge_segs:
+            if seg.method == "darcy_weisbach":
+                hf_i += friction_head_loss(Q_i, seg.D_m, seg.L_m, seg.roughness_m) if Q_i > 0 else 0.0
+            else:
+                hf_i += hazen_williams_head_loss(Q_i, seg.D_m, seg.L_m, seg.C_hw) if Q_i > 0 else 0.0
+            hm_i += minor_head_loss(Q_i, seg.D_m, seg.K_values)
+            _velocities.append(velocity(Q_i, seg.D_m) if Q_i > 0 else 0.0)
         v_i_in = _velocities[0] if _velocities else 0.0
         v_i_out = _velocities[-1] if _velocities else 0.0
         dv_i = (v_i_out ** 2 - v_i_in ** 2) / (2.0 * G)

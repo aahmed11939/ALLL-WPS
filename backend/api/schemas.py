@@ -270,6 +270,13 @@ class HydraulicComputeRequest(BaseModel):
     Q_m3h: Annotated[float, Field(gt=0, description="Design flow rate [m³/h] — SI")]
     suction: AssemblyInput = Field(description="Suction-side pipe assembly")
     discharge: AssemblyInput = Field(description="Discharge-side pipe assembly")
+    unit_system: Literal["SI", "US"] = Field(
+        default="SI",
+        description=(
+            "Display unit system (informational — all inputs must be in SI). "
+            "Reserved for future display-unit conversion on this endpoint."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

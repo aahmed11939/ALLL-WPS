@@ -385,7 +385,6 @@ def generate_warnings(
     if not detention_result["detention_ok"] and detention_result["detention_time_min"] is not None:
         dt = detention_result["detention_time_min"]
         req = detention_result["required_min"]
-        shortfall_vol = (req - dt) * 60.0 * 0.0  # placeholder for Q-based calc
         warnings.append(
             f"Detention time {dt:.1f} min is less than required {req:.1f} min (CT compliance). "
             "Increase clear well diameter/area, raise HWL, or lower LWL."

@@ -1,12 +1,11 @@
-import { useEffect, useState } from "react";
-import { useForm, useFieldArray, Controller, type SubmitHandler } from "react-hook-form";
+import { useState } from "react";
+import { useForm, useFieldArray, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   computeClearWell,
   type ClearWellRequest,
   type ClearWellResponse,
-  type CycleResult,
 } from "../utils/api";
 
 // ---------------------------------------------------------------------------
@@ -62,30 +61,6 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
   );
 }
 
-function CycleResultRow({ cr }: { cr: CycleResult }) {
-  return (
-    <tr className="text-sm font-mono border-t border-slate-100">
-      <td className="py-1.5 pr-3 text-slate-600">{cr.label || `Stage ${cr.stage}`}</td>
-      <td className="py-1.5 pr-3 text-right text-slate-700">{cr.Q_pump_m3h.toFixed(1)}</td>
-      <td className="py-1.5 pr-3 text-right text-slate-700">
-        {cr.cycles_per_hour > 0 ? cr.cycles_per_hour.toFixed(2) : "—"}
-      </td>
-      <td className="py-1.5 pr-3 text-right text-slate-700">{cr.V_req_m3.toFixed(2)}</td>
-      <td className="py-1.5 text-center">
-        {cr.pump_can_drain ? (
-          cr.cycles_ok ? (
-            <span className="inline-block rounded bg-emerald-100 text-emerald-700 text-xs px-2 py-0.5 font-semibold">OK</span>
-          ) : (
-            <span className="inline-block rounded bg-amber-100 text-amber-700 text-xs px-2 py-0.5 font-semibold">UNDER</span>
-          )
-        ) : (
-          <span className="inline-block rounded bg-red-100 text-red-700 text-xs px-2 py-0.5 font-semibold">OVERLOAD</span>
-        )}
-      </td>
-    </tr>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -102,7 +77,6 @@ export default function ClearWellStep() {
     handleSubmit,
     watch,
     control,
-    setValue,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),

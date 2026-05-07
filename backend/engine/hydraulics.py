@@ -8,7 +8,10 @@ Units: SI throughout (m, m³/s, m/s, Pa).
 from __future__ import annotations
 
 import math
-from typing import NamedTuple
+from typing import TYPE_CHECKING, Callable, NamedTuple
+
+if TYPE_CHECKING:
+    pass
 
 # Kinematic viscosity of water at 20 °C [m²/s]
 NU_WATER: float = 1.004e-6
@@ -208,6 +211,57 @@ def tdh(h_s: float, h_f: float, h_m: float) -> float:
 
 
 # ---------------------------------------------------------------------------
+# Hazen-Williams (alternative friction method)
+# ---------------------------------------------------------------------------
+
+
+def hazen_williams_head_loss(
+    Q_m3s: float,
+    D_m: float,
+    L_m: float,
+    C: float,
+) -> float:
+    """
+    Return Hazen-Williams friction head loss h_f [m] in SI units.
+
+    SI form of the Hazen-Williams equation:
+
+        h_f = 10.67 · L · Q^1.852 / (C^1.852 · D^4.87)
+
+    where Q [m³/s], D [m], L [m] and C is the dimensionless H-W coefficient.
+
+    Parameters
+    ----------
+    Q_m3s : float  Volumetric flow rate [m³/s]
+    D_m   : float  Internal pipe diameter [m]
+    L_m   : float  Pipe length [m]
+    C     : float  Hazen-Williams roughness coefficient [-]
+               Typical values: PVC=150, ductile iron=130, concrete=100-120
+
+    Returns
+    -------
+    h_f : float  Friction head loss [m]
+
+    Raises
+    ------
+    ValueError if any dimensional input is non-positive or C <= 0.
+    """
+    if D_m <= 0:
+        raise ValueError(f"Pipe diameter must be > 0, got {D_m}")
+    if L_m <= 0:
+        raise ValueError(f"Pipe length must be > 0, got {L_m}")
+    if C <= 0:
+        raise ValueError(f"Hazen-Williams C must be > 0, got {C}")
+    if Q_m3s < 0:
+        raise ValueError(f"Flow rate must be >= 0, got {Q_m3s}")
+    if Q_m3s == 0.0:
+        return 0.0
+
+    h_f = 10.67 * L_m * (Q_m3s ** 1.852) / ((C ** 1.852) * (D_m ** 4.87))
+    return h_f
+
+
+# ---------------------------------------------------------------------------
 # System curve
 # ---------------------------------------------------------------------------
 
@@ -262,6 +316,46 @@ def system_curve(
         h_f_i = friction_head_loss(Q_i, D_m, L_m, roughness_m, nu) if Q_i > 0 else 0.0
         h_m_i = minor_head_loss(Q_i, D_m, [K_sum]) if (Q_i > 0 and K_sum > 0) else 0.0
         H_i = tdh(h_s, h_f_i, h_m_i)
+        points.append({"Q_m3h": round(Q_i * 3600.0, 4), "H_m": round(H_i, 4)})
+
+    return points
+
+
+def system_curve_extended(
+    Q_design_m3s: float,
+    compute_tdh: "Callable[[float], float]",
+    n_points: int = 10,
+    q_min_factor: float = 0.2,
+    q_max_factor: float = 1.5,
+) -> list[dict]:
+    """
+    Compute an H-Q system curve by calling an arbitrary TDH function.
+
+    Spans [q_min_factor × Q_design, q_max_factor × Q_design] with n_points.
+
+    Parameters
+    ----------
+    Q_design_m3s  : float    Design flow rate [m³/s]
+    compute_tdh   : callable Function (Q_m3s: float) -> TDH [m]
+    n_points      : int      Number of curve points (default 10)
+    q_min_factor  : float    Lower bound as fraction of Q_design (default 0.2)
+    q_max_factor  : float    Upper bound as fraction of Q_design (default 1.5)
+
+    Returns
+    -------
+    list of dict  Each dict has keys 'Q_m3h' and 'H_m'.
+    """
+    if n_points < 2:
+        raise ValueError("n_points must be >= 2")
+
+    Q_min = q_min_factor * Q_design_m3s
+    Q_max = q_max_factor * Q_design_m3s
+    step = (Q_max - Q_min) / (n_points - 1)
+
+    points: list[dict] = []
+    for i in range(n_points):
+        Q_i = Q_min + i * step
+        H_i = compute_tdh(Q_i)
         points.append({"Q_m3h": round(Q_i * 3600.0, 4), "H_m": round(H_i, 4)})
 
     return points

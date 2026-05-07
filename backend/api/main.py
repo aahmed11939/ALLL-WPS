@@ -40,6 +40,7 @@ from backend.api.schemas import (
     SegmentResult,
     SubmersibleExtras,
     SystemCurvePoint,
+    TypeSpecificField,
     VerticalTurbineExtras,
     VolumeCurvePoint,
 )
@@ -668,6 +669,9 @@ def _build_pump_type_info(entry: dict) -> PumpTypeInfo:
         constraints=entry["constraints"],
         potable_notes=entry["potable_notes"],
         extras_schema=entry.get("extras_schema"),
+        type_specific_inputs=[
+            TypeSpecificField(**f) for f in entry.get("type_specific_inputs", [])
+        ],
     )
 
 

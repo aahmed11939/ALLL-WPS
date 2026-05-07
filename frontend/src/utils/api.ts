@@ -189,6 +189,18 @@ export interface HeadFlowRange {
 
 export type PotableTag = "recommended" | "conditional" | "niche";
 
+export interface TypeSpecificField {
+  key: string;
+  label: string;
+  field_type: "string" | "integer" | "float" | "boolean" | "select";
+  required: boolean;
+  unit: string | null;
+  min_value: number | null;
+  max_value: number | null;
+  placeholder: string | null;
+  options: string[] | null;
+}
+
 export interface PumpTypeInfo {
   key: string;
   display_name: string;
@@ -200,6 +212,7 @@ export interface PumpTypeInfo {
   constraints: string[];
   potable_notes: string[];
   extras_schema: string | null;
+  type_specific_inputs: TypeSpecificField[];
 }
 
 export interface PumpTypesResponse {

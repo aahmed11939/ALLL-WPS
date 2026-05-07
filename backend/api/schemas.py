@@ -655,6 +655,44 @@ class HeadFlowRange(BaseModel):
     max: float
 
 
+class TypeSpecificField(BaseModel):
+    """
+    Machine-readable field specification for one type-specific extras parameter.
+
+    Frontend consumers use this to dynamically render the correct input widget
+    for each pump type without hardcoding field logic in the UI.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    key: str = Field(description="Matches the key in the extras dict sent to POST /compute/pump-selection")
+    label: str = Field(description="Human-readable label for the input field")
+    field_type: Literal["string", "integer", "float", "boolean", "select"] = Field(
+        description="Input type: string, integer, float, boolean (checkbox), or select (dropdown)"
+    )
+    required: bool = Field(description="True if the API will return 422 when this field is absent")
+    unit: Optional[str] = Field(
+        default=None,
+        description="Display unit string appended to the input, e.g. 'm', 'kPa', '%' — null if unitless",
+    )
+    min_value: Optional[float] = Field(
+        default=None,
+        description="Inclusive minimum numeric value (null = no constraint)",
+    )
+    max_value: Optional[float] = Field(
+        default=None,
+        description="Inclusive maximum numeric value (null = no constraint)",
+    )
+    placeholder: Optional[str] = Field(
+        default=None,
+        description="Placeholder text for string/number inputs (null = none)",
+    )
+    options: Optional[List[str]] = Field(
+        default=None,
+        description="Allowed values for select fields (null for all other field types)",
+    )
+
+
 class PumpTypeInfo(BaseModel):
     """Full metadata record for one pump type in the catalogue."""
 
@@ -692,6 +730,14 @@ class PumpTypeInfo(BaseModel):
         description=(
             "Name of the type-specific extras schema required for this pump type, "
             "or null if no extras are required."
+        ),
+    )
+    type_specific_inputs: List[TypeSpecificField] = Field(
+        default_factory=list,
+        description=(
+            "Ordered list of field specifications for type-specific extras parameters. "
+            "Empty for pump types that require no extras. "
+            "Consumers use this to render dynamic forms without hardcoding field logic."
         ),
     )
 

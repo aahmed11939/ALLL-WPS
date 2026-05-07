@@ -5,6 +5,7 @@ All 16 pump types are registered here with metadata used for:
 - UI type-picker cards (name, family, potable tag, description, H/Q ranges)
 - Potable-water suitability guidance (tags, compliance notes)
 - Type-specific extras requirements (which fields must accompany each type)
+- type_specific_inputs: machine-readable field specs for dynamic form rendering
 
 Potable suitability tags
 ------------------------
@@ -21,11 +22,210 @@ Type-specific extras schemas
   "booster_set"         — setpoint pressure, pump count
   "pd_pump"             — displacement, max pressure, pulsation dampener
   "fire_pump"           — NFPA 20 compliance flag (optional badge)
+
+type_specific_inputs field spec keys
+--------------------------------------
+  key          — matches the key in the extras dict sent to the API
+  label        — human-readable label for UI rendering
+  field_type   — "string" | "integer" | "float" | "boolean" | "select"
+  required     — True if the API will 422 when the field is absent
+  unit         — optional display unit string, e.g. "m", "kPa", "%" (None if unitless)
+  min_value    — optional numeric minimum (None = no constraint)
+  max_value    — optional numeric maximum (None = no constraint)
+  placeholder  — optional placeholder text for string/number inputs
+  options      — list of allowed string values for select fields (None otherwise)
 """
 
 from __future__ import annotations
 
 from typing import Any
+
+# ---------------------------------------------------------------------------
+# Reusable type_specific_inputs blocks
+# (referenced by multiple entries that share the same extras schema)
+# ---------------------------------------------------------------------------
+
+_NO_EXTRAS: list[dict] = []
+
+_VT_INPUTS: list[dict] = [
+    {
+        "key": "bowl_count",
+        "label": "Bowl Count",
+        "field_type": "integer",
+        "required": True,
+        "unit": None,
+        "min_value": 1.0,
+        "max_value": None,
+        "placeholder": None,
+        "options": None,
+    },
+    {
+        "key": "column_length_m",
+        "label": "Column Length",
+        "field_type": "float",
+        "required": True,
+        "unit": "m",
+        "min_value": 0.1,
+        "max_value": None,
+        "placeholder": None,
+        "options": None,
+    },
+    {
+        "key": "min_submergence_m",
+        "label": "Min. Bowl Submergence",
+        "field_type": "float",
+        "required": True,
+        "unit": "m",
+        "min_value": 0.0,
+        "max_value": None,
+        "placeholder": None,
+        "options": None,
+    },
+    {
+        "key": "bowl_efficiency_pct",
+        "label": "Bowl Efficiency",
+        "field_type": "float",
+        "required": False,
+        "unit": "%",
+        "min_value": 1.0,
+        "max_value": 100.0,
+        "placeholder": "Optional",
+        "options": None,
+    },
+    {
+        "key": "bowl_model",
+        "label": "Bowl Model",
+        "field_type": "string",
+        "required": False,
+        "unit": None,
+        "min_value": None,
+        "max_value": None,
+        "placeholder": "e.g. Flowserve VTP-14",
+        "options": None,
+    },
+]
+
+_SUB_INPUTS: list[dict] = [
+    {
+        "key": "installation_depth_m",
+        "label": "Installation Depth",
+        "field_type": "float",
+        "required": True,
+        "unit": "m",
+        "min_value": 0.1,
+        "max_value": None,
+        "placeholder": None,
+        "options": None,
+    },
+    {
+        "key": "motor_cooling",
+        "label": "Motor Cooling",
+        "field_type": "select",
+        "required": True,
+        "unit": None,
+        "min_value": None,
+        "max_value": None,
+        "placeholder": None,
+        "options": ["fluid_cooled", "shroud", "air", "none"],
+    },
+    {
+        "key": "min_flow_cooling_m3h",
+        "label": "Min. Cooling Flow",
+        "field_type": "float",
+        "required": False,
+        "unit": "m\u00b3/h",
+        "min_value": 0.0,
+        "max_value": None,
+        "placeholder": "From data sheet",
+        "options": None,
+    },
+]
+
+_BOOST_INPUTS: list[dict] = [
+    {
+        "key": "setpoint_pressure_kPa",
+        "label": "Setpoint Pressure",
+        "field_type": "float",
+        "required": True,
+        "unit": "kPa",
+        "min_value": 1.0,
+        "max_value": None,
+        "placeholder": None,
+        "options": None,
+    },
+    {
+        "key": "num_pumps_in_set",
+        "label": "Pumps in Set",
+        "field_type": "integer",
+        "required": True,
+        "unit": None,
+        "min_value": 1.0,
+        "max_value": None,
+        "placeholder": None,
+        "options": None,
+    },
+    {
+        "key": "vfd_equipped",
+        "label": "VFD Equipped",
+        "field_type": "boolean",
+        "required": False,
+        "unit": None,
+        "min_value": None,
+        "max_value": None,
+        "placeholder": None,
+        "options": None,
+    },
+]
+
+_PD_INPUTS: list[dict] = [
+    {
+        "key": "displacement_L_per_rev",
+        "label": "Displacement",
+        "field_type": "float",
+        "required": True,
+        "unit": "L/rev",
+        "min_value": 0.001,
+        "max_value": None,
+        "placeholder": None,
+        "options": None,
+    },
+    {
+        "key": "max_pressure_kPa",
+        "label": "Max Rated Pressure",
+        "field_type": "float",
+        "required": True,
+        "unit": "kPa",
+        "min_value": 1.0,
+        "max_value": None,
+        "placeholder": None,
+        "options": None,
+    },
+    {
+        "key": "pulsation_dampener",
+        "label": "Pulsation Dampener",
+        "field_type": "boolean",
+        "required": False,
+        "unit": None,
+        "min_value": None,
+        "max_value": None,
+        "placeholder": None,
+        "options": None,
+    },
+]
+
+_FP_INPUTS: list[dict] = [
+    {
+        "key": "nfpa20_compliance",
+        "label": "NFPA 20 Listed",
+        "field_type": "boolean",
+        "required": False,
+        "unit": None,
+        "min_value": None,
+        "max_value": None,
+        "placeholder": None,
+        "options": None,
+    },
+]
 
 # ---------------------------------------------------------------------------
 # Catalogue definition
@@ -58,6 +258,7 @@ PUMP_TYPE_CATALOGUE: dict[str, dict[str, Any]] = {
             "Refer to AWWA C750 / AWWA Centrifugal Pump Standard for hydraulic acceptance testing.",
         ],
         "extras_schema": None,
+        "type_specific_inputs": _NO_EXTRAS,
     },
 
     "split_case": {
@@ -81,6 +282,7 @@ PUMP_TYPE_CATALOGUE: dict[str, dict[str, Any]] = {
             "Suitable for high-service pump stations and transmission mains.",
         ],
         "extras_schema": None,
+        "type_specific_inputs": _NO_EXTRAS,
     },
 
     "multistage_centrifugal": {
@@ -104,6 +306,7 @@ PUMP_TYPE_CATALOGUE: dict[str, dict[str, Any]] = {
             "Suitable for high-pressure zones and pressure-boosting stations.",
         ],
         "extras_schema": None,
+        "type_specific_inputs": _NO_EXTRAS,
     },
 
     "self_priming": {
@@ -128,6 +331,7 @@ PUMP_TYPE_CATALOGUE: dict[str, dict[str, Any]] = {
             "Less common for primary service; often used as emergency or portable supply.",
         ],
         "extras_schema": None,
+        "type_specific_inputs": _NO_EXTRAS,
     },
 
     "canned_motor": {
@@ -152,6 +356,7 @@ PUMP_TYPE_CATALOGUE: dict[str, dict[str, Any]] = {
             "Suitable for chemical dosing or low-flow high-pressure potable applications.",
         ],
         "extras_schema": None,
+        "type_specific_inputs": _NO_EXTRAS,
     },
 
     "jet_pump": {
@@ -176,6 +381,7 @@ PUMP_TYPE_CATALOGUE: dict[str, dict[str, Any]] = {
             "Confirm with authority having jurisdiction (AHJ) — often not accepted for public water supply.",
         ],
         "extras_schema": None,
+        "type_specific_inputs": _NO_EXTRAS,
     },
 
     # ------------------------------------------------------------------
@@ -204,6 +410,7 @@ PUMP_TYPE_CATALOGUE: dict[str, dict[str, Any]] = {
             "AWWA Standard E101 covers electric motors for vertical turbine pumps.",
         ],
         "extras_schema": "vertical_turbine",
+        "type_specific_inputs": _VT_INPUTS,
     },
 
     # ------------------------------------------------------------------
@@ -230,6 +437,7 @@ PUMP_TYPE_CATALOGUE: dict[str, dict[str, Any]] = {
             "Preferred for pressure zone boosting; manufacturer pre-certification simplifies AHJ approval.",
         ],
         "extras_schema": "booster_set",
+        "type_specific_inputs": _BOOST_INPUTS,
     },
 
     # ------------------------------------------------------------------
@@ -259,6 +467,7 @@ PUMP_TYPE_CATALOGUE: dict[str, dict[str, Any]] = {
             "Verify installation depth provides required motor cooling velocity past motor can.",
         ],
         "extras_schema": "submersible",
+        "type_specific_inputs": _SUB_INPUTS,
     },
 
     # ------------------------------------------------------------------
@@ -286,6 +495,7 @@ PUMP_TYPE_CATALOGUE: dict[str, dict[str, Any]] = {
             "Verify with AHJ — some jurisdictions restrict open-impeller pumps in treated water systems.",
         ],
         "extras_schema": None,
+        "type_specific_inputs": _NO_EXTRAS,
     },
 
     # ------------------------------------------------------------------
@@ -313,6 +523,7 @@ PUMP_TYPE_CATALOGUE: dict[str, dict[str, Any]] = {
             "Confirm with AHJ; may require third-party material certification.",
         ],
         "extras_schema": "pd_pump",
+        "type_specific_inputs": _PD_INPUTS,
     },
 
     "pd_gear": {
@@ -337,6 +548,7 @@ PUMP_TYPE_CATALOGUE: dict[str, dict[str, Any]] = {
             "NSF/ANSI 61 compliance for all wetted components required.",
         ],
         "extras_schema": "pd_pump",
+        "type_specific_inputs": _PD_INPUTS,
     },
 
     "pd_progressive_cavity": {
@@ -361,6 +573,7 @@ PUMP_TYPE_CATALOGUE: dict[str, dict[str, Any]] = {
             "Verify with AHJ for potable water duty approval.",
         ],
         "extras_schema": "pd_pump",
+        "type_specific_inputs": _PD_INPUTS,
     },
 
     "pd_diaphragm": {
@@ -385,6 +598,7 @@ PUMP_TYPE_CATALOGUE: dict[str, dict[str, Any]] = {
             "Pulsation dampener mandatory per most authority guidelines for dosing pumps.",
         ],
         "extras_schema": "pd_pump",
+        "type_specific_inputs": _PD_INPUTS,
     },
 
     "pd_peristaltic": {
@@ -409,6 +623,7 @@ PUMP_TYPE_CATALOGUE: dict[str, dict[str, Any]] = {
             "Not typically used as a primary supply pump; suited to dosing and sampling duties.",
         ],
         "extras_schema": "pd_pump",
+        "type_specific_inputs": _PD_INPUTS,
     },
 
     # ------------------------------------------------------------------
@@ -436,6 +651,7 @@ PUMP_TYPE_CATALOGUE: dict[str, dict[str, Any]] = {
             "Coordinate with AHJ and fire marshal; cross-connection control is mandatory.",
         ],
         "extras_schema": "fire_pump",
+        "type_specific_inputs": _FP_INPUTS,
     },
 }
 

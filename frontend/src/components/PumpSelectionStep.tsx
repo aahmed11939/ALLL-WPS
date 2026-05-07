@@ -1,11 +1,9 @@
-import { useState, useEffect } from "react";
-import { useForm, type SubmitHandler } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import { useState, useEffect, useCallback } from "react";
 import {
   fetchPumpTypes,
   computePumpSelection,
   type PumpTypeInfo,
+  type TypeSpecificField,
   type PumpSelectionRequest,
   type PumpSelectionResponse,
 } from "../utils/api";
@@ -18,39 +16,6 @@ type StepState = "active" | "bypassed" | "disabled";
 type ControlMode = "constant_speed" | "vfd";
 
 // ---------------------------------------------------------------------------
-// Zod schema
-// ---------------------------------------------------------------------------
-
-const formSchema = z.object({
-  pump_type_key: z.string().min(1, "Select a pump type"),
-  control_mode: z.enum(["constant_speed", "vfd"]),
-  n_duty: z.number().int().min(1, "At least 1 duty pump"),
-  n_standby: z.number().int().min(0),
-  // Vertical turbine extras
-  vt_bowl_model: z.string().optional(),
-  vt_bowl_count: z.number().int().min(1).optional(),
-  vt_column_length_m: z.number().positive().optional(),
-  vt_min_submergence_m: z.number().min(0).optional(),
-  vt_bowl_efficiency_pct: z.number().min(1).max(100).optional(),
-  // Submersible extras
-  sub_installation_depth_m: z.number().positive().optional(),
-  sub_motor_cooling: z.enum(["fluid_cooled", "shroud", "air", "none"]).optional(),
-  sub_min_flow_cooling_m3h: z.number().positive().optional(),
-  // Booster extras
-  boost_setpoint_pressure_kPa: z.number().positive().optional(),
-  boost_num_pumps_in_set: z.number().int().min(1).optional(),
-  boost_vfd_equipped: z.boolean().optional(),
-  // PD pump extras
-  pd_displacement_L_per_rev: z.number().positive().optional(),
-  pd_max_pressure_kPa: z.number().positive().optional(),
-  pd_pulsation_dampener: z.boolean().optional(),
-  // Fire pump extras
-  fp_nfpa20_compliance: z.boolean().optional(),
-});
-
-type FormValues = z.infer<typeof formSchema>;
-
-// ---------------------------------------------------------------------------
 // Styling constants
 // ---------------------------------------------------------------------------
 
@@ -58,7 +23,6 @@ const inputCls =
   "w-full rounded border border-slate-300 bg-white px-3 py-1.5 text-sm font-mono text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600";
 const labelCls =
   "block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1";
-const errCls = "mt-0.5 text-xs text-red-600";
 
 const POTABLE_TAG_STYLES: Record<string, string> = {
   recommended: "bg-emerald-100 text-emerald-800 border-emerald-300",
@@ -72,21 +36,32 @@ const POTABLE_TAG_LABELS: Record<string, string> = {
   niche: "Niche",
 };
 
+const FAMILY_DISPLAY_LABELS: Record<string, string> = {
+  centrifugal: "Centrifugal",
+  vertical_turbine: "Vertical Turbine",
+  booster: "Inline Booster / Booster Set",
+  submersible: "Submersible",
+  axial_flow: "Axial Flow / Mixed Flow",
+  positive_displacement: "Positive Displacement",
+  fire_pump: "Fire Pump",
+};
+
+// Preferred family display order
+const FAMILY_ORDER = [
+  "centrifugal",
+  "vertical_turbine",
+  "booster",
+  "submersible",
+  "axial_flow",
+  "positive_displacement",
+  "fire_pump",
+];
+
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200 pb-1 mb-3">
       {children}
     </p>
-  );
-}
-
-function FieldRow({ label, children, error }: { label: string; children: React.ReactNode; error?: string }) {
-  return (
-    <div>
-      <label className={labelCls}>{label}</label>
-      {children}
-      {error && <p className={errCls}>{error}</p>}
-    </div>
   );
 }
 
@@ -141,154 +116,236 @@ function TypeCard({
 }
 
 // ---------------------------------------------------------------------------
-// Extras form sections (rendered conditionally)
+// Dynamic extras form — fully driven by type_specific_inputs from the API
 // ---------------------------------------------------------------------------
 
-function VerticalTurbineForm({
-  register,
-  errors,
-}: {
-  register: ReturnType<typeof useForm<FormValues>>["register"];
-  errors: ReturnType<typeof useForm<FormValues>>["formState"]["errors"];
-}) {
-  return (
-    <div className="grid grid-cols-2 gap-3">
-      <FieldRow label="Bowl Count" error={errors.vt_bowl_count?.message}>
-        <input
-          {...register("vt_bowl_count", { valueAsNumber: true })}
-          type="number" step="1" min="1" className={inputCls}
-        />
-      </FieldRow>
-      <FieldRow label="Column Length (m)" error={errors.vt_column_length_m?.message}>
-        <div className="relative">
-          <input {...register("vt_column_length_m", { valueAsNumber: true })} type="number" step="0.5" min="0.1" className={inputCls} />
-          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">m</span>
-        </div>
-      </FieldRow>
-      <FieldRow label="Min. Bowl Submergence (m)" error={errors.vt_min_submergence_m?.message}>
-        <div className="relative">
-          <input {...register("vt_min_submergence_m", { valueAsNumber: true })} type="number" step="0.1" min="0" className={inputCls} />
-          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">m</span>
-        </div>
-      </FieldRow>
-      <FieldRow label="Bowl Efficiency (%) — optional" error={errors.vt_bowl_efficiency_pct?.message}>
-        <div className="relative">
-          <input {...register("vt_bowl_efficiency_pct", { valueAsNumber: true })} type="number" step="0.5" min="1" max="100" placeholder="—" className={inputCls} />
-          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">%</span>
-        </div>
-      </FieldRow>
-      <div className="col-span-2">
-        <FieldRow label="Bowl Model — optional" error={undefined}>
-          <input {...register("vt_bowl_model")} type="text" placeholder="e.g. Flowserve VTP-14" className={inputCls} />
-        </FieldRow>
-      </div>
-    </div>
-  );
-}
+type ExtrasValues = Record<string, string | number | boolean>;
 
-function SubmersibleForm({
-  register,
-  errors,
+function DynamicExtrasForm({
+  fields,
+  values,
+  onChange,
 }: {
-  register: ReturnType<typeof useForm<FormValues>>["register"];
-  errors: ReturnType<typeof useForm<FormValues>>["formState"]["errors"];
+  fields: TypeSpecificField[];
+  values: ExtrasValues;
+  onChange: (key: string, value: string | number | boolean) => void;
 }) {
+  if (fields.length === 0) return null;
+
   return (
     <div className="grid grid-cols-2 gap-3">
-      <FieldRow label="Installation Depth (m)" error={errors.sub_installation_depth_m?.message}>
-        <div className="relative">
-          <input {...register("sub_installation_depth_m", { valueAsNumber: true })} type="number" step="0.5" min="0.1" className={inputCls} />
-          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">m</span>
-        </div>
-      </FieldRow>
-      <FieldRow label="Motor Cooling" error={undefined}>
-        <select {...register("sub_motor_cooling")} className={inputCls}>
-          <option value="fluid_cooled">Fluid-cooled (through-flow)</option>
-          <option value="shroud">Cooling shroud</option>
-          <option value="air">Air-cooled (dry-pit)</option>
-          <option value="none">None</option>
-        </select>
-      </FieldRow>
-      <div className="col-span-2">
-        <FieldRow label="Min. Cooling Flow (m³/h) — optional" error={errors.sub_min_flow_cooling_m3h?.message}>
-          <div className="relative">
-            <input {...register("sub_min_flow_cooling_m3h", { valueAsNumber: true })} type="number" step="0.5" min="0" placeholder="From data sheet" className={inputCls} />
-            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">m³/h</span>
+      {fields.map((f) => {
+        const currentValue = values[f.key] ?? "";
+
+        if (f.field_type === "boolean") {
+          return (
+            <div key={f.key} className="col-span-2 flex items-center gap-2">
+              <input
+                type="checkbox"
+                id={`extras-${f.key}`}
+                checked={Boolean(currentValue)}
+                onChange={(e) => onChange(f.key, e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+              />
+              <label
+                htmlFor={`extras-${f.key}`}
+                className="text-sm text-slate-700"
+              >
+                {f.label}
+                {!f.required && (
+                  <span className="ml-1 text-xs text-slate-400">(optional)</span>
+                )}
+              </label>
+            </div>
+          );
+        }
+
+        if (f.field_type === "select" && f.options) {
+          const optionLabels: Record<string, string> = {
+            fluid_cooled: "Fluid-cooled (through-flow)",
+            shroud: "Cooling shroud",
+            air: "Air-cooled (dry-pit)",
+            none: "None",
+          };
+          return (
+            <div
+              key={f.key}
+              className={f.field_type === "select" ? "" : ""}
+            >
+              <label className={labelCls}>
+                {f.label}
+                {f.required && <span className="ml-1 text-red-500">*</span>}
+              </label>
+              <select
+                value={String(currentValue)}
+                onChange={(e) => onChange(f.key, e.target.value)}
+                className={inputCls}
+              >
+                {f.options.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {optionLabels[opt] ?? opt}
+                  </option>
+                ))}
+              </select>
+            </div>
+          );
+        }
+
+        // string, integer, float
+        const inputType =
+          f.field_type === "string" ? "text" : "number";
+        const step =
+          f.field_type === "integer"
+            ? "1"
+            : f.field_type === "float"
+            ? "any"
+            : undefined;
+
+        return (
+          <div key={f.key}>
+            <label className={labelCls}>
+              {f.label}
+              {f.unit && (
+                <span className="ml-1 text-slate-400 normal-case">({f.unit})</span>
+              )}
+              {f.required && <span className="ml-1 text-red-500">*</span>}
+              {!f.required && (
+                <span className="ml-1 text-slate-400 normal-case font-normal">— optional</span>
+              )}
+            </label>
+            <div className="relative">
+              <input
+                type={inputType}
+                step={step}
+                min={f.min_value ?? undefined}
+                max={f.max_value ?? undefined}
+                placeholder={f.placeholder ?? ""}
+                value={String(currentValue)}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (f.field_type === "integer") {
+                    const n = parseInt(raw, 10);
+                    onChange(f.key, isNaN(n) ? "" : n);
+                  } else if (f.field_type === "float") {
+                    const n = parseFloat(raw);
+                    onChange(f.key, isNaN(n) ? "" : n);
+                  } else {
+                    onChange(f.key, raw);
+                  }
+                }}
+                className={inputCls + (f.unit ? " pr-12" : "")}
+              />
+              {f.unit && (
+                <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">
+                  {f.unit}
+                </span>
+              )}
+            </div>
           </div>
-        </FieldRow>
-      </div>
+        );
+      })}
     </div>
   );
 }
 
-function BoosterForm({
-  register,
-  errors,
+// ---------------------------------------------------------------------------
+// Grouped type picker
+// ---------------------------------------------------------------------------
+
+function GroupedTypePicker({
+  pumpTypes,
+  selectedKey,
+  onSelect,
 }: {
-  register: ReturnType<typeof useForm<FormValues>>["register"];
-  errors: ReturnType<typeof useForm<FormValues>>["formState"]["errors"];
+  pumpTypes: PumpTypeInfo[];
+  selectedKey: string | null;
+  onSelect: (pt: PumpTypeInfo) => void;
 }) {
+  // Build family → types map in the preferred order
+  const grouped: { family: string; types: PumpTypeInfo[] }[] = [];
+  const familyMap = new Map<string, PumpTypeInfo[]>();
+  for (const pt of pumpTypes) {
+    if (!familyMap.has(pt.family)) familyMap.set(pt.family, []);
+    familyMap.get(pt.family)!.push(pt);
+  }
+  for (const family of FAMILY_ORDER) {
+    const types = familyMap.get(family);
+    if (types && types.length > 0) {
+      grouped.push({ family, types });
+    }
+  }
+  // Any families not in the preferred order go at the end
+  for (const [family, types] of familyMap.entries()) {
+    if (!FAMILY_ORDER.includes(family)) {
+      grouped.push({ family, types });
+    }
+  }
+
   return (
-    <div className="grid grid-cols-2 gap-3">
-      <FieldRow label="Setpoint Pressure (kPa)" error={errors.boost_setpoint_pressure_kPa?.message}>
-        <div className="relative">
-          <input {...register("boost_setpoint_pressure_kPa", { valueAsNumber: true })} type="number" step="10" min="1" className={inputCls} />
-          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">kPa</span>
+    <div className="space-y-5">
+      {grouped.map(({ family, types }) => (
+        <div key={family}>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+              {FAMILY_DISPLAY_LABELS[family] ?? family}
+            </span>
+            <span className="text-[10px] text-slate-400 font-mono">
+              {types.length} {types.length === 1 ? "type" : "types"}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {types.map((pt) => (
+              <TypeCard
+                key={pt.key}
+                pt={pt}
+                selected={selectedKey === pt.key}
+                onSelect={() => onSelect(pt)}
+              />
+            ))}
+          </div>
         </div>
-      </FieldRow>
-      <FieldRow label="Pumps in Set" error={errors.boost_num_pumps_in_set?.message}>
-        <input {...register("boost_num_pumps_in_set", { valueAsNumber: true })} type="number" step="1" min="1" className={inputCls} />
-      </FieldRow>
-      <div className="col-span-2 flex items-center gap-2">
-        <input {...register("boost_vfd_equipped")} type="checkbox" id="boost_vfd" className="h-4 w-4 rounded border-slate-300 text-teal-600" />
-        <label htmlFor="boost_vfd" className="text-sm text-slate-700">VFD-equipped booster set</label>
-      </div>
+      ))}
     </div>
   );
 }
 
-function PDPumpForm({
-  register,
-  errors,
-}: {
-  register: ReturnType<typeof useForm<FormValues>>["register"];
-  errors: ReturnType<typeof useForm<FormValues>>["formState"]["errors"];
-}) {
-  return (
-    <div className="grid grid-cols-2 gap-3">
-      <FieldRow label="Displacement (L/rev)" error={errors.pd_displacement_L_per_rev?.message}>
-        <div className="relative">
-          <input {...register("pd_displacement_L_per_rev", { valueAsNumber: true })} type="number" step="0.1" min="0.001" className={inputCls} />
-          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">L/rev</span>
-        </div>
-      </FieldRow>
-      <FieldRow label="Max Rated Pressure (kPa)" error={errors.pd_max_pressure_kPa?.message}>
-        <div className="relative">
-          <input {...register("pd_max_pressure_kPa", { valueAsNumber: true })} type="number" step="50" min="1" className={inputCls} />
-          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">kPa</span>
-        </div>
-      </FieldRow>
-      <div className="col-span-2 flex items-center gap-2">
-        <input {...register("pd_pulsation_dampener")} type="checkbox" id="pd_dampener" className="h-4 w-4 rounded border-slate-300 text-teal-600" />
-        <label htmlFor="pd_dampener" className="text-sm text-slate-700">Pulsation dampener specified on discharge</label>
-      </div>
-    </div>
-  );
-}
+// ---------------------------------------------------------------------------
+// Default extras values per extras_schema
+// ---------------------------------------------------------------------------
 
-function FirePumpForm({
-  register,
-}: {
-  register: ReturnType<typeof useForm<FormValues>>["register"];
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <input {...register("fp_nfpa20_compliance")} type="checkbox" id="fp_nfpa20" className="h-4 w-4 rounded border-slate-300 text-teal-600" />
-      <label htmlFor="fp_nfpa20" className="text-sm text-slate-700 font-medium">
-        Pump is listed and labeled per NFPA 20
-      </label>
-    </div>
-  );
+function defaultExtrasForSchema(schema: string | null): ExtrasValues {
+  switch (schema) {
+    case "vertical_turbine":
+      return {
+        bowl_count: 4,
+        column_length_m: 10.0,
+        min_submergence_m: 1.0,
+        bowl_efficiency_pct: "",
+        bowl_model: "",
+      };
+    case "submersible":
+      return {
+        installation_depth_m: 5.0,
+        motor_cooling: "fluid_cooled",
+        min_flow_cooling_m3h: "",
+      };
+    case "booster_set":
+      return {
+        setpoint_pressure_kPa: 500.0,
+        num_pumps_in_set: 2,
+        vfd_equipped: true,
+      };
+    case "pd_pump":
+      return {
+        displacement_L_per_rev: 1.0,
+        max_pressure_kPa: 700.0,
+        pulsation_dampener: false,
+      };
+    case "fire_pump":
+      return { nfpa20_compliance: false };
+    default:
+      return {};
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -300,41 +357,15 @@ export default function PumpSelectionStep() {
   const [pumpTypes, setPumpTypes] = useState<PumpTypeInfo[]>([]);
   const [loadingTypes, setLoadingTypes] = useState(true);
   const [selectedType, setSelectedType] = useState<PumpTypeInfo | null>(null);
+  const [controlMode, setControlMode] = useState<ControlMode>("constant_speed");
+  const [nDuty, setNDuty] = useState(1);
+  const [nStandby, setNStandby] = useState(1);
+  const [extrasValues, setExtrasValues] = useState<ExtrasValues>({});
   const [result, setResult] = useState<PumpSelectionResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [showInfo, setShowInfo] = useState(false);
-  const [familyFilter, setFamilyFilter] = useState<string>("all");
-
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    watch,
-    formState: { errors },
-  } = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      pump_type_key: "",
-      control_mode: "constant_speed",
-      n_duty: 1,
-      n_standby: 1,
-      vt_bowl_count: 4,
-      vt_column_length_m: 10.0,
-      vt_min_submergence_m: 1.0,
-      sub_installation_depth_m: 5.0,
-      sub_motor_cooling: "fluid_cooled",
-      boost_setpoint_pressure_kPa: 500.0,
-      boost_num_pumps_in_set: 2,
-      boost_vfd_equipped: true,
-      pd_displacement_L_per_rev: 1.0,
-      pd_max_pressure_kPa: 700.0,
-      pd_pulsation_dampener: false,
-      fp_nfpa20_compliance: false,
-    },
-  });
-
-  const watchControlMode = watch("control_mode") as ControlMode;
+  const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchPumpTypes()
@@ -343,69 +374,65 @@ export default function PumpSelectionStep() {
       .finally(() => setLoadingTypes(false));
   }, []);
 
-  const families = ["all", ...Array.from(new Set(pumpTypes.map((p) => p.family))).sort()];
-
-  const filteredTypes =
-    familyFilter === "all"
-      ? pumpTypes
-      : pumpTypes.filter((p) => p.family === familyFilter);
-
-  const handleSelectType = (pt: PumpTypeInfo) => {
+  const handleSelectType = useCallback((pt: PumpTypeInfo) => {
     setSelectedType(pt);
-    setValue("pump_type_key", pt.key);
+    setExtrasValues(defaultExtrasForSchema(pt.extras_schema));
     setResult(null);
     setApiError(null);
-  };
+    setFormError(null);
+  }, []);
 
-  const buildExtras = (values: FormValues, extrasSchema: string | null) => {
-    if (!extrasSchema) return undefined;
-    switch (extrasSchema) {
-      case "vertical_turbine":
-        return {
-          bowl_model: values.vt_bowl_model || undefined,
-          bowl_count: values.vt_bowl_count ?? 1,
-          column_length_m: values.vt_column_length_m ?? 10,
-          min_submergence_m: values.vt_min_submergence_m ?? 1,
-          bowl_efficiency_pct: values.vt_bowl_efficiency_pct || undefined,
-        };
-      case "submersible":
-        return {
-          installation_depth_m: values.sub_installation_depth_m ?? 5,
-          motor_cooling: values.sub_motor_cooling ?? "fluid_cooled",
-          min_flow_cooling_m3h: values.sub_min_flow_cooling_m3h || undefined,
-        };
-      case "booster_set":
-        return {
-          setpoint_pressure_kPa: values.boost_setpoint_pressure_kPa ?? 500,
-          num_pumps_in_set: values.boost_num_pumps_in_set ?? 2,
-          vfd_equipped: values.boost_vfd_equipped ?? false,
-        };
-      case "pd_pump":
-        return {
-          displacement_L_per_rev: values.pd_displacement_L_per_rev ?? 1,
-          max_pressure_kPa: values.pd_max_pressure_kPa ?? 700,
-          pulsation_dampener: values.pd_pulsation_dampener ?? false,
-        };
-      case "fire_pump":
-        return {
-          nfpa20_compliance: values.fp_nfpa20_compliance ?? false,
-        };
-      default:
-        return undefined;
+  const handleExtrasChange = useCallback(
+    (key: string, value: string | number | boolean) => {
+      setExtrasValues((prev) => ({ ...prev, [key]: value }));
+    },
+    []
+  );
+
+  const buildExtrasPayload = (): Record<string, unknown> | null => {
+    if (!selectedType?.extras_schema) return null;
+    const payload: Record<string, unknown> = {};
+    for (const field of selectedType.type_specific_inputs) {
+      const raw = extrasValues[field.key];
+      if (raw === "" || raw === undefined) {
+        if (field.required) return null; // missing required field
+        continue; // optional — omit
+      }
+      payload[field.key] = raw;
     }
+    return payload;
   };
 
-  const submit: SubmitHandler<FormValues> = async (values) => {
-    setLoading(true);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
     setApiError(null);
+
+    if (!selectedType) {
+      setFormError("Please select a pump type before confirming.");
+      return;
+    }
+
+    // Validate required extras
+    if (selectedType.extras_schema) {
+      const missing = selectedType.type_specific_inputs
+        .filter((f) => f.required && (extrasValues[f.key] === "" || extrasValues[f.key] === undefined))
+        .map((f) => f.label);
+      if (missing.length > 0) {
+        setFormError(`Required fields missing: ${missing.join(", ")}`);
+        return;
+      }
+    }
+
+    setLoading(true);
     try {
-      const extras = buildExtras(values, selectedType?.extras_schema ?? null);
+      const extras = buildExtrasPayload();
       const req: PumpSelectionRequest = {
         active: true,
-        pump_type_key: values.pump_type_key,
-        control_mode: values.control_mode,
-        n_duty: values.n_duty,
-        n_standby: values.n_standby,
+        pump_type_key: selectedType.key,
+        control_mode: controlMode,
+        n_duty: nDuty,
+        n_standby: nStandby,
         extras: extras ?? null,
       };
       const data = await computePumpSelection(req);
@@ -419,17 +446,6 @@ export default function PumpSelectionStep() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const FAMILY_LABELS: Record<string, string> = {
-    all: "All Families",
-    centrifugal: "Centrifugal",
-    vertical_turbine: "Vertical Turbine",
-    booster: "Booster",
-    submersible: "Submersible",
-    axial_flow: "Axial / Mixed Flow",
-    positive_displacement: "Positive Displacement",
-    fire_pump: "Fire Pump",
   };
 
   return (
@@ -502,48 +518,24 @@ export default function PumpSelectionStep() {
       {/* ---- Active: form + results ---- */}
       {stepState === "active" && (
         <div className="p-5 space-y-6">
-          <form onSubmit={handleSubmit(submit)} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
 
-            {/* ---- Type-picker ---- */}
+            {/* ---- Grouped type picker ---- */}
             <div>
-              <SectionHeader>Select Pump Type</SectionHeader>
-
-              {/* Family filter tabs */}
-              <div className="flex flex-wrap gap-1.5 mb-3">
-                {families.map((fam) => (
-                  <button
-                    key={fam}
-                    type="button"
-                    onClick={() => setFamilyFilter(fam)}
-                    className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                      familyFilter === fam
-                        ? "bg-teal-700 text-white"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
-                  >
-                    {FAMILY_LABELS[fam] ?? fam}
-                  </button>
-                ))}
-              </div>
-
+              <SectionHeader>Select Pump Type (grouped by family)</SectionHeader>
               {loadingTypes ? (
                 <div className="py-8 text-center text-sm text-slate-400">
                   Loading pump catalogue…
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {filteredTypes.map((pt) => (
-                    <TypeCard
-                      key={pt.key}
-                      pt={pt}
-                      selected={selectedType?.key === pt.key}
-                      onSelect={() => handleSelectType(pt)}
-                    />
-                  ))}
-                </div>
+                <GroupedTypePicker
+                  pumpTypes={pumpTypes}
+                  selectedKey={selectedType?.key ?? null}
+                  onSelect={handleSelectType}
+                />
               )}
-              {errors.pump_type_key && (
-                <p className={errCls}>{errors.pump_type_key.message}</p>
+              {formError && !selectedType && (
+                <p className="mt-2 text-xs text-red-600">{formError}</p>
               )}
             </div>
 
@@ -551,55 +543,66 @@ export default function PumpSelectionStep() {
             <div>
               <SectionHeader>Configuration</SectionHeader>
               <div className="grid grid-cols-3 gap-3">
-                <FieldRow label="Duty Pumps" error={errors.n_duty?.message}>
-                  <input {...register("n_duty", { valueAsNumber: true })} type="number" step="1" min="1" className={inputCls} />
-                </FieldRow>
-                <FieldRow label="Standby Pumps" error={errors.n_standby?.message}>
-                  <input {...register("n_standby", { valueAsNumber: true })} type="number" step="1" min="0" className={inputCls} />
-                </FieldRow>
-                <FieldRow label="Speed Control" error={undefined}>
-                  <select {...register("control_mode")} className={inputCls}>
+                <div>
+                  <label className={labelCls}>Duty Pumps</label>
+                  <input
+                    type="number"
+                    step="1"
+                    min="1"
+                    value={nDuty}
+                    onChange={(e) => setNDuty(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Standby Pumps</label>
+                  <input
+                    type="number"
+                    step="1"
+                    min="0"
+                    value={nStandby}
+                    onChange={(e) => setNStandby(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Speed Control</label>
+                  <select
+                    value={controlMode}
+                    onChange={(e) => setControlMode(e.target.value as ControlMode)}
+                    className={inputCls}
+                  >
                     <option value="constant_speed">Constant speed (DOL/soft-start)</option>
                     <option value="vfd">Variable frequency drive (VFD)</option>
                   </select>
-                </FieldRow>
+                </div>
               </div>
-              {watchControlMode === "constant_speed" && (
+              {controlMode === "constant_speed" && (
                 <p className="mt-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5">
                   Constant-speed pumps cycle between on/off — verify operating volume in the Clear Well step to limit starts per hour.
                 </p>
               )}
             </div>
 
-            {/* ---- Type-specific extras ---- */}
-            {selectedType?.extras_schema && (
+            {/* ---- Dynamic type-specific extras ---- */}
+            {selectedType && selectedType.type_specific_inputs.length > 0 && (
               <div>
                 <SectionHeader>
                   {selectedType.display_name} — Additional Parameters
                 </SectionHeader>
-                {selectedType.extras_schema === "vertical_turbine" && (
-                  <VerticalTurbineForm register={register} errors={errors} />
-                )}
-                {selectedType.extras_schema === "submersible" && (
-                  <SubmersibleForm register={register} errors={errors} />
-                )}
-                {selectedType.extras_schema === "booster_set" && (
-                  <BoosterForm register={register} errors={errors} />
-                )}
-                {selectedType.extras_schema === "pd_pump" && (
-                  <PDPumpForm register={register} errors={errors} />
-                )}
-                {selectedType.extras_schema === "fire_pump" && (
-                  <FirePumpForm register={register} />
-                )}
+                <DynamicExtrasForm
+                  fields={selectedType.type_specific_inputs}
+                  values={extrasValues}
+                  onChange={handleExtrasChange}
+                />
               </div>
             )}
 
-            {/* ---- Constraints panel (auto-show when type selected) ---- */}
+            {/* ---- Engineering constraints panel ---- */}
             {selectedType && (
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Engineering Constraints
+                  Engineering Constraints — {selectedType.display_name}
                 </p>
                 <ul className="space-y-1">
                   {selectedType.constraints.map((c, i) => (
@@ -610,6 +613,10 @@ export default function PumpSelectionStep() {
                   ))}
                 </ul>
               </div>
+            )}
+
+            {formError && selectedType && (
+              <p className="text-xs text-red-600">{formError}</p>
             )}
 
             <button

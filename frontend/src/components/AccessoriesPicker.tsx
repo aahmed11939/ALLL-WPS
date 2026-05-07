@@ -47,6 +47,7 @@ export default function AccessoriesPicker({ segment, onChange }: Props) {
   const [loadError, setLoadError]           = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>("check_valve");
   const [selected, setSelected]             = useState<Record<string, PickerItem>>({});
+  const [searchQuery, setSearchQuery]       = useState<string>("");
 
   useEffect(() => {
     fetchAccessoriesLibrary()
@@ -142,6 +143,18 @@ export default function AccessoriesPicker({ segment, onChange }: Props) {
   };
 
   const safeLibrary = Array.isArray(library) ? library : [];
+
+  // Client-side search: filter across all categories by name, id, or category label
+  const searchTrimmed = searchQuery.trim().toLowerCase();
+  const searchResults: AccessoryRecord[] = searchTrimmed
+    ? safeLibrary.filter(
+        (a) =>
+          a.name.toLowerCase().includes(searchTrimmed) ||
+          a.id.toLowerCase().includes(searchTrimmed) ||
+          (CATEGORY_LABELS[a.category] ?? a.category).toLowerCase().includes(searchTrimmed)
+      )
+    : [];
+
   const categorised = CATEGORY_ORDER.reduce<Record<string, AccessoryRecord[]>>(
     (acc, cat) => {
       acc[cat] = safeLibrary.filter((a) => a.category === cat);
@@ -149,6 +162,11 @@ export default function AccessoriesPicker({ segment, onChange }: Props) {
     },
     {}
   );
+
+  // Items to display: search results when query active, else active category
+  const displayItems: AccessoryRecord[] = searchTrimmed
+    ? searchResults
+    : (categorised[activeCategory] ?? []);
 
   const K_sum = Object.values(selected).reduce((s, i) => {
     const K = i.K_override !== null ? i.K_override : i.default_K;
@@ -185,41 +203,72 @@ export default function AccessoriesPicker({ segment, onChange }: Props) {
         )}
       </div>
 
-      {/* Category tabs */}
-      <div className="flex flex-wrap gap-1">
-        {CATEGORY_ORDER.filter((c) => (categorised[c]?.length ?? 0) > 0).map((cat) => {
-          const hasSelected = Object.values(selected).some(
-            (s) => s.category === cat && s.count > 0
-          );
-          return (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => setActiveCategory(cat)}
-              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
-                activeCategory === cat
-                  ? "bg-teal-700 text-white"
-                  : hasSelected
-                  ? "bg-teal-100 text-teal-800 border border-teal-300"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              {CATEGORY_LABELS[cat] ?? cat}
-              {hasSelected && (
-                <span className="ml-1 rounded-full bg-white/30 px-1 text-[9px]">
-                  {Object.values(selected)
-                    .filter((s) => s.category === cat)
-                    .reduce((n, s) => n + s.count, 0)}
-                </span>
-              )}
-            </button>
-          );
-        })}
+      {/* Search input */}
+      <div className="relative">
+        <input
+          type="text"
+          placeholder="Search by name or category…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 placeholder-slate-400 focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600 pr-6"
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery("")}
+            className="absolute inset-y-0 right-1.5 flex items-center text-slate-400 hover:text-slate-600 text-xs"
+          >
+            ✕
+          </button>
+        )}
       </div>
 
-      {/* Items in active category */}
+      {/* Category tabs — hidden while searching */}
+      {!searchTrimmed && (
+        <div className="flex flex-wrap gap-1">
+          {CATEGORY_ORDER.filter((c) => (categorised[c]?.length ?? 0) > 0).map((cat) => {
+            const hasSelected = Object.values(selected).some(
+              (s) => s.category === cat && s.count > 0
+            );
+            return (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setActiveCategory(cat)}
+                className={`rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
+                  activeCategory === cat
+                    ? "bg-teal-700 text-white"
+                    : hasSelected
+                    ? "bg-teal-100 text-teal-800 border border-teal-300"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {CATEGORY_LABELS[cat] ?? cat}
+                {hasSelected && (
+                  <span className="ml-1 rounded-full bg-white/30 px-1 text-[9px]">
+                    {Object.values(selected)
+                      .filter((s) => s.category === cat)
+                      .reduce((n, s) => n + s.count, 0)}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Search status hint */}
+      {searchTrimmed && (
+        <p className="text-[10px] text-slate-400">
+          {searchResults.length === 0
+            ? "No accessories match your search."
+            : `${searchResults.length} result${searchResults.length !== 1 ? "s" : ""} for "${searchQuery}"`}
+        </p>
+      )}
+
+      {/* Item list — search results or active category */}
       <div className="space-y-1 max-h-56 overflow-y-auto pr-0.5">
-        {(categorised[activeCategory] ?? []).map((acc) => {
+        {displayItems.map((acc) => {
           const sel   = selected[acc.id];
           const inUse = !!(sel && sel.count > 0);
           const effectiveK = sel

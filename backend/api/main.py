@@ -196,7 +196,7 @@ def calculate(req: CalculationRequest) -> CalculationResponse:
         roughness_m = get_roughness_m(req.material)
     except KeyError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         )
 
@@ -225,7 +225,7 @@ def calculate(req: CalculationRequest) -> CalculationResponse:
         )
     except (ValueError, ZeroDivisionError) as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Hydraulic calculation error: {exc}",
         )
 
@@ -385,7 +385,7 @@ def compute_hydraulics(req: HydraulicComputeRequest) -> HydraulicComputeResponse
 
     except (ValueError, ZeroDivisionError) as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Hydraulic calculation error: {exc}",
         )
 
@@ -764,7 +764,7 @@ def _validate_and_parse_extras(
 
     if extras is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=(
                 f"Pump type '{pump_type_key}' requires additional parameters "
                 f"(extras_schema='{extras_schema}'). "
@@ -776,7 +776,7 @@ def _validate_and_parse_extras(
     except ValidationError as exc:
         messages = _fmt_validation_error(exc)
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid extras for '{pump_type_key}': {'; '.join(messages)}",
         )
 
@@ -854,7 +854,7 @@ def compute_pump_selection(req: PumpSelectionRequest) -> PumpSelectionResponse:
         entry = get_pump_type(req.pump_type_key)  # type: ignore[arg-type]
     except KeyError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         )
 
@@ -1077,7 +1077,7 @@ def compute_pump(req: PumpComputeRequest) -> PumpComputeResponse:
         record = get_pump_by_id(req.pump_id)
         if record is None:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Unknown pump_id '{req.pump_id}'. "
                        f"Check GET /api/v1/pump-library for valid IDs.",
             )
@@ -1087,7 +1087,7 @@ def compute_pump(req: PumpComputeRequest) -> PumpComputeResponse:
             )
         except (KeyError, ValueError) as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Error loading curves for '{req.pump_id}': {exc}",
             )
     else:
@@ -1100,7 +1100,7 @@ def compute_pump(req: PumpComputeRequest) -> PumpComputeResponse:
             )
         except (KeyError, ValueError) as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Error building curves from supplied data: {exc}",
             )
         # Check all polynomial fits for non-physical behaviour
@@ -1316,7 +1316,7 @@ async def import_pump_curve_csv(
     # Validate required columns
     if "Q_m3h" not in fieldnames:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=(
                 f"CSV is missing required 'Q_m3h' column. "
                 f"Found columns: {fieldnames}"
@@ -1324,7 +1324,7 @@ async def import_pump_curve_csv(
         )
     if "H_m" not in fieldnames:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=(
                 f"CSV is missing required 'H_m' column. "
                 f"Found columns: {fieldnames}. "
@@ -1374,7 +1374,7 @@ async def import_pump_curve_csv(
 
     if len(hq_pts) < 2:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=(
                 f"CSV must contain at least 2 valid rows with numeric Q_m3h and H_m; "
                 f"found {len(hq_pts)} after skipping invalid rows."
@@ -1397,7 +1397,7 @@ async def import_pump_curve_csv(
 
 
 @app.get(
-    "/library/accessories",
+    "/api/v1/library/accessories",
     response_model=AccessoryLibraryResponse,
     tags=["library"],
     summary="Return the potable-water accessories & instruments library",
@@ -1479,7 +1479,7 @@ def get_accessories_library() -> AccessoryLibraryResponse:
 
 
 @app.get(
-    "/library/accessories/{accessory_id}",
+    "/api/v1/library/accessories/{accessory_id}",
     response_model=AccessoryRecord,
     tags=["library"],
     summary="Return a single accessory record by ID",
@@ -1501,7 +1501,7 @@ def get_accessory(accessory_id: str) -> AccessoryRecord:
 
 
 @app.post(
-    "/compute/lossbreakdown",
+    "/api/v1/compute/lossbreakdown",
     response_model=LossBreakdownResponse,
     tags=["compute"],
     summary="Compute per-accessory minor head-loss breakdown with server-side major losses, segment and category subtotals, and contribution matrix",

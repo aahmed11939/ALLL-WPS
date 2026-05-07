@@ -7,6 +7,7 @@ Run with:
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
@@ -74,6 +75,15 @@ from backend.api.schemas import (
     NPSHaPoint,
     SuctionTransientRequest,
     SuctionTransientResponse,
+    AirVesselDeviceConfig,
+    SurgeTankDeviceConfig,
+    PRVDeviceConfig,
+    VacuumReliefDeviceConfig,
+    SlowCheckValveDeviceConfig,
+    WhatIfRequest,
+    WhatIfResponse,
+    WhatIfRunMetrics,
+    WhatIfEnvelopePoint,
     SystemCurvePoint,
     TypeSpecificField,
     VerticalTurbineExtras,
@@ -110,6 +120,7 @@ from backend.engine.pump_curves import (
 )
 from backend.engine.surge import surge_quick, wave_speed as compute_wave_speed
 from backend.engine.surge_moc import (
+    build_grid,
     run_moc,
     compute_npsha_transient,
     BoundaryCondition,
@@ -117,6 +128,18 @@ from backend.engine.surge_moc import (
     PumpTripBC,
     ValveClosureBC,
     SuctionPumpTripBC,
+)
+from backend.engine.surge_sizing import (
+    AirVesselBC,
+    SurgeTankBC,
+    apply_prv_postprocess,
+    apply_vacuum_relief_postprocess,
+    extract_whatif_metrics,
+    size_air_vessel,
+    size_surge_tank,
+    size_prv,
+    size_vacuum_relief,
+    size_slow_check_valve,
 )
 from backend.engine.clearwell import (
     clearwell_volume_curve,
@@ -2150,4 +2173,206 @@ async def suction_transient(req: SuctionTransientRequest) -> SuctionTransientRes
         observations=obs_results,
         rating_check=rating_check,
         **raw,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Surge — What-if surge protection scenario comparison  (Task #56)
+# ---------------------------------------------------------------------------
+
+
+@app.post(
+    "/surge/whatif",
+    response_model=WhatIfResponse,
+    tags=["surge"],
+    summary="What-if surge protection scenario comparison (5 device types)",
+)
+async def surge_whatif(req: WhatIfRequest) -> WhatIfResponse:
+    """
+    Run a baseline MOC simulation and then evaluate each enabled protection
+    device in turn, returning structured comparison metrics and lightweight
+    pressure-envelope arrays for chart overlay.
+
+    **Protection device types**
+
+    | type              | model strategy                                          |
+    |-------------------|---------------------------------------------------------|
+    | `air_vessel`      | Stateful AirVesselBC replaces one pipeline boundary     |
+    | `surge_tank`      | Stateful SurgeTankBC replaces one pipeline boundary     |
+    | `prv`             | Post-processing: caps max-head envelope at H_set_m      |
+    | `vacuum_relief`   | Post-processing: clamps min-head envelope at H_admit_m  |
+    | `slow_check_valve`| Re-runs MOC with a longer ValveClosureBC t_close        |
+
+    All sizing formulas are screening-level (±30–50 %).
+    """
+    # ── 1. Engine segment dicts ─────────────────────────────────────────────
+    segs = [
+        {
+            "L_m":          float(s.L_m),
+            "D_m":          float(s.D_m),
+            "roughness_m":  float(s.roughness_m),
+            "elev_start_m": float(s.elev_start_m),
+            "elev_end_m":   float(s.elev_end_m),
+        }
+        for s in req.segments
+    ]
+
+    # ── 2. Grid info — needed before instantiating stateful BCs ────────────
+    try:
+        grid = build_grid(segs, req.wave_speed_ms, n_reaches_override=req.n_reaches)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+    dt_s   = grid["dt_s"]
+    A_pipe = grid["A_m2"]
+    D_m    = grid["D_m"]
+    L_m    = grid["L_total_m"]
+
+    # ── 3. Common run keyword arguments ─────────────────────────────────────
+    obs_fracs  = [op.frac  for op in (req.observation_points or [])] or None
+    obs_labels = (
+        [op.label or f"{op.frac:.0%}" for op in (req.observation_points or [])]
+        if req.observation_points else None
+    )
+
+    base_kwargs: dict = dict(
+        segments=segs,
+        wave_speed_ms=req.wave_speed_ms,
+        Q_0_m3s=req.Q_0_m3s,
+        H_0_m=req.H_0_m,
+        temperature_C=req.temperature_C,
+        rho_kg_m3=req.rho_kg_m3,
+        pressure_rating_kPa=req.pressure_rating_kPa,
+        observation_fracs=obs_fracs,
+        observation_labels=obs_labels,
+        n_reaches_override=req.n_reaches,
+        t_total_override=req.t_total_s,
+    )
+
+    # ── 4. Baseline run ──────────────────────────────────────────────────────
+    try:
+        raw_base = run_moc(
+            boundary_A=_build_moc_bc(req.boundary_A),
+            boundary_B=_build_moc_bc(req.boundary_B),
+            **base_kwargs,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+    base_max_H = raw_base["global_max_H_m"]
+    base_min_H = raw_base["global_min_H_m"]
+    T_char_s   = raw_base["T_char_s"]
+    t_total_s  = raw_base["t_total_s"]
+
+    # Representative target head for sizing helpers (aim for ~30 % surge reduction)
+    H_target = max(base_max_H * 0.70, req.H_0_m * 1.20)
+
+    # ── 5. Build baseline response model ────────────────────────────────────
+    base_m  = extract_whatif_metrics(raw_base, "Baseline (no protection)", None, None, req.rho_kg_m3)
+    env_b   = [WhatIfEnvelopePoint(**pt) for pt in base_m.pop("envelope")]
+    rc_b    = base_m.pop("rating_check", None)
+    baseline_resp = WhatIfRunMetrics(
+        **base_m,
+        envelope=env_b,
+        rating_check=PressureRatingCheck(**rc_b) if rc_b else None,
+    )
+
+    # ── 6. Device runs ───────────────────────────────────────────────────────
+    device_runs: list[WhatIfRunMetrics] = []
+
+    for dev in req.devices:
+        if not dev.enabled:
+            continue
+
+        try:
+            if isinstance(dev, AirVesselDeviceConfig):
+                V_gas_0  = dev.V_total_m3 * dev.V_gas_frac
+                vessel   = AirVesselBC(
+                    dt_s=dt_s, V_total_m3=dev.V_total_m3, V_gas_0_m3=V_gas_0,
+                    P0_kPa=dev.P0_kPa, rho_kg_m3=req.rho_kg_m3,
+                    polytropic_n=dev.polytropic_n,
+                )
+                bc_a_d = vessel if dev.boundary_side == "A" else _build_moc_bc(req.boundary_A)
+                bc_b_d = vessel if dev.boundary_side == "B" else _build_moc_bc(req.boundary_B)
+                raw_d  = run_moc(boundary_A=bc_a_d, boundary_B=bc_b_d, **base_kwargs)
+                sizing = size_air_vessel(
+                    Q_0_m3s=req.Q_0_m3s, a_ms=req.wave_speed_ms,
+                    A_pipe_m2=A_pipe, H_0_m=req.H_0_m, H_max_target_m=H_target,
+                )
+                label  = f"Air Vessel {dev.V_total_m3:.2g} m³ (side {dev.boundary_side})"
+
+            elif isinstance(dev, SurgeTankDeviceConfig):
+                tank  = SurgeTankBC(
+                    dt_s=dt_s, A_tank_m2=dev.A_tank_m2,
+                    z_initial_m=dev.z_initial_m, z_max_m=dev.z_max_m,
+                )
+                bc_a_d = tank if dev.boundary_side == "A" else _build_moc_bc(req.boundary_A)
+                bc_b_d = tank if dev.boundary_side == "B" else _build_moc_bc(req.boundary_B)
+                raw_d  = run_moc(boundary_A=bc_a_d, boundary_B=bc_b_d, **base_kwargs)
+                sizing = size_surge_tank(
+                    Q_0_m3s=req.Q_0_m3s, a_ms=req.wave_speed_ms,
+                    L_m=L_m, D_m=D_m, H_0_m=req.H_0_m, H_max_target_m=H_target,
+                )
+                label  = f"Surge Tank {dev.A_tank_m2:.2g} m² (side {dev.boundary_side})"
+
+            elif isinstance(dev, PRVDeviceConfig):
+                raw_d  = copy.deepcopy(raw_base)
+                apply_prv_postprocess(raw_d, dev.H_set_m, req.rho_kg_m3)
+                q_rel  = dev.Q_relief_m3s or req.Q_0_m3s
+                G_loc  = 9.81
+                P_up   = max(
+                    base_max_H * req.rho_kg_m3 * G_loc / 1_000.0,
+                    dev.H_set_m * req.rho_kg_m3 * G_loc / 1_000.0 + 1.0,
+                )
+                P_set  = dev.H_set_m * req.rho_kg_m3 * G_loc / 1_000.0
+                sizing = size_prv(q_rel, P_up, P_set)
+                label  = f"PRV @ {dev.H_set_m:.1f} m"
+
+            elif isinstance(dev, VacuumReliefDeviceConfig):
+                raw_d  = copy.deepcopy(raw_base)
+                apply_vacuum_relief_postprocess(raw_d, dev.H_admit_m, req.rho_kg_m3)
+                sizing = size_vacuum_relief(D_m)
+                label  = f"Vacuum Relief (H_admit = {dev.H_admit_m:.1f} m)"
+
+            elif isinstance(dev, SlowCheckValveDeviceConfig):
+                q0     = dev.Q_0_m3s or req.Q_0_m3s
+                vc     = ValveClosureBC(Q_0=q0, t_close=dev.t_close_s, profile=dev.profile)
+                bc_a_d = vc if dev.boundary_side == "A" else _build_moc_bc(req.boundary_A)
+                bc_b_d = vc if dev.boundary_side == "B" else _build_moc_bc(req.boundary_B)
+                raw_d  = run_moc(boundary_A=bc_a_d, boundary_B=bc_b_d, **base_kwargs)
+                sizing = size_slow_check_valve(
+                    Q_0_m3s=req.Q_0_m3s, a_ms=req.wave_speed_ms,
+                    L_m=L_m, D_m=D_m, H_0_m=req.H_0_m, H_max_target_m=H_target,
+                )
+                label  = f"Slow Check Valve {dev.t_close_s:.0f} s ({dev.profile})"
+
+            else:
+                continue
+
+            m   = extract_whatif_metrics(raw_d, label, base_max_H, base_min_H, req.rho_kg_m3)
+            env = [WhatIfEnvelopePoint(**pt) for pt in m.pop("envelope")]
+            rc  = m.pop("rating_check", None)
+            m.pop("sizing_summary", None)   # supplied by device sizing below
+            device_runs.append(WhatIfRunMetrics(
+                **m,
+                envelope=env,
+                rating_check=PressureRatingCheck(**rc) if rc else None,
+                sizing_summary=sizing,
+            ))
+
+        except (ValueError, ZeroDivisionError) as exc:
+            device_runs.append(WhatIfRunMetrics(
+                label=f"{type(dev).__name__} [ERROR: {str(exc)[:100]}]",
+                global_max_H_m=0.0, global_min_H_m=0.0,
+                global_max_P_kPa=0.0, global_min_P_kPa=0.0,
+                cavitation_x_m=[], envelope=[],
+            ))
+
+    return WhatIfResponse(
+        baseline=baseline_resp,
+        device_runs=device_runs,
+        assumption_notes=raw_base["assumption_notes"],
+        t_total_s=t_total_s,
+        T_char_s=T_char_s,
+        pipeline=req.pipeline,
     )

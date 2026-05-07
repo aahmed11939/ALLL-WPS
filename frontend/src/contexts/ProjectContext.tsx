@@ -22,7 +22,7 @@ import type {
 } from "../types/project";
 import { DEFAULT_DRAFT } from "../types/project";
 import type { UnitSystem } from "../utils/units";
-import type { CalculationResponse, ClearWellResponse, PumpComputeResponse, SurgeQuickResponse, MOCResponse } from "../utils/api";
+import type { CalculationResponse, ClearWellResponse, PumpComputeResponse, SurgeQuickResponse, MOCResponse, WhatIfResponse } from "../utils/api";
 
 
 // ---------------------------------------------------------------------------
@@ -50,6 +50,7 @@ type Action =
   | { type: "SET_MOC_RESULT";            result: MOCResponse | null }
   | { type: "SET_SUCTION_SURGE_CONFIG";  config: SuctionSurgeConfig | null }
   | { type: "SET_SUCTION_SURGE_RESULT";  result: SuctionTransientResult | null }
+  | { type: "SET_WHATIF_RESULT";         result: WhatIfResponse | null }
   | { type: "LOAD";                      draft: ProjectDraft };
 
 function reducer(state: ProjectDraft, action: Action): ProjectDraft {
@@ -75,6 +76,7 @@ function reducer(state: ProjectDraft, action: Action): ProjectDraft {
     case "SET_MOC_RESULT":            return { ...state, mocResult: action.result };
     case "SET_SUCTION_SURGE_CONFIG":  return { ...state, suctionSurgeConfig: action.config };
     case "SET_SUCTION_SURGE_RESULT":  return { ...state, suctionSurgeResult: action.result };
+    case "SET_WHATIF_RESULT":         return { ...state, whatIfResult: action.result };
     case "LOAD":                      return { ...action.draft };
     default:                          return state;
   }
@@ -112,6 +114,7 @@ function parseDraft(raw: string): ProjectDraft {
     mocResult:            parsed.mocResult            ?? null,
     suctionSurgeConfig:   parsed.suctionSurgeConfig   ?? null,
     suctionSurgeResult:   parsed.suctionSurgeResult   ?? null,
+    whatIfResult:         parsed.whatIfResult          ?? null,
   };
 }
 

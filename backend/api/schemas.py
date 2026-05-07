@@ -1944,3 +1944,211 @@ class SuctionTransientResponse(MOCResponse):
         description="Fractional position of pump suction node used in the run",
     )
 
+
+# ===========================================================================
+# Task #56 — Surge Protection Devices + What-If Comparison
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# Protection device configuration schemas
+# ---------------------------------------------------------------------------
+
+
+class AirVesselDeviceConfig(BaseModel):
+    """Hydropneumatic air vessel (bladder or free-surface) protection device."""
+
+    type: Literal["air_vessel"] = "air_vessel"
+    enabled: bool = True
+    boundary_side: Literal["A", "B"] = Field(
+        default="B",
+        description="Which pipeline boundary the vessel connects to (A=upstream, B=downstream)",
+    )
+    V_total_m3: float = Field(gt=0, description="Total vessel volume [m³]")
+    V_gas_frac: float = Field(
+        default=0.5,
+        ge=0.05,
+        le=0.95,
+        description="Initial gas fraction of total volume [0.05–0.95]",
+    )
+    P0_kPa: float = Field(gt=0, description="Initial gas pre-charge pressure (gauge) [kPa]")
+    polytropic_n: float = Field(
+        default=1.4,
+        ge=1.0,
+        le=1.6,
+        description="Polytropic exponent: 1.0=isothermal, 1.4=adiabatic (default)",
+    )
+
+
+class SurgeTankDeviceConfig(BaseModel):
+    """Open-surface surge tank (standpipe) protection device."""
+
+    type: Literal["surge_tank"] = "surge_tank"
+    enabled: bool = True
+    boundary_side: Literal["A", "B"] = Field(
+        default="B",
+        description="Which pipeline boundary the surge tank connects to",
+    )
+    A_tank_m2: float = Field(gt=0, description="Tank cross-sectional area [m²]")
+    z_initial_m: float = Field(description="Initial water level in tank [m above datum]")
+    z_max_m: float = Field(description="Maximum water level / overflow elevation [m]")
+
+
+class PRVDeviceConfig(BaseModel):
+    """Pressure relief valve — conservative envelope post-processing model."""
+
+    type: Literal["prv"] = "prv"
+    enabled: bool = True
+    H_set_m: float = Field(
+        gt=0,
+        description="PRV set-point head [m] — peak head capped to this value",
+    )
+    Q_relief_m3s: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="Estimated relief flow for PRV sizing [m³/s]; defaults to Q_0_m3s",
+    )
+
+
+class VacuumReliefDeviceConfig(BaseModel):
+    """Vacuum (air-inlet) relief valve — envelope post-processing model."""
+
+    type: Literal["vacuum_relief"] = "vacuum_relief"
+    enabled: bool = True
+    H_admit_m: float = Field(
+        default=0.0,
+        description="Head at which valve opens (gauge) [m]; 0 m = atmospheric",
+    )
+
+
+class SlowCheckValveDeviceConfig(BaseModel):
+    """Slow-closing check valve — modifies valve closure time BC."""
+
+    type: Literal["slow_check_valve"] = "slow_check_valve"
+    enabled: bool = True
+    boundary_side: Literal["A", "B"] = Field(
+        default="B",
+        description="Which boundary carries the valve closure BC",
+    )
+    t_close_s: float = Field(
+        gt=0,
+        description="Valve full-travel closure time [s] (slower → less surge)",
+    )
+    profile: Literal["linear", "equal_percentage"] = Field(
+        default="linear",
+        description="Closure profile: linear Q∝τ² or equal_percentage Q∝τ⁴",
+    )
+    Q_0_m3s: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="Override initial flow [m³/s]; defaults to request Q_0_m3s",
+    )
+
+
+ProtectionDeviceConfig = Annotated[
+    Union[
+        AirVesselDeviceConfig,
+        SurgeTankDeviceConfig,
+        PRVDeviceConfig,
+        VacuumReliefDeviceConfig,
+        SlowCheckValveDeviceConfig,
+    ],
+    Field(discriminator="type"),
+]
+
+
+# ---------------------------------------------------------------------------
+# What-if request / response schemas
+# ---------------------------------------------------------------------------
+
+
+class WhatIfRequest(BaseModel):
+    """
+    What-if surge protection scenario comparison request.
+
+    Runs a baseline MOC and reruns (or post-processes) for each enabled
+    protection device.  The baseline uses the boundary conditions as supplied.
+    Max 5 devices per request.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    # ── Pipeline + MOC parameters (mirrors MOCRequest) ──────────────────────
+    wave_speed_ms: float = Field(gt=0, description="Acoustic wave speed [m/s]")
+    Q_0_m3s: float = Field(gt=0, description="Steady-state flow rate [m³/s]")
+    H_0_m: float = Field(description="Steady-state head at upstream node [m]")
+    temperature_C: float = Field(default=20.0, ge=0, le=50)
+    rho_kg_m3: float = Field(default=1000.0, gt=0)
+    pressure_rating_kPa: Optional[float] = Field(default=None, gt=0)
+    segments: List[MOCSegmentInput]
+    boundary_A: MOCBoundaryAInput
+    boundary_B: MOCBoundaryBInput
+    observation_points: Optional[List[MOCObservationPoint]] = None
+    n_reaches: Optional[int] = Field(default=None, gt=0, le=200)
+    t_total_s: Optional[float] = Field(default=None, gt=0)
+    pipeline: str = Field(default="discharge")
+    unit_system: str = Field(default="SI")
+
+    # ── Protection devices ──────────────────────────────────────────────────
+    devices: List[ProtectionDeviceConfig] = Field(
+        default_factory=list,
+        max_length=5,
+        description="Protection devices to evaluate (max 5)",
+    )
+
+
+class WhatIfEnvelopePoint(BaseModel):
+    """Lightweight pressure envelope point for chart overlay."""
+
+    x_m: float
+    elev_m: float
+    H_max_m: float
+    H_min_m: float
+    P_max_kPa: float
+    P_min_kPa: float
+
+
+class WhatIfRunMetrics(BaseModel):
+    """Metrics for one scenario (baseline or a protection device)."""
+
+    label: str
+    global_max_H_m: float
+    global_min_H_m: float
+    global_max_P_kPa: float
+    global_min_P_kPa: float
+    max_surge_reduction_m: Optional[float] = Field(
+        default=None,
+        description="Reduction in peak head vs baseline [m]; None for baseline",
+    )
+    max_surge_reduction_pct: Optional[float] = Field(
+        default=None,
+        description="Peak-head reduction as % of baseline; None for baseline",
+    )
+    min_head_improvement_m: Optional[float] = Field(
+        default=None,
+        description="Increase in minimum head vs baseline [m]; positive = less vacuum risk",
+    )
+    cavitation_x_m: List[float] = Field(
+        default_factory=list,
+        description="X-positions [m] where column separation was detected",
+    )
+    rating_check: Optional[PressureRatingCheck] = None
+    sizing_summary: Optional[dict] = Field(
+        default=None,
+        description="Preliminary device sizing parameters",
+    )
+    envelope: List[WhatIfEnvelopePoint] = Field(
+        description="Pressure envelope for chart overlay",
+    )
+
+
+class WhatIfResponse(BaseModel):
+    """Response from POST /surge/whatif — baseline + all device scenarios."""
+
+    baseline: WhatIfRunMetrics
+    device_runs: List[WhatIfRunMetrics]
+    assumption_notes: List[str]
+    t_total_s: float
+    T_char_s: float
+    pipeline: str
+

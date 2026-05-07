@@ -20,7 +20,11 @@ import type {
   MOCBoundaryInput,
   MOCBoundaryAInput,
   MOCBoundaryBInput,
+  MOCSegmentInput,
+  WhatIfResponse,
 } from "../../utils/api";
+import ProtectionDevicePanel from "./ProtectionDevicePanel";
+import WhatIfComparisonPanel from "./WhatIfComparisonPanel";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -146,6 +150,18 @@ export default function StepSuctionSurgeMOC() {
   const [result,    setResult]    = useState<SuctionTransientResponse | null>(
     draft.suctionSurgeResult as SuctionTransientResponse | null ?? null
   );
+
+  // ── What-if state ─────────────────────────────────────────────────────────
+  interface WIParams {
+    wave_speed_ms: number; Q_0_m3s: number; H_0_m: number;
+    temperature_C: number; rho_kg_m3: number;
+    pressure_rating_kPa: number | null;
+    segments: MOCSegmentInput[];
+    boundary_A: MOCBoundaryAInput; boundary_B: MOCBoundaryBInput;
+    n_reaches: number | null; t_total_s: number | null; pipeline: string;
+  }
+  const [lastRunParams, setLastRunParams] = useState<WIParams | null>(null);
+  const [whatIfResult,  setWhatIfResult]  = useState<WhatIfResponse | null>(null);
 
   // ── Derived ────────────────────────────────────────────────────────────────
   const q0   = parseFloat(q0Str)   || autoQ0_m3s;
@@ -289,6 +305,16 @@ export default function StepSuctionSurgeMOC() {
       const res = await computeSuctionTransient(req);
       setResult(res);
       dispatch({ type: "SET_SUCTION_SURGE_RESULT", result: res as import("../../types/project").SuctionTransientResult });
+      setLastRunParams({
+        wave_speed_ms: a, Q_0_m3s: q0, H_0_m: h0,
+        temperature_C: temp, rho_kg_m3: rho,
+        pressure_rating_kPa: (!isNaN(ratingV) && ratingV > 0) ? ratingV : null,
+        segments: builtSegs,
+        boundary_A: bcA as MOCBoundaryAInput,
+        boundary_B: bcB as MOCBoundaryBInput,
+        n_reaches: nR ?? null, t_total_s: tT ?? null, pipeline: "suction",
+      });
+      setWhatIfResult(null);
     } catch (e: unknown) {
       const msg =
         (e as { response?: { data?: { detail?: string } }; message?: string })
@@ -304,6 +330,8 @@ export default function StepSuctionSurgeMOC() {
   function handleClear() {
     setResult(null);
     dispatch({ type: "SET_SUCTION_SURGE_RESULT", result: null });
+    setLastRunParams(null);
+    setWhatIfResult(null);
   }
 
   // ── Chart data ────────────────────────────────────────────────────────────
@@ -829,6 +857,34 @@ export default function StepSuctionSurgeMOC() {
             <p>NPSHa steady = <strong className="text-slate-800">{result.npsha_steady_m.toFixed(3)} m</strong>
                {"  "}|{"  "}NPSHa min = <strong className={result.transient_npsh_risk ? "text-red-700" : "text-emerald-700"}>{result.npsha_min_m.toFixed(3)} m</strong></p>
           </div>
+
+          {/* ── What-If Surge Protection ─────────────────────────────────── */}
+          {lastRunParams && (
+            <Section title="Surge Protection — What-If Comparison">
+              {!whatIfResult ? (
+                <ProtectionDevicePanel
+                  {...lastRunParams}
+                  onResult={(r) => {
+                    setWhatIfResult(r);
+                    dispatch({ type: "SET_WHATIF_RESULT", result: r });
+                  }}
+                />
+              ) : (
+                <div className="space-y-4">
+                  <WhatIfComparisonPanel
+                    result={whatIfResult}
+                    onSaveToReport={(r) => dispatch({ type: "SET_WHATIF_RESULT", result: r })}
+                  />
+                  <button
+                    onClick={() => setWhatIfResult(null)}
+                    className="text-xs text-slate-400 hover:text-slate-600 hover:underline"
+                  >
+                    ← Re-configure devices
+                  </button>
+                </div>
+              )}
+            </Section>
+          )}
 
           <div className="flex gap-2 pt-1">
             <button

@@ -1,5 +1,5 @@
 import type { UnitSystem } from "../utils/units";
-import type { AccessoryItem, CalculationResponse, ClearWellResponse, PumpComputeResponse, SurgeQuickResponse, SurgeEventType, MOCResponse } from "../utils/api";
+import type { AccessoryItem, CalculationResponse, ClearWellResponse, PumpComputeResponse, SurgeQuickResponse, SurgeEventType, MOCResponse, WhatIfResponse } from "../utils/api";
 
 export interface ProjectMeta {
   name: string;
@@ -260,6 +260,8 @@ export interface ProjectDraft {
   suctionSurgeConfig: SuctionSurgeConfig | null;
   /** Cached suction transient result (NPSHa time series + MOC). */
   suctionSurgeResult: SuctionTransientResult | null;
+  /** Cached what-if protection comparison result. */
+  whatIfResult: WhatIfResponse | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -357,4 +359,5 @@ export const DEFAULT_DRAFT: ProjectDraft = {
   mocResult: null,
   suctionSurgeConfig: null,
   suctionSurgeResult: null,
+  whatIfResult: null,
 };

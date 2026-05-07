@@ -774,3 +774,111 @@ export async function computeSuctionTransient(
   const res = await axios.post<SuctionTransientResponse>("/surge/suction", req);
   return res.data;
 }
+
+// ---------------------------------------------------------------------------
+// Surge — What-if protection device comparison
+// ---------------------------------------------------------------------------
+
+export interface AirVesselDeviceInput {
+  type: "air_vessel";
+  enabled: boolean;
+  boundary_side: "A" | "B";
+  V_total_m3: number;
+  V_gas_frac: number;
+  P0_kPa: number;
+  polytropic_n?: number;
+}
+
+export interface SurgeTankDeviceInput {
+  type: "surge_tank";
+  enabled: boolean;
+  boundary_side: "A" | "B";
+  A_tank_m2: number;
+  z_initial_m: number;
+  z_max_m: number;
+}
+
+export interface PRVDeviceInput {
+  type: "prv";
+  enabled: boolean;
+  H_set_m: number;
+  Q_relief_m3s?: number;
+}
+
+export interface VacuumReliefDeviceInput {
+  type: "vacuum_relief";
+  enabled: boolean;
+  H_admit_m: number;
+}
+
+export interface SlowCheckValveDeviceInput {
+  type: "slow_check_valve";
+  enabled: boolean;
+  boundary_side: "A" | "B";
+  t_close_s: number;
+  profile: "linear" | "equal_percentage";
+  Q_0_m3s?: number;
+}
+
+export type ProtectionDeviceInput =
+  | AirVesselDeviceInput
+  | SurgeTankDeviceInput
+  | PRVDeviceInput
+  | VacuumReliefDeviceInput
+  | SlowCheckValveDeviceInput;
+
+export interface WhatIfRequest {
+  wave_speed_ms: number;
+  Q_0_m3s: number;
+  H_0_m: number;
+  temperature_C?: number;
+  rho_kg_m3?: number;
+  pressure_rating_kPa?: number | null;
+  segments: MOCSegmentInput[];
+  boundary_A: MOCBoundaryAInput;
+  boundary_B: MOCBoundaryBInput;
+  observation_points?: MOCObservationPoint[];
+  n_reaches?: number | null;
+  t_total_s?: number | null;
+  pipeline?: string;
+  unit_system?: string;
+  devices: ProtectionDeviceInput[];
+}
+
+export interface WhatIfEnvelopePoint {
+  x_m: number;
+  elev_m: number;
+  H_max_m: number;
+  H_min_m: number;
+  P_max_kPa: number;
+  P_min_kPa: number;
+}
+
+export interface WhatIfRunMetrics {
+  label: string;
+  global_max_H_m: number;
+  global_min_H_m: number;
+  global_max_P_kPa: number;
+  global_min_P_kPa: number;
+  max_surge_reduction_m: number | null;
+  max_surge_reduction_pct: number | null;
+  min_head_improvement_m: number | null;
+  cavitation_x_m: number[];
+  rating_check: PressureRatingCheck | null;
+  sizing_summary: Record<string, unknown> | null;
+  envelope: WhatIfEnvelopePoint[];
+}
+
+export interface WhatIfResponse {
+  baseline: WhatIfRunMetrics;
+  device_runs: WhatIfRunMetrics[];
+  assumption_notes: string[];
+  t_total_s: number;
+  T_char_s: number;
+  pipeline: string;
+}
+
+export async function computeWhatIf(req: WhatIfRequest): Promise<WhatIfResponse> {
+  const res = await axios.post<WhatIfResponse>("/surge/whatif", req);
+  return res.data;
+}

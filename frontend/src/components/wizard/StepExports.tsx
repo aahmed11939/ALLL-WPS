@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useProject } from "../../contexts/ProjectContext";
-import { runChecks, type CheckResult } from "../../utils/engineeringChecks";
+import { runChecks, checksToText, type CheckResult } from "../../utils/engineeringChecks";
 
 function FeatureToast({ message, onClose }: { message: string; onClose: () => void }) {
   return (
@@ -66,6 +66,21 @@ export default function StepExports() {
   const criticals = checks.filter((c) => c.severity === "critical" && !c.skipped).length;
   const warnings  = checks.filter((c) => c.severity === "warning"  && !c.skipped).length;
   const actionable = checks.filter((c) => !c.skipped && c.severity !== "info");
+
+  const handleDownloadText = () => {
+    const text = checksToText(checks);
+    const blob = new Blob([text], { type: "text/plain" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    const safeName = (draft.meta.name || "project")
+      .replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
+    a.href     = url;
+    a.download = `${safeName}.checks.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   const handleDownloadJson = () => {
     // Export full project state + derived engineering checks so the file is
@@ -211,6 +226,23 @@ export default function StepExports() {
               className="shrink-0 rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-600 transition-colors"
             >
               Download JSON
+            </button>
+          </div>
+
+          {/* Text Report — functional */}
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-700">Engineering Checks Report (.txt)</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Plain-text compliance checklist — all check results with standards references and recommended actions.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleDownloadText}
+              className="shrink-0 rounded-lg bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-600 transition-colors"
+            >
+              Download Report
             </button>
           </div>
 

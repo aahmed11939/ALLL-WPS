@@ -2,12 +2,17 @@ import ClearWellStep from "../ClearWellStep";
 import { useProject } from "../../contexts/ProjectContext";
 import { DEFAULT_CLEARWELL_CONFIG } from "../../types/project";
 import type { ClearwellFormConfig } from "../../types/project";
+import type { ClearWellResponse } from "../../utils/api";
 
 export default function StepWetWell() {
   const { draft, dispatch } = useProject();
 
   const handleConfigChange = (cfg: ClearwellFormConfig) => {
     dispatch({ type: "SET_CLEARWELL_CONFIG", config: cfg });
+  };
+
+  const handleComputeResult = (result: ClearWellResponse) => {
+    dispatch({ type: "SET_CLEARWELL_RESULT", result });
   };
 
   return (
@@ -22,6 +27,7 @@ export default function StepWetWell() {
       <ClearWellStep
         initialConfig={draft.clearwellConfig ?? DEFAULT_CLEARWELL_CONFIG}
         onConfigChange={handleConfigChange}
+        onComputeResult={handleComputeResult}
       />
     </div>
   );

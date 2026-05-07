@@ -1,5 +1,5 @@
 import type { UnitSystem } from "../utils/units";
-import type { AccessoryItem, CalculationResponse, PumpComputeResponse } from "../utils/api";
+import type { AccessoryItem, CalculationResponse, ClearWellResponse, PumpComputeResponse } from "../utils/api";
 
 export interface ProjectMeta {
   name: string;
@@ -101,6 +101,8 @@ export interface ProjectDraft {
   hydraulicsResult: CalculationResponse | null;
   hydraulicsError: string | null;
   pumpResult: PumpComputeResponse | null;
+  /** Cached clearwell compute result — used by Engineering Checks for cycling analysis. */
+  clearwellResult: ClearWellResponse | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,4 +193,5 @@ export const DEFAULT_DRAFT: ProjectDraft = {
   hydraulicsResult: null,
   hydraulicsError: null,
   pumpResult: null,
+  clearwellResult: null,
 };

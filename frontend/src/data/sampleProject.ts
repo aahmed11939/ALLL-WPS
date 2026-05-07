@@ -93,4 +93,5 @@ export const SAMPLE_PROJECT: ProjectDraft = {
   hydraulicsResult: null,
   hydraulicsError: null,
   pumpResult: null,
+  clearwellResult: null,
 };

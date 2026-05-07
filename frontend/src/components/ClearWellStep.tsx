@@ -77,6 +77,8 @@ export interface ClearWellStepProps {
   initialConfig?: Partial<FormValues>;
   /** Called (debounced 600 ms) whenever any form value changes. */
   onConfigChange?: (cfg: FormValues) => void;
+  /** Called when a successful compute result is available. Used to cache the result in ProjectDraft. */
+  onComputeResult?: (result: ClearWellResponse) => void;
 }
 
 const BUILT_IN_DEFAULTS: FormValues = {
@@ -94,7 +96,7 @@ const BUILT_IN_DEFAULTS: FormValues = {
   required_detention_min: 0,
 };
 
-export default function ClearWellStep({ initialConfig, onConfigChange }: ClearWellStepProps = {}) {
+export default function ClearWellStep({ initialConfig, onConfigChange, onComputeResult }: ClearWellStepProps = {}) {
   const [stepState, setStepState] = useState<StepState>("active");
   const [result, setResult] = useState<ClearWellResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -182,6 +184,7 @@ export default function ClearWellStep({ initialConfig, onConfigChange }: ClearWe
 
       const data = await computeClearWell(req);
       setResult(data);
+      onComputeResult?.(data);
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { detail?: string } } })?.response?.data

@@ -3,7 +3,7 @@
  *
  * Derives structured check results from an already-computed ProjectDraft.
  * No API calls. All thresholds are hard-coded industry standards (AWWA M11,
- * AWWA M32, HI 9.6.3, common potable-water engineering practice).
+ * AWWA M32, HI 9.6.3, Ten States Standards, common potable-water practice).
  */
 
 import type { ProjectDraft } from "../types/project";
@@ -35,19 +35,25 @@ export interface CheckResult {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/** Total pipe length (m) across suction + discharge segments. */
+/** Total pipe length (m) across all suction + discharge segments. */
 function totalPipeLength(draft: ProjectDraft): number {
   const sLen = draft.suction.segments.reduce((a, s) => a + s.length_m, 0);
   const dLen = draft.discharge.segments.reduce((a, s) => a + s.length_m, 0);
   return sLen + dLen;
 }
 
-function pct(value: number, total: number): number {
-  return total > 0 ? (value / total) * 100 : 0;
-}
-
 function round(v: number, d = 2): string {
   return v.toFixed(d);
+}
+
+/**
+ * Compute velocity (m/s) from flow (m³/h) and pipe internal diameter (mm).
+ * Returns null when inputs are invalid.
+ */
+function velocityMs(Q_m3h: number, diameter_mm: number): number | null {
+  if (Q_m3h <= 0 || diameter_mm <= 0) return null;
+  const A = Math.PI * Math.pow(diameter_mm / 1000 / 2, 2);
+  return (Q_m3h / 3600) / A;
 }
 
 // ---------------------------------------------------------------------------
@@ -55,85 +61,185 @@ function round(v: number, d = 2): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Check 1 — Pipe velocity vs AWWA M11 potable-water recommendations.
- * Uses the combined velocity from the hydraulics result (based on the primary
- * pipe diameter the user configured). Thresholds:
- *   Warning  : > 3.0 m/s
- *   Critical : > 4.5 m/s
- * Lower bound warning (< 0.6 m/s) for stagnation / biofilm risk.
+ * Check 1a — Suction pipe velocity vs AWWA M11 potable-water recommendations.
+ * Computed from design flow + primary suction segment diameter.
+ * Recommended range: 0.9–3.0 m/s.
+ * Warning : > 3.0 m/s or < 0.6 m/s (stagnation)
+ * Critical: > 4.5 m/s
  */
-function checkVelocity(draft: ProjectDraft, isUS: boolean): CheckResult {
-  const r = draft.hydraulicsResult;
+function checkSuctionVelocity(draft: ProjectDraft, isUS: boolean): CheckResult {
+  const seg = draft.suction.segments[0];
 
-  if (!r) {
+  if (!seg) {
     return {
-      id: "velocity",
-      category: "Pipe Velocity",
+      id: "velocity_suction",
+      category: "Suction Velocity",
       severity: "info",
-      title: "Velocity — awaiting hydraulic compute",
-      message: "Run 'Compute Hydraulics' on Step 7 to evaluate pipe velocity.",
-      recommendation: "Complete the hydraulic computation to unlock this check.",
+      title: "Suction velocity — no suction segment defined",
+      message: "No suction pipeline segment is configured.",
+      recommendation: "Add a suction segment on Step 3.",
       skipped: true,
     };
   }
 
-  const v = r.velocity_ms;
+  const v = velocityMs(draft.designFlow_m3h, seg.diameter_mm);
+
+  if (v === null) {
+    return {
+      id: "velocity_suction",
+      category: "Suction Velocity",
+      severity: "info",
+      title: "Suction velocity — invalid inputs",
+      message: "Design flow or suction diameter is zero.",
+      recommendation: "Check flow and pipe diameter inputs.",
+      skipped: true,
+    };
+  }
+
   const vDisplay = isUS ? v * 3.28084 : v;
   const unit = isUS ? "fps" : "m/s";
   const metric = `${round(vDisplay, 3)} ${unit}`;
 
   if (v > 4.5) {
     return {
-      id: "velocity",
-      category: "Pipe Velocity",
+      id: "velocity_suction",
+      category: "Suction Velocity",
       severity: "critical",
-      title: "Velocity exceeds maximum — risk of erosion and surge",
-      message: `Computed pipe velocity is ${metric}. AWWA M11 recommends ≤ 3.0 m/s (10 fps) for potable mains; velocities above 4.5 m/s (15 fps) cause erosion, excessive head loss, and water-hammer amplification.`,
-      recommendation: "Increase the pipe diameter on the limiting segment. A step up of one nominal size (e.g. DN150 → DN200) typically reduces velocity by ~40%.",
+      title: "Suction velocity critically high — erosion and cavitation risk",
+      message: `Suction pipe velocity is ${metric}. AWWA M11 recommends ≤ 3.0 m/s (10 fps) for potable suction mains; velocities above 4.5 m/s (15 fps) amplify NPSH demand, cause erosion, and increase water-hammer surge pressures.`,
+      recommendation: "Increase the suction pipe diameter. Each size increase typically reduces velocity by ~40%.",
       metric,
     };
   }
 
   if (v > 3.0) {
     return {
-      id: "velocity",
-      category: "Pipe Velocity",
+      id: "velocity_suction",
+      category: "Suction Velocity",
       severity: "warning",
-      title: "Velocity above recommended potable-water limit",
-      message: `Computed pipe velocity is ${metric}. AWWA M11 recommends ≤ 3.0 m/s (10 fps) for potable distribution; exceeding this increases head loss non-linearly and raises noise / erosion risk.`,
-      recommendation: "Consider increasing pipe diameter to bring velocity below 3.0 m/s (10 fps). Review which segment is the bottleneck.",
+      title: "Suction velocity above AWWA M11 recommended limit",
+      message: `Suction pipe velocity is ${metric}. AWWA M11 recommends ≤ 3.0 m/s (10 fps) for potable suction mains. High suction velocity increases friction losses, lowers NPSHa, and raises cavitation risk.`,
+      recommendation: "Increase the suction pipe diameter. Use a larger size on the suction side than the discharge side if necessary to protect NPSH.",
       metric,
     };
   }
 
   if (v < 0.6) {
     return {
-      id: "velocity",
-      category: "Pipe Velocity",
+      id: "velocity_suction",
+      category: "Suction Velocity",
       severity: "warning",
-      title: "Velocity below minimum — stagnation and biofilm risk",
-      message: `Computed pipe velocity is ${metric}. Velocities below 0.6 m/s (2 fps) in potable mains may lead to sediment deposition and disinfectant residual decay (AWWA M58).`,
-      recommendation: "Reduce pipe diameter or review the design flow assumption. Consider a smaller diameter on long suction/discharge legs.",
+      title: "Suction velocity below minimum — sediment and biofilm risk",
+      message: `Suction pipe velocity is ${metric}. Velocities below 0.6 m/s (2 fps) in potable mains may allow sediment deposition and disinfectant residual decay (AWWA M58).`,
+      recommendation: "Reduce the suction pipe diameter or verify the design flow assumption. Oversized suction piping is a common source of low velocity.",
       metric,
     };
   }
 
   return {
-    id: "velocity",
-    category: "Pipe Velocity",
+    id: "velocity_suction",
+    category: "Suction Velocity",
     severity: "info",
-    title: "Velocity within recommended range",
-    message: `Computed pipe velocity is ${metric} — within the AWWA M11 recommended range of 0.6–3.0 m/s (2–10 fps) for potable mains.`,
+    title: "Suction velocity within recommended range",
+    message: `Suction pipe velocity is ${metric} — within the AWWA M11 recommended range of 0.6–3.0 m/s (2–10 fps) for potable suction mains.`,
     recommendation: "No action required.",
     metric,
   };
 }
 
 /**
- * Check 2 — Friction head loss per 100 m (or per 100 ft).
- * Thresholds (SI):
- *   Warning  : > 5 m / 100 m
- *   Critical : > 10 m / 100 m
+ * Check 1b — Discharge pipe velocity vs AWWA M11 potable-water recommendations.
+ * Computed from design flow + primary discharge segment diameter.
+ * Recommended range: 0.9–3.5 m/s (slightly higher than suction).
+ * Warning : > 3.5 m/s or < 0.6 m/s
+ * Critical: > 4.5 m/s
+ */
+function checkDischargeVelocity(draft: ProjectDraft, isUS: boolean): CheckResult {
+  const seg = draft.discharge.segments[0];
+
+  if (!seg) {
+    return {
+      id: "velocity_discharge",
+      category: "Discharge Velocity",
+      severity: "info",
+      title: "Discharge velocity — no discharge segment defined",
+      message: "No discharge pipeline segment is configured.",
+      recommendation: "Add a discharge segment on Step 6.",
+      skipped: true,
+    };
+  }
+
+  const v = velocityMs(draft.designFlow_m3h, seg.diameter_mm);
+
+  if (v === null) {
+    return {
+      id: "velocity_discharge",
+      category: "Discharge Velocity",
+      severity: "info",
+      title: "Discharge velocity — invalid inputs",
+      message: "Design flow or discharge diameter is zero.",
+      recommendation: "Check flow and pipe diameter inputs.",
+      skipped: true,
+    };
+  }
+
+  const vDisplay = isUS ? v * 3.28084 : v;
+  const unit = isUS ? "fps" : "m/s";
+  const metric = `${round(vDisplay, 3)} ${unit}`;
+
+  if (v > 4.5) {
+    return {
+      id: "velocity_discharge",
+      category: "Discharge Velocity",
+      severity: "critical",
+      title: "Discharge velocity critically high — erosion and water-hammer risk",
+      message: `Discharge pipe velocity is ${metric}. AWWA M11 recommends ≤ 3.5 m/s (11.5 fps) for potable discharge mains; velocities above 4.5 m/s (15 fps) cause pipe erosion, elevated noise, and dangerous water-hammer surges on pump trip.`,
+      recommendation: "Increase the discharge pipe diameter immediately. Review the surge analysis (Step 9) to ensure water-hammer pressures remain within pipe pressure ratings.",
+      metric,
+    };
+  }
+
+  if (v > 3.5) {
+    return {
+      id: "velocity_discharge",
+      category: "Discharge Velocity",
+      severity: "warning",
+      title: "Discharge velocity above AWWA M11 recommended limit",
+      message: `Discharge pipe velocity is ${metric}. AWWA M11 recommends ≤ 3.5 m/s (11.5 fps) for potable discharge mains. Exceeding this increases water-hammer surge potential and pipe wear.`,
+      recommendation: "Consider increasing the discharge pipe diameter, particularly on long runs. Re-run hydraulics to verify head loss impact.",
+      metric,
+    };
+  }
+
+  if (v < 0.6) {
+    return {
+      id: "velocity_discharge",
+      category: "Discharge Velocity",
+      severity: "warning",
+      title: "Discharge velocity below minimum — sediment risk",
+      message: `Discharge pipe velocity is ${metric}. Velocities below 0.6 m/s (2 fps) in potable distribution mains risk sediment accumulation.`,
+      recommendation: "Reduce the discharge pipe diameter or review the design flow assumption.",
+      metric,
+    };
+  }
+
+  return {
+    id: "velocity_discharge",
+    category: "Discharge Velocity",
+    severity: "info",
+    title: "Discharge velocity within recommended range",
+    message: `Discharge pipe velocity is ${metric} — within the AWWA M11 recommended range of 0.6–3.5 m/s (2–11.5 fps) for potable discharge mains.`,
+    recommendation: "No action required.",
+    metric,
+  };
+}
+
+/**
+ * Check 2 — Friction head loss gradient per 100 m (or per 100 ft).
+ * Gradient is a dimensionless ratio: m/m = ft/ft (numerically identical).
+ * Thresholds:
+ *   SI : warn > 5 m/100 m; critical > 10 m/100 m
+ *   US : warn > 2.4 ft/100 ft; critical > 4.8 ft/100 ft
  */
 function checkFrictionLoss(draft: ProjectDraft, isUS: boolean): CheckResult {
   const r = draft.hydraulicsResult;
@@ -144,7 +250,7 @@ function checkFrictionLoss(draft: ProjectDraft, isUS: boolean): CheckResult {
       category: "Friction Loss",
       severity: "info",
       title: "Friction loss — awaiting hydraulic compute",
-      message: "Run 'Compute Hydraulics' on Step 7 to evaluate friction head loss per 100 m.",
+      message: "Run 'Compute Hydraulics' on Step 7 to evaluate friction head loss gradient.",
       recommendation: "Complete the hydraulic computation to unlock this check.",
       skipped: true,
     };
@@ -164,67 +270,35 @@ function checkFrictionLoss(draft: ProjectDraft, isUS: boolean): CheckResult {
     };
   }
 
-  const per100m = (r.friction_head_m / totalLen) * 100;
+  // Gradient is dimensionless — the ratio m/m equals ft/ft numerically
+  const gradient = (r.friction_head_m / totalLen) * 100;
 
-  if (isUS) {
-    const per100ft = per100m * 0.3048; // convert m/100m → ft/100ft (they're the same ratio, display changes)
-    const metric = `${round(per100ft, 2)} ft / 100 ft`;
+  // US thresholds (per plan: 2.4 ft/100 ft warning, 4.8 ft/100 ft critical)
+  const warnThreshold  = isUS ? 2.4 : 5.0;
+  const critThreshold  = isUS ? 4.8 : 10.0;
+  const unitLabel      = isUS ? "ft/100 ft" : "m/100 m";
+  const metric         = `${round(gradient, 2)} ${unitLabel}`;
 
-    if (per100m > 10) {
-      return {
-        id: "friction_loss",
-        category: "Friction Loss",
-        severity: "critical",
-        title: "Friction gradient critically high",
-        message: `Friction head loss is ${metric}. This is well above the typical guideline of ≤ 4 ft/100 ft for pump station mains, indicating severe pipe undersizing.`,
-        recommendation: "Increase pipe diameter immediately. For long runs, evaluate economic pipe sizing (EPS) to find the life-cycle optimum diameter.",
-        metric,
-      };
-    }
-    if (per100m > 5) {
-      return {
-        id: "friction_loss",
-        category: "Friction Loss",
-        severity: "warning",
-        title: "Friction gradient above typical design range",
-        message: `Friction head loss is ${metric}. Common design guidance for pump station mains is ≤ 2 ft/100 ft; exceeding this increases energy costs and TDH significantly.`,
-        recommendation: "Consider increasing the pipe diameter on the longest segment. Re-run hydraulics to verify the improvement.",
-        metric,
-      };
-    }
-    return {
-      id: "friction_loss",
-      category: "Friction Loss",
-      severity: "info",
-      title: "Friction gradient within acceptable range",
-      message: `Friction head loss is ${metric} — within typical design limits for potable pump station mains.`,
-      recommendation: "No action required.",
-      metric,
-    };
-  }
-
-  const metric = `${round(per100m, 2)} m / 100 m`;
-
-  if (per100m > 10) {
+  if (gradient > critThreshold) {
     return {
       id: "friction_loss",
       category: "Friction Loss",
       severity: "critical",
-      title: "Friction gradient critically high",
-      message: `Friction head loss is ${metric}. This far exceeds the typical guideline of ≤ 5 m/100 m for pump station mains, indicating severe pipe undersizing and very high energy consumption.`,
-      recommendation: "Increase pipe diameter immediately. For long runs, evaluate economic pipe sizing (EPS) to find the optimum life-cycle diameter.",
+      title: "Friction gradient critically high — severe pipe undersizing",
+      message: `Friction head loss gradient is ${metric}, well above the design limit of ${critThreshold} ${unitLabel}. This indicates severe pipe undersizing with very high energy consumption and TDH.`,
+      recommendation: "Increase pipe diameter on the bottleneck segment(s). Consider economic pipe sizing (EPS) analysis to find the life-cycle optimum. Re-run hydraulics after each change.",
       metric,
     };
   }
 
-  if (per100m > 5) {
+  if (gradient > warnThreshold) {
     return {
       id: "friction_loss",
       category: "Friction Loss",
       severity: "warning",
       title: "Friction gradient above typical design range",
-      message: `Friction head loss is ${metric}. Common design guidance for pump station mains is ≤ 5 m/100 m; exceeding this increases energy costs and TDH significantly.`,
-      recommendation: "Consider increasing the pipe diameter on the longest or smallest-diameter segment. Re-run hydraulics to verify the improvement.",
+      message: `Friction head loss gradient is ${metric}, above the common design guideline of ${warnThreshold} ${unitLabel} for pump station mains. Exceeding this increases energy costs and TDH significantly.`,
+      recommendation: "Consider increasing the pipe diameter on the longest or narrowest segment. Re-run hydraulics to verify the improvement in TDH.",
       metric,
     };
   }
@@ -234,7 +308,7 @@ function checkFrictionLoss(draft: ProjectDraft, isUS: boolean): CheckResult {
     category: "Friction Loss",
     severity: "info",
     title: "Friction gradient within acceptable range",
-    message: `Friction head loss is ${metric} — within typical design limits for potable pump station mains.`,
+    message: `Friction head loss gradient is ${metric} — within the design guideline of ≤ ${warnThreshold} ${unitLabel} for potable pump station mains.`,
     recommendation: "No action required.",
     metric,
   };
@@ -242,9 +316,9 @@ function checkFrictionLoss(draft: ProjectDraft, isUS: boolean): CheckResult {
 
 /**
  * Check 3 — NPSH margin (NPSHa − NPSHr) per HI 9.6.3.
- * Thresholds:
- *   Warning  : margin < 0.6 m (2 ft) above NPSHr
- *   Critical : margin ≤ 0 (cavitation likely)
+ * Uses the first pump operating point's cached margin from pumpResult.
+ * Warning : margin < 0.6 m (2 ft) above NPSHr
+ * Critical: margin ≤ 0 (cavitation likely)
  */
 function checkNpsh(draft: ProjectDraft, isUS: boolean): CheckResult {
   const pr = draft.pumpResult;
@@ -286,8 +360,8 @@ function checkNpsh(draft: ProjectDraft, isUS: boolean): CheckResult {
       category: "NPSH Margin",
       severity: "critical",
       title: "Cavitation likely — NPSHa ≤ NPSHr",
-      message: `NPSH margin is ${metric}. The available net positive suction head is at or below the pump's required NPSH, meaning cavitation is expected at the design operating point.`,
-      recommendation: "Lower the pump installation elevation, increase the suction pipe diameter, shorten the suction run, reduce suction-side fittings, or select a low-NPSH impeller. Consider adding suction-side pressurization.",
+      message: `NPSH margin is ${metric}. The available net positive suction head is at or below the pump's required NPSH; cavitation is expected at the design operating point, leading to impeller damage and flow instability.`,
+      recommendation: "Lower the pump installation elevation, increase the suction pipe diameter, shorten the suction run, reduce suction fittings, or select a low-NPSH impeller design.",
       metric,
     };
   }
@@ -299,7 +373,7 @@ function checkNpsh(draft: ProjectDraft, isUS: boolean): CheckResult {
       severity: "warning",
       title: "NPSH margin below HI 9.6.3 recommended minimum",
       message: `NPSH margin is ${metric}. HI Standard 9.6.3 recommends a minimum margin of 0.6 m (2 ft) above NPSHr to account for suction piping losses and operating variability.`,
-      recommendation: "Review suction piping layout. Lowering the pump or upsizing the suction line are the most effective remedies. Alternatively, throttle the discharge slightly to move the operating point left on the curve.",
+      recommendation: "Review suction piping layout. Lowering the pump installation or upsizing the suction line are the most effective remedies. Alternatively, throttle discharge slightly to move the operating point left.",
       metric,
     };
   }
@@ -317,13 +391,11 @@ function checkNpsh(draft: ProjectDraft, isUS: boolean): CheckResult {
 
 /**
  * Check 4 — Wet well cycling rate vs AWWA M32.
- * Derived analytically from ClearwellFormConfig without a stored API result.
- * Uses the first pump stage and constant inflow. If hourly inflow, uses the
- * 24-h average. The analytical worst-case formula for max cycles/hr:
- *   C_max = Q_pump / (4 · V_op)        [Q in m³/h, V in m³]
- * which applies when Q_in = Q_pump / 2.
+ * Uses clearwellResult.cycle_results[0].cycles_per_hour when a cached API
+ * result exists; falls back to analytical approximation from config otherwise.
+ * Warning: cycles_per_hour > max_cycles_per_hour config value.
  */
-function checkCycling(draft: ProjectDraft, isUS: boolean): CheckResult {
+function checkCycling(draft: ProjectDraft, _isUS?: boolean): CheckResult {
   const cfg = draft.clearwellConfig;
 
   if (!cfg) {
@@ -338,6 +410,39 @@ function checkCycling(draft: ProjectDraft, isUS: boolean): CheckResult {
     };
   }
 
+  const maxAllowed = cfg.max_cycles_per_hour;
+
+  // ── Prefer the cached API result from clearwellResult ──────────────────────
+  const cachedResult = draft.clearwellResult;
+  if (cachedResult && cachedResult.active && cachedResult.cycle_results.length > 0) {
+    const cr = cachedResult.cycle_results[0];
+    const cycles = cr.cycles_per_hour;
+    const metric = `${round(cycles, 1)} starts/hr (from Step 4 compute)`;
+
+    if (!cr.cycles_ok || cycles > maxAllowed) {
+      return {
+        id: "cycling",
+        category: "Wet Well Cycling",
+        severity: "warning",
+        title: "Pump start frequency exceeds configured maximum",
+        message: `Computed cycling rate is ${metric}, exceeding the configured maximum of ${maxAllowed} starts/hr (AWWA M32 motor protection guidance). Stage: ${cr.label}, Q_pump = ${round(cr.Q_pump_m3h, 1)} m³/h.`,
+        recommendation: "Add a VFD to modulate pump speed and eliminate discrete cycling, or increase the wet well operating volume (raise HWL or deepen the well) to reduce starts per hour.",
+        metric,
+      };
+    }
+
+    return {
+      id: "cycling",
+      category: "Wet Well Cycling",
+      severity: "info",
+      title: "Pump cycling within acceptable limit",
+      message: `Computed cycling rate is ${metric} — within the configured maximum of ${maxAllowed} starts/hr (AWWA M32).`,
+      recommendation: "No action required. Recheck if inflow varies significantly from the assumed profile.",
+      metric,
+    };
+  }
+
+  // ── Analytical fallback from config when no computed result exists ──────────
   const firstStage = cfg.pump_stages[0];
   if (!firstStage) {
     return {
@@ -346,12 +451,11 @@ function checkCycling(draft: ProjectDraft, isUS: boolean): CheckResult {
       severity: "info",
       title: "Wet well cycling — no pump stage defined",
       message: "No pump stage is configured on Step 4.",
-      recommendation: "Add at least one pump stage to the wet well configuration.",
+      recommendation: "Add at least one pump stage, then run the wet well compute to get an accurate cycling rate.",
       skipped: true,
     };
   }
 
-  // Operating volume between LWL and HWL
   let V_op_m3 = 0;
   if (cfg.shape === "cylindrical" && cfg.diameter_m) {
     const r = cfg.diameter_m / 2;
@@ -366,15 +470,13 @@ function checkCycling(draft: ProjectDraft, isUS: boolean): CheckResult {
       category: "Wet Well Cycling",
       severity: "info",
       title: "Wet well cycling — cannot compute volume",
-      message: "Operating volume could not be computed from the current wet well geometry.",
-      recommendation: "Check that the wet well dimensions (diameter / length × width) and levels are entered correctly on Step 4.",
+      message: "Operating volume could not be derived from the current wet well geometry. Run the wet well compute on Step 4 for an accurate result.",
+      recommendation: "Check that wet well dimensions and levels are entered correctly, then compute on Step 4.",
       skipped: true,
     };
   }
 
   const Q_pump_m3h = firstStage.Q_pump_m3h;
-
-  // Average inflow
   let Q_in_m3h = 0;
   if (cfg.inflow_type === "constant" && cfg.Q_in_m3h) {
     Q_in_m3h = cfg.Q_in_m3h;
@@ -383,9 +485,6 @@ function checkCycling(draft: ProjectDraft, isUS: boolean): CheckResult {
     Q_in_m3h = total / Math.max(cfg.hourly_Q.length, 1);
   }
 
-  // Worst-case cycles/hr: C = Q_pump · Q_in / (V_op · (Q_pump - Q_in)) * (1/4) ... derived from fill+drain
-  // General formula: C = (Q_pump - Q_in) * Q_in / (Q_pump * V_op) * 60  — in cycles/hr when V in m³, Q in m³/min
-  // Using m³/h: C = (Q_pump - Q_in) * Q_in / (Q_pump * V_op)  cycles/hr
   let cycles_per_hour = 0;
   if (Q_pump_m3h > Q_in_m3h && Q_in_m3h > 0) {
     const Q_net_drain = Q_pump_m3h - Q_in_m3h;
@@ -394,31 +493,28 @@ function checkCycling(draft: ProjectDraft, isUS: boolean): CheckResult {
     const t_cycle_h   = t_drain_h + t_fill_h;
     cycles_per_hour   = t_cycle_h > 0 ? 1 / t_cycle_h : 0;
   } else if (Q_pump_m3h <= Q_in_m3h) {
-    // Pump cannot keep up — no cycling, continuous run
-    const V_op_display = isUS ? V_op_m3 * 264.172 : V_op_m3;
-    const unit = isUS ? "gal" : "m³";
     return {
       id: "cycling",
       category: "Wet Well Cycling",
       severity: "warning",
-      title: "Pump capacity ≤ inflow — continuous operation expected",
-      message: `The first pump stage (${round(Q_pump_m3h, 1)} m³/h) cannot drain faster than the inflow (${round(Q_in_m3h, 1)} m³/h). The wet well will overflow unless a second pump stage is added. Operating volume = ${round(V_op_display, 1)} ${unit}.`,
-      recommendation: "Add a larger pump stage or reduce the design inflow. Verify the inflow assumptions.",
+      title: "Pump capacity ≤ inflow — continuous operation or overflow",
+      message: `The first pump stage (${round(Q_pump_m3h, 1)} m³/h) cannot drain faster than the configured inflow (${round(Q_in_m3h, 1)} m³/h). The wet well will overflow unless a second pump stage is activated. Run Step 4 compute for detailed analysis.`,
+      recommendation: "Add a larger pump stage or verify the inflow assumption. Consider an emergency overflow design.",
       metric: `Q_pump ≤ Q_in`,
     };
   }
 
-  const maxAllowed = cfg.max_cycles_per_hour;
-  const metric = `${round(cycles_per_hour, 1)} starts/hr`;
+  const note = " (analytical estimate — run Step 4 compute for accuracy)";
+  const metric = `${round(cycles_per_hour, 1)} starts/hr${note}`;
 
   if (cycles_per_hour > maxAllowed) {
     return {
       id: "cycling",
       category: "Wet Well Cycling",
       severity: "warning",
-      title: "Pump start frequency exceeds limit",
-      message: `Estimated cycling rate is ${metric}, exceeding the configured maximum of ${maxAllowed} starts/hr (AWWA M32 motor protection guidance). Analytical worst case at Q_in = ${round(Q_in_m3h, 1)} m³/h; operating volume = ${round(V_op_m3, 1)} m³.`,
-      recommendation: "Add a VFD to modulate pump speed and eliminate cycling, or increase the wet well operating volume (raise HWL or deepen the well) to reduce starts per hour.",
+      title: "Estimated pump start frequency exceeds maximum",
+      message: `Analytical cycling estimate is ${metric}, exceeding the configured maximum of ${maxAllowed} starts/hr (AWWA M32). This uses Q_in = ${round(Q_in_m3h, 1)} m³/h and operating volume = ${round(V_op_m3, 1)} m³.`,
+      recommendation: "Add a VFD to modulate pump speed and eliminate cycling, or increase the wet well operating volume. Run the Step 4 compute to confirm.",
       metric,
     };
   }
@@ -427,22 +523,20 @@ function checkCycling(draft: ProjectDraft, isUS: boolean): CheckResult {
     id: "cycling",
     category: "Wet Well Cycling",
     severity: "info",
-    title: "Pump cycling within acceptable limit",
-    message: `Estimated cycling rate is ${metric} — within the configured maximum of ${maxAllowed} starts/hr. Operating volume = ${round(V_op_m3, 1)} m³.`,
-    recommendation: "No action required. Recheck if inflow varies significantly from the constant rate assumed.",
+    title: "Estimated cycling within acceptable limit",
+    message: `Analytical cycling estimate is ${metric} — within the configured maximum of ${maxAllowed} starts/hr.`,
+    recommendation: "Run the wet well compute on Step 4 to confirm with the detailed API result.",
     metric,
   };
 }
 
 /**
  * Check 5 — Pump duty point location on the H-Q curve (HI 9.6.3 preferred
- * operating region).
- * Uses the first operating point's Q and the hq_curve extent.
- * Preferred region: 70–110 % of BEP flow.
- * We approximate BEP as 75 % of the max-Q curve point (common centrifugal fit).
- * Simpler guards: warn if Q_op < 15 % or > 85 % of max-curve-Q; critical > 95 %.
+ * operating region). Uses first pump operating point + hq_curve extent.
+ * Warning : Q_op < 15% (near shutoff) or > 85% (near runout) of curve Q range
+ * Critical: Q_op > 95% of curve Q range
  */
-function checkDutyPoint(draft: ProjectDraft): CheckResult {
+function checkDutyPoint(draft: ProjectDraft, _isUS?: boolean): CheckResult {
   const pr = draft.pumpResult;
 
   if (!pr || pr.operating_points.length === 0) {
@@ -481,16 +575,16 @@ function checkDutyPoint(draft: ProjectDraft): CheckResult {
       id: "duty_point",
       category: "Pump Duty Point",
       severity: "info",
-      title: "Duty point — curve range is zero",
+      title: "Duty point — curve Q range is zero",
       message: "The H-Q curve Q range is zero; location check not possible.",
-      recommendation: "Provide a valid H-Q curve with at least two distinct flow points.",
+      recommendation: "Provide a valid H-Q curve with at least two distinct flow values.",
       skipped: true,
     };
   }
 
   const Q_op = op.Q_m3h;
-  const fracOfMax = range > 0 ? (Q_op - Qmin) / range : 0.5;
-  const metric = `Q_op = ${round(Q_op, 1)} m³/h (${round(fracOfMax * 100, 0)}% of curve)`;
+  const fracOfMax = (Q_op - Qmin) / range;
+  const metric = `Q_op = ${round(Q_op, 1)} m³/h (${round(fracOfMax * 100, 0)}% of curve range)`;
 
   if (fracOfMax > 0.95) {
     return {
@@ -498,8 +592,8 @@ function checkDutyPoint(draft: ProjectDraft): CheckResult {
       category: "Pump Duty Point",
       severity: "critical",
       title: "Pump operating near runout — overload and cavitation risk",
-      message: `Operating point ${metric}. At near-runout conditions (>95% of max curve Q), the pump draws maximum shaft power, NPSH requirement spikes, and efficiency drops sharply. Impeller and motor damage are likely.`,
-      recommendation: "Select a larger pump or reduce design flow. If flow must stay constant, increase static head by throttling discharge or selecting a steeper curve pump.",
+      message: `Operating point ${metric}. At near-runout conditions (>95% of H-Q curve range), shaft power peaks, NPSH requirement spikes, and efficiency collapses. Impeller and motor damage are likely with sustained operation.`,
+      recommendation: "Select a larger pump or reduce the design flow. If flow must stay constant, increase static head by throttling discharge, or choose a pump with a steeper curve.",
       metric,
     };
   }
@@ -511,7 +605,7 @@ function checkDutyPoint(draft: ProjectDraft): CheckResult {
       severity: "warning",
       title: "Pump operating near runout — reduced efficiency and NPSH risk",
       message: `Operating point ${metric}. HI 9.6.3 preferred operating region (POR) typically ends at ~110% of BEP flow. Operating near runout increases hydraulic noise, vibration, and NPSH demand.`,
-      recommendation: "Consider a steeper pump curve or verify that NPSHa is adequate at this flow. Alternatively, trim the impeller slightly to shift the curve.",
+      recommendation: "Consider a steeper pump curve or verify NPSHa is adequate at this flow. Trimming the impeller slightly can also shift the curve left.",
       metric,
     };
   }
@@ -522,8 +616,8 @@ function checkDutyPoint(draft: ProjectDraft): CheckResult {
       category: "Pump Duty Point",
       severity: "warning",
       title: "Pump operating near shutoff — recirculation and overheating risk",
-      message: `Operating point ${metric}. Operating near shutoff (<15% of curve Q) risks internal recirculation, suction vortexing, temperature rise in the casing, and premature bearing wear.`,
-      recommendation: "Select a pump with a lower shutoff head or increase the design flow. A VFD to reduce speed at low-demand conditions can also help avoid shutoff operation.",
+      message: `Operating point ${metric}. Operating near shutoff (<15% of H-Q curve range) risks internal recirculation, suction vortexing, temperature rise in the casing, and premature bearing wear.`,
+      recommendation: "Select a pump with a lower shutoff head, increase the design flow, or add a VFD to reduce speed at low-demand conditions to avoid near-shutoff operation.",
       metric,
     };
   }
@@ -534,7 +628,7 @@ function checkDutyPoint(draft: ProjectDraft): CheckResult {
     severity: "info",
     title: "Duty point within acceptable operating range",
     message: `Operating point ${metric} — within the central preferred operating region of the H-Q curve.`,
-    recommendation: "Confirm the point is also within the pump manufacturer's allowable operating range (AOR).",
+    recommendation: "Confirm the point also falls within the pump manufacturer's allowable operating range (AOR).",
     metric,
   };
 }
@@ -542,7 +636,10 @@ function checkDutyPoint(draft: ProjectDraft): CheckResult {
 /**
  * Check 6 — N+1 redundancy compliance (AWWA M32 / Ten States Standards).
  * Uses pumpSelectionConfig.nDuty and nStandby.
- * Rule: nStandby ≥ 1 always; for nDuty ≥ 2, nStandby ≥ 1 is still required.
+ * Rules (per specification):
+ *   Warning  : nStandby < 1 AND nDuty = 1 (sole duty pump has no backup)
+ *   Critical : nStandby < 1 AND nDuty > 1 (multi-duty station with no standby)
+ * Advisory   : nDuty ≥ 3 with only 1 standby
  */
 function checkRedundancy(draft: ProjectDraft): CheckResult {
   const sel = draft.pumpSelectionConfig;
@@ -563,13 +660,26 @@ function checkRedundancy(draft: ProjectDraft): CheckResult {
   const total = nDuty + nStandby;
   const metric = `${nDuty}D + ${nStandby}S = ${total} total`;
 
-  if (nStandby < 1) {
+  if (nStandby < 1 && nDuty > 1) {
     return {
       id: "redundancy",
       category: "Redundancy (N+1)",
       severity: "critical",
+      title: "No standby pump in multi-pump station — N+1 requirement not met",
+      message: `Configuration is ${metric}. Ten States Standards and AWWA M32 require at least one standby pump. A multi-duty station (${nDuty} duty pumps) with no standby means a single pump failure drops capacity to ${Math.round((1 - 1/nDuty)*100)}% — or causes a full service outage if all pumps are needed for peak demand.`,
+      recommendation: "Add at least one standby pump of equal or greater capacity. For critical supply stations, consider 2 standby pumps.",
+      metric,
+    };
+  }
+
+  if (nStandby < 1) {
+    // nDuty <= 1: single duty pump with no standby — warning level
+    return {
+      id: "redundancy",
+      category: "Redundancy (N+1)",
+      severity: "warning",
       title: "No standby pump — fails N+1 redundancy requirement",
-      message: `Configuration is ${metric}. Ten States Standards (Recommended Standards for Water Works) and AWWA M32 require at least one standby pump for all municipal pump stations. A single-pump station risks service interruption on any failure.`,
+      message: `Configuration is ${metric}. Ten States Standards (Recommended Standards for Water Works) and AWWA M32 require at least one standby pump for all municipal pump stations. A single-pump station risks complete service interruption on any failure or maintenance outage.`,
       recommendation: "Add at least one standby pump of equal or greater capacity to the duty configuration.",
       metric,
     };
@@ -581,8 +691,8 @@ function checkRedundancy(draft: ProjectDraft): CheckResult {
       category: "Redundancy (N+1)",
       severity: "warning",
       title: "Consider additional standby for large multi-pump station",
-      message: `Configuration is ${metric}. With ${nDuty} duty pumps, losing a single standby may not fully protect peak-demand delivery if another pump fails during the repair window.`,
-      recommendation: "For ≥3 duty pumps, consider 2 standby units or a fire-pump-rated spare. Confirm with the authority having jurisdiction (AHJ) for any specific requirement.",
+      message: `Configuration is ${metric}. With ${nDuty} duty pumps, losing the single standby during a repair window leaves the station with no backup for subsequent failures.`,
+      recommendation: "For ≥3 duty pumps, consider 2 standby units. Confirm any specific AHJ requirement.",
       metric,
     };
   }
@@ -593,7 +703,7 @@ function checkRedundancy(draft: ProjectDraft): CheckResult {
     severity: "info",
     title: "N+1 redundancy requirement met",
     message: `Configuration is ${metric} — satisfies the N+1 requirement for municipal pump stations.`,
-    recommendation: "Confirm standby pump is wired to alternate power feed or emergency generator.",
+    recommendation: "Confirm standby pump is wired to an alternate power feed or emergency generator per AWWA M32.",
     metric,
   };
 }
@@ -601,9 +711,8 @@ function checkRedundancy(draft: ProjectDraft): CheckResult {
 /**
  * Check 7 — Minor losses dominance.
  * Uses hydraulicsResult.minor_head_m / hydraulicsResult.tdh_m.
- * Thresholds:
- *   Warning  : minor > 25 % of TDH
- *   Critical : minor > 40 % of TDH
+ * Warning : minor > 25% of TDH
+ * Critical: minor > 40% of TDH
  */
 function checkMinorLosses(draft: ProjectDraft, isUS: boolean): CheckResult {
   const r = draft.hydraulicsResult;
@@ -632,19 +741,19 @@ function checkMinorLosses(draft: ProjectDraft, isUS: boolean): CheckResult {
     };
   }
 
-  const fraction = pct(r.minor_head_m, r.tdh_m);
+  const fraction = r.minor_head_m / r.tdh_m * 100;
   const minorDisplay = isUS ? r.minor_head_m * 3.28084 : r.minor_head_m;
   const unit = isUS ? "ft" : "m";
-  const metric = `${round(fraction, 1)} % of TDH (${round(minorDisplay, 2)} ${unit})`;
+  const metric = `${round(fraction, 1)}% of TDH (${round(minorDisplay, 2)} ${unit})`;
 
   if (fraction > 40) {
     return {
       id: "minor_losses",
       category: "Minor Losses",
       severity: "critical",
-      title: "Minor losses dominate system head — excessive fittings/valves",
-      message: `Minor (fitting) losses account for ${metric}. This suggests an excessive number or high-resistance type of fittings. At this fraction, fitting selection and placement drive most of the pump energy cost.`,
-      recommendation: "Review all fittings in the accessories list. Replace globe valves or needle valves with gate valves or butterfly valves (lower K). Eliminate unnecessary bends and tees. Consider increasing pipe diameter to reduce velocity head.",
+      title: "Minor losses dominate system head — excessive fittings or high-K valves",
+      message: `Minor (fitting) losses account for ${metric}. At this fraction, fitting selection and placement drive most of the pump energy cost and TDH. This suggests either too many fittings or high-resistance valve types (globe, needle).`,
+      recommendation: "Review all fittings in the accessories list. Replace globe/needle valves with gate or butterfly valves. Eliminate unnecessary bends and tees. Increasing pipe diameter also reduces velocity head and hence minor losses.",
       metric,
     };
   }
@@ -666,8 +775,8 @@ function checkMinorLosses(draft: ProjectDraft, isUS: boolean): CheckResult {
     category: "Minor Losses",
     severity: "info",
     title: "Minor losses within acceptable proportion",
-    message: `Minor (fitting) losses account for ${metric} of TDH — within the typical design range (< 25 %).`,
-    recommendation: "No action required. Revisit if additional fittings are added.",
+    message: `Minor (fitting) losses account for ${metric} of TDH — within the typical design range (<25%).`,
+    recommendation: "No action required. Revisit if additional fittings are added during detailed design.",
     metric,
   };
 }
@@ -679,13 +788,14 @@ function checkMinorLosses(draft: ProjectDraft, isUS: boolean): CheckResult {
 /**
  * Run all engineering checks against a ProjectDraft.
  * Results are ordered: Critical → Warning → Info.
- * Skipped checks appear at the end as Info items.
+ * Skipped checks appear at the end of their respective severity group.
  */
 export function runChecks(draft: ProjectDraft): CheckResult[] {
   const isUS = draft.unitSystem === "US";
 
   const raw: CheckResult[] = [
-    checkVelocity(draft, isUS),
+    checkSuctionVelocity(draft, isUS),
+    checkDischargeVelocity(draft, isUS),
     checkFrictionLoss(draft, isUS),
     checkNpsh(draft, isUS),
     checkCycling(draft, isUS),
@@ -697,23 +807,30 @@ export function runChecks(draft: ProjectDraft): CheckResult[] {
   const order: Record<CheckSeverity, number> = { critical: 0, warning: 1, info: 2 };
 
   return [...raw].sort((a, b) => {
-    // skipped checks always last within their severity
     if (a.skipped !== b.skipped) return a.skipped ? 1 : -1;
     return order[a.severity] - order[b.severity];
   });
 }
 
-/** Returns a summary string suitable for inclusion in plain-text / CSV exports. */
+/**
+ * Returns a plain-text summary suitable for inclusion in reports or CSV exports.
+ */
 export function checksToText(checks: CheckResult[]): string {
-  const lines: string[] = ["ENGINEERING CHECKS", "=================="];
+  const lines: string[] = [
+    "ENGINEERING CHECKS REPORT",
+    "=========================",
+    `Generated: ${new Date().toISOString()}`,
+    "",
+  ];
   for (const c of checks) {
-    const sev = c.severity.toUpperCase().padEnd(8);
-    const skip = c.skipped ? " [SKIPPED]" : "";
+    const sev  = c.severity.toUpperCase().padEnd(8);
+    const skip = c.skipped ? " [AWAITING DATA]" : "";
     lines.push(`[${sev}] ${c.category}${skip}`);
-    lines.push(`  ${c.title}`);
+    lines.push(`  Finding: ${c.title}`);
+    if (c.metric) lines.push(`  Metric : ${c.metric}`);
     if (!c.skipped) {
-      lines.push(`  ${c.message}`);
-      lines.push(`  → ${c.recommendation}`);
+      lines.push(`  Detail : ${c.message}`);
+      lines.push(`  Action : ${c.recommendation}`);
     }
     lines.push("");
   }

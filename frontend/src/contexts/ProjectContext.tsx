@@ -18,7 +18,7 @@ import type {
 } from "../types/project";
 import { DEFAULT_DRAFT } from "../types/project";
 import type { UnitSystem } from "../utils/units";
-import type { CalculationResponse, PumpComputeResponse } from "../utils/api";
+import type { CalculationResponse, ClearWellResponse, PumpComputeResponse } from "../utils/api";
 
 // ---------------------------------------------------------------------------
 // Actions
@@ -38,6 +38,7 @@ type Action =
   | { type: "SET_PUMP_CURVE_CONFIG";     config: PumpCurveConfig | null }
   | { type: "SET_HYDRAULICS";            result: CalculationResponse | null; error: string | null }
   | { type: "SET_PUMP_RESULT";           result: PumpComputeResponse | null }
+  | { type: "SET_CLEARWELL_RESULT";      result: ClearWellResponse | null }
   | { type: "LOAD";                      draft: ProjectDraft };
 
 function reducer(state: ProjectDraft, action: Action): ProjectDraft {
@@ -56,6 +57,7 @@ function reducer(state: ProjectDraft, action: Action): ProjectDraft {
     case "SET_HYDRAULICS":
       return { ...state, hydraulicsResult: action.result, hydraulicsError: action.error };
     case "SET_PUMP_RESULT":           return { ...state, pumpResult: action.result };
+    case "SET_CLEARWELL_RESULT":      return { ...state, clearwellResult: action.result };
     case "LOAD":                      return { ...action.draft };
     default:                          return state;
   }
@@ -86,6 +88,7 @@ function parseDraft(raw: string): ProjectDraft {
     hydraulicsResult:     parsed.hydraulicsResult     ?? null,
     hydraulicsError:      parsed.hydraulicsError      ?? null,
     pumpResult:           parsed.pumpResult           ?? null,
+    clearwellResult:      parsed.clearwellResult      ?? null,
   };
 }
 

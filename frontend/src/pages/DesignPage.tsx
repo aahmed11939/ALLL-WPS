@@ -219,6 +219,8 @@ export default function DesignPage() {
                     : undefined
                 }
                 staticHeadM={results?.static_head_m ?? undefined}
+                designFlowM3h={results?.design_Q_m3h ?? undefined}
+                designTdhM={results?.tdh_m ?? undefined}
               />
             </div>
 

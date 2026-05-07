@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, ReferenceLine, Legend, ResponsiveContainer,
+  Tooltip, ReferenceLine, ReferenceDot, Legend, ResponsiveContainer,
 } from "recharts";
 import type { ValueType, NameType, Formatter } from "recharts/types/component/DefaultTooltipContent";
 import {
@@ -32,6 +32,10 @@ export interface PumpCurveStepProps {
   systemCurve?: CurvePoint[];
   /** Static head component from the hydraulic calculation [m] (optional) */
   staticHeadM?: number;
+  /** Design flow from the hydraulic calculation [m³/h] (optional) */
+  designFlowM3h?: number;
+  /** Design TDH from the hydraulic calculation [m] (optional) */
+  designTdhM?: number;
 }
 
 const inputCls =
@@ -67,6 +71,8 @@ interface ChartConfig {
   npshaM?: number;
   /** If true, annotate the maximum-value point as BEP */
   showBep?: boolean;
+  /** If true, show a diamond marker at (opQ, opV) — use on H-Q chart */
+  showOpDiamond?: boolean;
 }
 
 function PumpChart({ cfg }: { cfg: ChartConfig }) {
@@ -219,6 +225,27 @@ function PumpChart({ cfg }: { cfg: ChartConfig }) {
               label={{ value: `${cfg.opV.toFixed(1)}`, position: "right", fontSize: 9, fill: "#dc2626", fontFamily: "monospace" }}
             />
           )}
+          {/* Diamond marker at operating point (H-Q chart only) */}
+          {cfg.showOpDiamond && cfg.opQ !== undefined && cfg.opV !== undefined && (
+            <ReferenceDot
+              x={cfg.opQ}
+              y={cfg.opV}
+              r={0}
+              shape={(props: { cx?: number; cy?: number }) => {
+                const cx = props.cx ?? 0;
+                const cy = props.cy ?? 0;
+                const s = 8;
+                return (
+                  <polygon
+                    points={`${cx},${cy - s} ${cx + s},${cy} ${cx},${cy + s} ${cx - s},${cy}`}
+                    fill="#dc2626"
+                    stroke="#fff"
+                    strokeWidth={2}
+                  />
+                );
+              }}
+            />
+          )}
 
           <Legend wrapperStyle={{ fontSize: 10, fontFamily: "monospace" }} />
         </LineChart>
@@ -319,7 +346,7 @@ function ManualCurveEditor({ rows, label, unit, onChange }: ManualCurveEditorPro
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function PumpCurveStep({ systemCurve, staticHeadM }: PumpCurveStepProps) {
+export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h, designTdhM }: PumpCurveStepProps) {
   const { unitSystem } = useUnitSystem();
   const isUS = unitSystem === "US";
 
@@ -850,37 +877,65 @@ export default function PumpCurveStep({ systemCurve, staticHeadM }: PumpCurveSte
                   Operating Point{result.operating_points.length > 1 ? "s" : ""}
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {result.operating_points.map((op, i) => (
-                    <div key={i} className={`rounded-lg border p-3 ${op.warnings.length > 0 ? "border-amber-300 bg-amber-50" : "border-teal-300 bg-teal-50"}`}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-bold text-teal-800 uppercase tracking-wide">
-                          {op.n_pumps} pump{op.n_pumps > 1 ? "s" : ""}
-                        </span>
-                        {op.npsh_margin_m !== null && op.npsh_margin_m !== undefined && (
-                          <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${op.warnings.length > 0 ? "bg-amber-200 text-amber-800" : "bg-teal-200 text-teal-800"}`}>
-                            NPSH Margin: {op.npsh_margin_m.toFixed(2)} m
+                  {result.operating_points.map((op, i) => {
+                    const qDevPct = designFlowM3h && designFlowM3h > 0
+                      ? ((op.Q_m3h - designFlowM3h) / designFlowM3h) * 100
+                      : null;
+                    const hDevPct = designTdhM && designTdhM > 0
+                      ? ((op.H_m - designTdhM) / designTdhM) * 100
+                      : null;
+                    return (
+                      <div key={i} className={`rounded-lg border p-3 ${op.warnings.length > 0 ? "border-amber-300 bg-amber-50" : "border-teal-300 bg-teal-50"}`}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold text-teal-800 uppercase tracking-wide">
+                            {op.n_pumps} pump{op.n_pumps > 1 ? "s" : ""}
                           </span>
+                          {op.npsh_margin_m !== null && op.npsh_margin_m !== undefined && (
+                            <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${op.warnings.length > 0 ? "bg-amber-200 text-amber-800" : "bg-teal-200 text-teal-800"}`}>
+                              NPSH Margin: {op.npsh_margin_m.toFixed(2)} m
+                            </span>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs font-mono text-slate-700">
+                          <span>
+                            Q* = <strong>{op.Q_m3h.toFixed(1)} m³/h</strong>
+                            {qDevPct !== null && (
+                              <span className={`ml-1 text-[10px] font-semibold ${Math.abs(qDevPct) > 10 ? "text-amber-600" : "text-slate-400"}`}>
+                                ({qDevPct >= 0 ? "+" : ""}{qDevPct.toFixed(1)}% vs Q_d)
+                              </span>
+                            )}
+                          </span>
+                          <span>
+                            H* = <strong>{op.H_m.toFixed(1)} m</strong>
+                            {hDevPct !== null && (
+                              <span className={`ml-1 text-[10px] font-semibold ${Math.abs(hDevPct) > 10 ? "text-amber-600" : "text-slate-400"}`}>
+                                ({hDevPct >= 0 ? "+" : ""}{hDevPct.toFixed(1)}% vs TDH)
+                              </span>
+                            )}
+                          </span>
+                          {op.eta_pct !== null && <span>η* = <strong>{op.eta_pct?.toFixed(1)}%</strong></span>}
+                          {op.power_kW !== null && (
+                            <span>P* = <strong>
+                              {isUS
+                                ? `${(op.power_kW! * KW_TO_HP).toFixed(1)} hp`
+                                : `${op.power_kW?.toFixed(1)} kW`}
+                            </strong></span>
+                          )}
+                          {op.npshr_m !== null && <span>NPSHr* = <strong>{op.npshr_m?.toFixed(2)} m</strong></span>}
+                          {op.npsha_m !== null && <span>NPSHa = <strong>{op.npsha_m?.toFixed(2)} m</strong></span>}
+                        </div>
+                        {(designFlowM3h || designTdhM) && (
+                          <div className="mt-2 pt-2 border-t border-teal-200 grid grid-cols-2 gap-x-4 text-[10px] font-mono text-slate-500">
+                            {designFlowM3h && <span>Q_design = {designFlowM3h.toFixed(1)} m³/h</span>}
+                            {designTdhM && <span>TDH_design = {designTdhM.toFixed(2)} m</span>}
+                          </div>
                         )}
+                        {op.warnings.map((w, wi) => (
+                          <p key={wi} className="text-[10px] text-amber-700 mt-1 leading-snug">{w}</p>
+                        ))}
                       </div>
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs font-mono text-slate-700">
-                        <span>Q* = <strong>{op.Q_m3h.toFixed(1)} m³/h</strong></span>
-                        <span>H* = <strong>{op.H_m.toFixed(1)} m</strong></span>
-                        {op.eta_pct !== null && <span>η* = <strong>{op.eta_pct?.toFixed(1)}%</strong></span>}
-                        {op.power_kW !== null && (
-                          <span>P* = <strong>
-                            {isUS
-                              ? `${(op.power_kW! * KW_TO_HP).toFixed(1)} hp`
-                              : `${op.power_kW?.toFixed(1)} kW`}
-                          </strong></span>
-                        )}
-                        {op.npshr_m !== null && <span>NPSHr* = <strong>{op.npshr_m?.toFixed(2)} m</strong></span>}
-                        {op.npsha_m !== null && <span>NPSHa = <strong>{op.npsha_m?.toFixed(2)} m</strong></span>}
-                      </div>
-                      {op.warnings.map((w, wi) => (
-                        <p key={wi} className="text-[10px] text-amber-700 mt-1 leading-snug">{w}</p>
-                      ))}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -901,6 +956,7 @@ export default function PumpCurveStep({ systemCurve, staticHeadM }: PumpCurveSte
                     opV: primaryOp?.H_m,
                     speedCurves: vfd ? result.speed_curves : undefined,
                     systemPts: systemCurve,
+                    showOpDiamond: true,
                   }}
                 />
                 <PumpChart

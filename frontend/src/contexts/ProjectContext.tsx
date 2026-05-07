@@ -36,8 +36,17 @@ function reducer(state: ProjectDraft, action: Action): ProjectDraft {
     case "SET_DISCHARGE":      return { ...state, discharge: action.discharge };
     case "SET_HYDRAULICS":     return { ...state, hydraulicsResult: action.result, hydraulicsError: action.error };
     case "SET_PUMP_RESULT":    return { ...state, pumpResult: action.result };
-    case "LOAD":               return { ...action.draft, hydraulicsResult: null, hydraulicsError: null, pumpResult: null };
+    case "LOAD":               return { ...action.draft };
     default:                   return state;
+  }
+}
+
+/** Returns true if localStorage contained a saved project (used for the restore banner). */
+export function hadStoredSession(): boolean {
+  try {
+    return !!localStorage.getItem("wps-project-draft");
+  } catch {
+    return false;
   }
 }
 
@@ -49,14 +58,15 @@ function loadFromStorage(): ProjectDraft {
       return {
         ...DEFAULT_DRAFT,
         ...parsed,
-        suction:   { ...DEFAULT_DRAFT.suction,   ...(parsed.suction ?? {}) },
-        discharge: { ...DEFAULT_DRAFT.discharge,  ...(parsed.discharge ?? {}) },
-        meta:      { ...DEFAULT_DRAFT.meta,       ...(parsed.meta ?? {}) },
-        upstreamNode:   { ...DEFAULT_DRAFT.upstreamNode,   ...(parsed.upstreamNode ?? {}) },
+        suction:        { ...DEFAULT_DRAFT.suction,        ...(parsed.suction        ?? {}) },
+        discharge:      { ...DEFAULT_DRAFT.discharge,       ...(parsed.discharge      ?? {}) },
+        meta:           { ...DEFAULT_DRAFT.meta,            ...(parsed.meta           ?? {}) },
+        upstreamNode:   { ...DEFAULT_DRAFT.upstreamNode,   ...(parsed.upstreamNode   ?? {}) },
         downstreamNode: { ...DEFAULT_DRAFT.downstreamNode, ...(parsed.downstreamNode ?? {}) },
-        hydraulicsResult: null,
-        hydraulicsError:  null,
-        pumpResult:       null,
+        // Preserve computed results if they exist in storage
+        hydraulicsResult: parsed.hydraulicsResult ?? null,
+        hydraulicsError:  parsed.hydraulicsError  ?? null,
+        pumpResult:       parsed.pumpResult       ?? null,
       };
     }
   } catch { /* ignore */ }
@@ -77,17 +87,12 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const [draft, dispatch] = useReducer(reducer, undefined, loadFromStorage);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Debounced auto-save — persists full state including computed results
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       try {
-        const toSave: ProjectDraft = {
-          ...draft,
-          hydraulicsResult: null,
-          hydraulicsError:  null,
-          pumpResult:       null,
-        };
-        localStorage.setItem("wps-project-draft", JSON.stringify(toSave));
+        localStorage.setItem("wps-project-draft", JSON.stringify(draft));
       } catch { /* ignore */ }
     }, 1000);
     return () => {

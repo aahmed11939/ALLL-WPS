@@ -1,6 +1,6 @@
 import { useProject } from "../../contexts/ProjectContext";
 import { useUnitSystem } from "../../contexts/UnitSystemContext";
-import { FT_PER_M, M_PER_FT } from "../../utils/units";
+import { FT_PER_M, M_PER_FT, PSI_PER_KPA, KPA_PER_PSI } from "../../utils/units";
 
 const inputCls =
   "w-full rounded border border-slate-300 bg-white px-3 py-1.5 text-sm font-mono text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600";
@@ -12,14 +12,19 @@ export default function StepNodes() {
   const { unitSystem } = useUnitSystem();
   const isUS = unitSystem === "US";
 
-  const elevUnit = isUS ? "ft" : "m";
+  const elevUnit  = isUS ? "ft"  : "m";
   const pressUnit = isUS ? "psi" : "kPa";
 
-  const toDisplay = (m: number) => isUS ? +(m * FT_PER_M).toFixed(3) : m;
-  const fromDisplay = (v: number) => isUS ? v * M_PER_FT : v;
+  const toDispElev  = (m: number)   => isUS ? +(m * FT_PER_M).toFixed(3) : m;
+  const fromDispElev= (v: number)   => isUS ? v * M_PER_FT : v;
+  const toDispPres  = (kPa: number) => isUS ? +(kPa * PSI_PER_KPA).toFixed(3) : kPa;
+  const fromDispPres= (v: number)   => isUS ? v * KPA_PER_PSI : v;
 
-  const upEl = toDisplay(draft.upstreamNode.elevation_m);
-  const dnEl = toDisplay(draft.downstreamNode.elevation_m);
+  const upEl  = toDispElev(draft.upstreamNode.elevation_m);
+  const dnEl  = toDispElev(draft.downstreamNode.elevation_m);
+  const upPr  = toDispPres(draft.upstreamNode.pressure_kPa);
+  const dnPr  = toDispPres(draft.downstreamNode.pressure_kPa);
+
   const staticHead_m = draft.downstreamNode.elevation_m - draft.upstreamNode.elevation_m;
   const staticHead_d = isUS ? staticHead_m * FT_PER_M : staticHead_m;
 
@@ -55,7 +60,7 @@ export default function StepNodes() {
                   if (!isNaN(v))
                     dispatch({
                       type: "SET_UPSTREAM_NODE",
-                      node: { ...draft.upstreamNode, elevation_m: fromDisplay(v) },
+                      node: { ...draft.upstreamNode, elevation_m: fromDispElev(v) },
                     });
                 }}
               />
@@ -72,16 +77,21 @@ export default function StepNodes() {
                 step="any"
                 min="0"
                 className={inputCls}
-                value={draft.upstreamNode.pressure_kPa}
+                value={upPr}
                 onChange={(e) => {
                   const v = parseFloat(e.target.value);
                   if (!isNaN(v))
                     dispatch({
                       type: "SET_UPSTREAM_NODE",
-                      node: { ...draft.upstreamNode, pressure_kPa: v },
+                      node: { ...draft.upstreamNode, pressure_kPa: fromDispPres(v) },
                     });
                 }}
               />
+              {isUS && (
+                <p className="mt-0.5 text-[10px] text-slate-400 font-mono">
+                  = {draft.upstreamNode.pressure_kPa.toFixed(2)} kPa
+                </p>
+              )}
               <p className="mt-0.5 text-[10px] text-slate-400">
                 Suction-side static pressure (0 for open wet well)
               </p>
@@ -110,7 +120,7 @@ export default function StepNodes() {
                   if (!isNaN(v))
                     dispatch({
                       type: "SET_DOWNSTREAM_NODE",
-                      node: { ...draft.downstreamNode, elevation_m: fromDisplay(v) },
+                      node: { ...draft.downstreamNode, elevation_m: fromDispElev(v) },
                     });
                 }}
               />
@@ -127,16 +137,21 @@ export default function StepNodes() {
                 step="any"
                 min="0"
                 className={inputCls}
-                value={draft.downstreamNode.pressure_kPa}
+                value={dnPr}
                 onChange={(e) => {
                   const v = parseFloat(e.target.value);
                   if (!isNaN(v))
                     dispatch({
                       type: "SET_DOWNSTREAM_NODE",
-                      node: { ...draft.downstreamNode, pressure_kPa: v },
+                      node: { ...draft.downstreamNode, pressure_kPa: fromDispPres(v) },
                     });
                 }}
               />
+              {isUS && (
+                <p className="mt-0.5 text-[10px] text-slate-400 font-mono">
+                  = {draft.downstreamNode.pressure_kPa.toFixed(2)} kPa
+                </p>
+              )}
               <p className="mt-0.5 text-[10px] text-slate-400">
                 Delivery pressure at zone boundary (0 if atmospheric)
               </p>

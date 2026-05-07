@@ -33,17 +33,22 @@ export default function StepPipeline({ label }: Props) {
   const isUS = unitSystem === "US";
 
   const pipeline: PipelineDraft = label === "suction" ? draft.suction : draft.discharge;
-  const setAction = label === "suction" ? "SET_SUCTION" : "SET_DISCHARGE";
 
-  const setPipeline = (p: PipelineDraft) => dispatch({ type: setAction, [label]: p } as Parameters<typeof dispatch>[0]);
+  const setPipeline = (p: PipelineDraft) => {
+    if (label === "suction") {
+      dispatch({ type: "SET_SUCTION", suction: p });
+    } else {
+      dispatch({ type: "SET_DISCHARGE", discharge: p });
+    }
+  };
 
   const lengthUnit = isUS ? "ft" : "m";
   const diamUnit   = isUS ? "in" : "mm";
 
-  const toDispLen  = (m: number)  => isUS ? +(m  * FT_PER_M).toFixed(2)  : m;
-  const fromDispLen= (v: number)  => isUS ? v * M_PER_FT : v;
-  const toDispDiam = (mm: number) => isUS ? +(mm * IN_PER_MM).toFixed(3) : mm;
-  const fromDispDiam=(v: number)  => isUS ? v * MM_PER_IN : v;
+  const toDispLen   = (m: number)  => isUS ? +(m  * FT_PER_M).toFixed(2)  : m;
+  const fromDispLen = (v: number)  => isUS ? v * M_PER_FT : v;
+  const toDispDiam  = (mm: number) => isUS ? +(mm * IN_PER_MM).toFixed(3) : mm;
+  const fromDispDiam= (v: number)  => isUS ? v * MM_PER_IN : v;
 
   const updateSegment = (idx: number, key: keyof PipelineSegment, raw: string) => {
     const segs = pipeline.segments.map((s, i) => {
@@ -69,11 +74,19 @@ export default function StepPipeline({ label }: Props) {
     setPipeline({ ...pipeline, segments: pipeline.segments.filter((_, i) => i !== idx) });
   };
 
+  const moveSegment = (idx: number, dir: -1 | 1) => {
+    const segs = [...pipeline.segments];
+    const target = idx + dir;
+    if (target < 0 || target >= segs.length) return;
+    [segs[idx], segs[target]] = [segs[target], segs[idx]];
+    setPipeline({ ...pipeline, segments: segs });
+  };
+
   const handleAccessoriesChange = (items: AccessoryItem[], kSum: number) => {
     setPipeline({ ...pipeline, accessories: items, accessories_K_sum: kSum });
   };
 
-  const totalLength = pipeline.segments.reduce((a, s) => a + s.length_m, 0);
+  const totalLength     = pipeline.segments.reduce((a, s) => a + s.length_m, 0);
   const totalLengthDisp = isUS ? (totalLength * FT_PER_M).toFixed(1) : totalLength.toFixed(1);
 
   const title = label === "suction" ? "Suction Pipeline" : "Discharge Pipeline";
@@ -111,26 +124,29 @@ export default function StepPipeline({ label }: Props) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50/50">
-              <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400 w-8">
                 #
               </th>
-              <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                 Material
               </th>
-              <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                 Dia ({diamUnit})
               </th>
-              <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                 Length ({lengthUnit})
               </th>
-              <th className="px-3 py-2" />
+              <th className="px-2 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400 w-20">
+                Order
+              </th>
+              <th className="px-2 py-2 w-8" />
             </tr>
           </thead>
           <tbody>
             {pipeline.segments.map((seg, idx) => (
               <tr key={idx} className="border-b border-slate-100 last:border-0">
-                <td className="px-3 py-2 text-xs font-mono text-slate-400">{idx + 1}</td>
-                <td className="px-3 py-2">
+                <td className="px-2 py-2 text-xs font-mono text-slate-400">{idx + 1}</td>
+                <td className="px-2 py-2">
                   <select
                     className={selectCls}
                     value={seg.material}
@@ -141,7 +157,7 @@ export default function StepPipeline({ label }: Props) {
                     ))}
                   </select>
                 </td>
-                <td className="px-3 py-2">
+                <td className="px-2 py-2">
                   <input
                     type="number"
                     step="any"
@@ -151,7 +167,7 @@ export default function StepPipeline({ label }: Props) {
                     onChange={(e) => updateSegment(idx, "diameter_mm", e.target.value)}
                   />
                 </td>
-                <td className="px-3 py-2">
+                <td className="px-2 py-2">
                   <input
                     type="number"
                     step="any"
@@ -161,7 +177,29 @@ export default function StepPipeline({ label }: Props) {
                     onChange={(e) => updateSegment(idx, "length_m", e.target.value)}
                   />
                 </td>
-                <td className="px-3 py-2 text-center">
+                <td className="px-2 py-2">
+                  <div className="flex items-center justify-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => moveSegment(idx, -1)}
+                      disabled={idx === 0}
+                      className="flex h-6 w-6 items-center justify-center rounded border border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600 disabled:opacity-30 text-xs"
+                      title="Move up"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveSegment(idx, 1)}
+                      disabled={idx === pipeline.segments.length - 1}
+                      className="flex h-6 w-6 items-center justify-center rounded border border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600 disabled:opacity-30 text-xs"
+                      title="Move down"
+                    >
+                      ↓
+                    </button>
+                  </div>
+                </td>
+                <td className="px-2 py-2 text-center">
                   <button
                     type="button"
                     onClick={() => removeSegment(idx)}
@@ -177,6 +215,19 @@ export default function StepPipeline({ label }: Props) {
           </tbody>
         </table>
       </div>
+
+      {/* SI summary (when in US mode) */}
+      {isUS && pipeline.segments.length > 0 && (
+        <p className="text-[10px] text-slate-400 font-mono -mt-4">
+          Stored in SI:{" "}
+          {pipeline.segments.map((s, i) => (
+            <span key={i}>
+              {i > 0 ? " → " : ""}
+              Seg {i+1}: {s.material} DN{Math.round(s.diameter_mm)} × {s.length_m.toFixed(1)} m
+            </span>
+          ))}
+        </p>
+      )}
 
       {/* Accessories picker */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">

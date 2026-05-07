@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 
@@ -20,17 +20,23 @@ from backend.api.schemas import (
     ClearWellRequest,
     ClearWellResponse,
     ComputeSystemCurvePoint,
+    CsvImportResponse,
+    CurvePoint,
     CycleResult,
     DisplayValues,
     HydraulicComputeRequest,
     HydraulicComputeResponse,
     MaterialOption,
     MaterialOptionsResponse,
+    OperatingPoint,
     PDPumpExtras,
     PipeSegment,
     BoosterSetExtras,
     FirePumpExtras,
     HeadFlowRange,
+    PumpComputeRequest,
+    PumpComputeResponse,
+    PumpCurveData,
     PumpLibraryResponse,
     PumpRecord,
     PumpSelectionRequest,
@@ -38,6 +44,7 @@ from backend.api.schemas import (
     PumpTypeInfo,
     PumpTypesResponse,
     SegmentResult,
+    SpeedCurve,
     SubmersibleExtras,
     SystemCurvePoint,
     TypeSpecificField,
@@ -50,8 +57,26 @@ from backend.engine.pump_types import (
 )
 from backend.data.loader import (
     get_material_options,
+    get_pump_by_id,
     get_roughness_m,
     load_pump_library,
+)
+from backend.engine.pump_curves import (
+    affinity_hq_fn,
+    affinity_eta_fn,
+    build_eta_fn,
+    build_hq_fn,
+    build_npshr_fn,
+    build_p_fn,
+    build_system_hq_fn,
+    extract_curve_arrays,
+    find_operating_point,
+    generate_curve_points,
+    hydraulic_power_kw,
+    npsh_margin,
+    parallel_hq_fn,
+    pump_q_max,
+    series_hq_fn,
 )
 from backend.engine.clearwell import (
     clearwell_volume_curve,
@@ -854,3 +879,415 @@ def compute_pump_selection(req: PumpSelectionRequest) -> PumpSelectionResponse:
         potable_notes=entry["potable_notes"],
         warnings=warns,
     )
+
+
+# ---------------------------------------------------------------------------
+# Pump curve compute helpers
+# ---------------------------------------------------------------------------
+
+_N_CHART_PTS = 40   # number of points for rendered curves
+
+
+def _build_curve_fns_from_record(record: dict, interp: str, degree: int):
+    """
+    Build H-Q, η, P, NPSHr functions from a pump library record.
+    Returns (hq_fn, eta_fn_or_None, p_fn_or_None, npshr_fn_or_None, q_max).
+    """
+    q_h, h = extract_curve_arrays(record, "hq_curve", "H_m")
+    hq_fn = build_hq_fn(q_h, h, interp, degree)
+    q_max = max(q_h)
+
+    eta_fn = None
+    if record.get("eta_q_curve"):
+        q_e, e = extract_curve_arrays(record, "eta_q_curve", "eta_pct")
+        eta_fn = build_eta_fn(q_e, e, interp, degree)
+
+    p_fn = None
+    if record.get("p_q_curve"):
+        q_p, p = extract_curve_arrays(record, "p_q_curve", "P_kW")
+        p_fn = build_p_fn(q_p, p, interp, degree)
+
+    npshr_fn = None
+    if record.get("npshr_q_curve"):
+        q_n, n = extract_curve_arrays(record, "npshr_q_curve", "NPSHr_m")
+        npshr_fn = build_npshr_fn(q_n, n, interp, degree)
+
+    return hq_fn, eta_fn, p_fn, npshr_fn, q_max
+
+
+def _build_curve_fns_from_data(cd: "PumpCurveData"):
+    """
+    Build H-Q, η, P, NPSHr functions from PumpCurveData (manual entry).
+    Returns (hq_fn, eta_fn_or_None, p_fn_or_None, npshr_fn_or_None, q_max).
+    """
+    interp = cd.interp_method
+    degree = cd.poly_degree
+
+    q_h = [pt.Q_m3h for pt in cd.hq]
+    h   = [pt.value  for pt in cd.hq]
+    hq_fn = build_hq_fn(q_h, h, interp, degree)
+    q_max = max(q_h)
+
+    eta_fn = None
+    if cd.eta_q:
+        q_e = [pt.Q_m3h for pt in cd.eta_q]
+        e   = [pt.value  for pt in cd.eta_q]
+        eta_fn = build_eta_fn(q_e, e, interp, degree)
+
+    p_fn = None
+    if cd.p_q:
+        q_p = [pt.Q_m3h for pt in cd.p_q]
+        p   = [pt.value  for pt in cd.p_q]
+        p_fn = build_p_fn(q_p, p, interp, degree)
+
+    npshr_fn = None
+    if cd.npshr_q:
+        q_n = [pt.Q_m3h for pt in cd.npshr_q]
+        n   = [pt.value  for pt in cd.npshr_q]
+        npshr_fn = build_npshr_fn(q_n, n, interp, degree)
+
+    return hq_fn, eta_fn, p_fn, npshr_fn, q_max
+
+
+def _compound_hq(hq_fn, arrangement: str, n: int):
+    """Apply parallel / series compound to base hq_fn."""
+    if arrangement == "parallel":
+        return parallel_hq_fn(hq_fn, n)
+    if arrangement == "series":
+        return series_hq_fn(hq_fn, n)
+    return hq_fn  # single
+
+
+def _pts_to_curve_points(raw: list[dict]) -> list["CurvePoint"]:
+    return [CurvePoint(Q_m3h=p["Q_m3h"], value=p["value"]) for p in raw]
+
+
+def _solve_op(
+    pump_hq_fn,
+    sys_fn,
+    q_max: float,
+    eta_fn,
+    p_fn,
+    npshr_fn,
+    npsha_m: float | None,
+    n_pumps: int,
+) -> "OperatingPoint | None":
+    """Solve for one operating point and enrich with η, P, NPSHr, NPSH margin."""
+    op_raw = find_operating_point(pump_hq_fn, sys_fn, q_min=0.01, q_max=q_max * 0.99)
+    if op_raw is None:
+        return None
+
+    q_star, h_star = op_raw
+    eta_val  = round(eta_fn(q_star),   2) if eta_fn   else None
+    p_val    = round(p_fn(q_star),     2) if p_fn     else None
+    npshr_val = round(npshr_fn(q_star), 3) if npshr_fn else None
+
+    op_warns: list[str] = []
+    npsh_margin_val: float | None = None
+
+    if npsha_m is not None and npshr_val is not None:
+        npsh_margin_val, npsh_warns = npsh_margin(npsha_m, npshr_val)
+        op_warns.extend(npsh_warns)
+
+    return OperatingPoint(
+        n_pumps=n_pumps,
+        Q_m3h=round(q_star, 3),
+        H_m=round(h_star, 3),
+        eta_pct=eta_val,
+        power_kW=p_val,
+        npshr_m=npshr_val,
+        npsha_m=npsha_m,
+        npsh_margin_m=round(npsh_margin_val, 3) if npsh_margin_val is not None else None,
+        warnings=op_warns,
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /compute/pump
+# ---------------------------------------------------------------------------
+
+
+@app.post(
+    "/compute/pump",
+    response_model=PumpComputeResponse,
+    tags=["compute"],
+    summary="Compute pump curves and operating point",
+    status_code=status.HTTP_200_OK,
+)
+def compute_pump(req: PumpComputeRequest) -> PumpComputeResponse:
+    """
+    Compute pump H-Q, η, P, NPSHr curves plus the system-pump operating point.
+
+    Accepts either a library pump ID or manually-supplied tabular curve data.
+    Supports:
+    - Single / parallel / series arrangements
+    - Staging analysis (1 … n_pumps duty pumps in parallel)
+    - VFD speed-curve fan (affinity laws)
+    - NPSH margin check (HI 9.6.1)
+
+    When ``active=False`` returns an empty response immediately.
+    """
+    if not req.active:
+        return PumpComputeResponse(active=False)
+
+    # ------------------------------------------------------------------ #
+    # 1. Resolve pump curve functions                                       #
+    # ------------------------------------------------------------------ #
+    warns: list[str] = []
+    non_phys = False
+    interp = "linear"
+    degree = 2
+
+    if req.pump_id is not None:
+        record = get_pump_by_id(req.pump_id)
+        if record is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unknown pump_id '{req.pump_id}'. "
+                       f"Check GET /api/v1/pump-library for valid IDs.",
+            )
+        try:
+            base_hq_fn, eta_fn, p_fn, npshr_fn, q_max_single = (
+                _build_curve_fns_from_record(record, interp, degree)
+            )
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Error loading curves for '{req.pump_id}': {exc}",
+            )
+    else:
+        assert req.curve_data is not None
+        interp = req.curve_data.interp_method
+        degree = req.curve_data.poly_degree
+        try:
+            base_hq_fn, eta_fn, p_fn, npshr_fn, q_max_single = (
+                _build_curve_fns_from_data(req.curve_data)
+            )
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Error building curves from supplied data: {exc}",
+            )
+        # Check for non-physical polynomial fit
+        if interp == "poly":
+            from backend.engine.pump_curves import fit_polynomial
+            q_h = [pt.Q_m3h for pt in req.curve_data.hq]
+            h   = [pt.value  for pt in req.curve_data.hq]
+            try:
+                _, non_phys = fit_polynomial(q_h, h, degree)
+                if non_phys:
+                    warns.append(
+                        "The polynomial fit to the supplied H-Q data appears non-physical "
+                        "(rising slope at high flow or values > 110%). "
+                        "Consider using 'linear' interpolation instead."
+                    )
+            except ValueError:
+                pass
+
+    # ------------------------------------------------------------------ #
+    # 2. Build compound curve for the primary arrangement                  #
+    # ------------------------------------------------------------------ #
+    compound_hq = _compound_hq(base_hq_fn, req.arrangement, req.n_pumps)
+    # Effective q_max for the compound arrangement
+    if req.arrangement == "parallel":
+        q_max_compound = q_max_single * req.n_pumps
+    else:
+        q_max_compound = q_max_single
+
+    # ------------------------------------------------------------------ #
+    # 3. Generate primary curves for charting                              #
+    # ------------------------------------------------------------------ #
+    hq_raw    = generate_curve_points(compound_hq, 0.0, q_max_compound * 0.98, _N_CHART_PTS)
+    eta_raw   = generate_curve_points(eta_fn,   0.0, q_max_single * 0.98, _N_CHART_PTS) if eta_fn   else []
+    p_raw     = generate_curve_points(p_fn,     0.0, q_max_single * 0.98, _N_CHART_PTS) if p_fn     else []
+    npshr_raw = generate_curve_points(npshr_fn, 0.0, q_max_single * 0.98, _N_CHART_PTS) if npshr_fn else []
+
+    hq_pts    = _pts_to_curve_points(hq_raw)
+    eta_pts   = _pts_to_curve_points(eta_raw)
+    p_pts     = _pts_to_curve_points(p_raw)
+    npshr_pts = _pts_to_curve_points(npshr_raw)
+
+    # ------------------------------------------------------------------ #
+    # 4. VFD speed curves                                                  #
+    # ------------------------------------------------------------------ #
+    speed_curves: list[SpeedCurve] = []
+    if req.vfd:
+        step = (req.speed_pct_max - req.speed_pct_min) / max(1, req.n_speed_steps - 1)
+        speed_ratios = [
+            req.speed_pct_min + step * i
+            for i in range(req.n_speed_steps)
+        ]
+        for spd_pct in speed_ratios:
+            sr = spd_pct / 100.0
+            spd_hq_fn = affinity_hq_fn(compound_hq, sr)
+            # At this speed, max flow scales with speed ratio
+            q_max_spd = q_max_compound * sr
+            spd_raw = generate_curve_points(spd_hq_fn, 0.0, q_max_spd * 0.98, 25)
+            speed_curves.append(SpeedCurve(
+                speed_pct=round(spd_pct, 1),
+                hq_pts=_pts_to_curve_points(spd_raw),
+            ))
+
+    # ------------------------------------------------------------------ #
+    # 5. Operating-point analysis                                          #
+    # ------------------------------------------------------------------ #
+    operating_points: list[OperatingPoint] = []
+
+    has_system = len(req.system_curve_pts) >= 2
+
+    if has_system:
+        sys_q_pts = [pt.Q_m3h for pt in req.system_curve_pts]
+        sys_h_pts = [pt.value  for pt in req.system_curve_pts]
+        sys_fn    = build_system_hq_fn(sys_q_pts, sys_h_pts, req.static_head_m)
+
+        if req.staging and req.arrangement == "parallel":
+            # Solve for 1, 2, … n_pumps duty pumps
+            for k in range(1, req.n_pumps + 1):
+                k_hq_fn = _compound_hq(base_hq_fn, "parallel", k)
+                q_max_k = q_max_single * k
+                op = _solve_op(k_hq_fn, sys_fn, q_max_k,
+                               eta_fn, p_fn, npshr_fn, req.npsha_m, k)
+                if op is not None:
+                    operating_points.append(op)
+        else:
+            # Single operating point (with VFD speed if applicable)
+            active_hq = compound_hq
+            if req.vfd:
+                sr = req.speed_pct / 100.0
+                active_hq = affinity_hq_fn(compound_hq, sr)
+                q_max_compound = q_max_compound * sr
+
+            op = _solve_op(active_hq, sys_fn, q_max_compound,
+                           eta_fn, p_fn, npshr_fn, req.npsha_m, req.n_pumps)
+            if op is not None:
+                operating_points.append(op)
+
+    return PumpComputeResponse(
+        active=True,
+        hq_curve=hq_pts,
+        eta_curve=eta_pts,
+        p_curve=p_pts,
+        npshr_curve=npshr_pts,
+        speed_curves=speed_curves,
+        operating_points=operating_points,
+        non_physical_fit=non_phys,
+        warnings=warns,
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /compute/pump-curves/import-csv
+# ---------------------------------------------------------------------------
+
+_CSV_CURVE_COLS = {
+    "hq":      ("Q_m3h", "H_m"),
+    "eta_q":   ("Q_m3h", "eta_pct"),
+    "p_q":     ("Q_m3h", "P_kW"),
+    "npshr_q": ("Q_m3h", "NPSHr_m"),
+}
+
+_VALID_CURVE_TYPES = set(_CSV_CURVE_COLS.keys())
+
+
+@app.post(
+    "/compute/pump-curves/import-csv",
+    response_model=CsvImportResponse,
+    tags=["compute"],
+    summary="Parse a CSV file into tabular pump curve data",
+    status_code=status.HTTP_200_OK,
+)
+async def import_pump_curve_csv(
+    file: UploadFile = File(..., description="CSV file with Q and value columns"),
+    curve_type: str = Form(
+        ...,
+        description="Curve type: 'hq', 'eta_q', 'p_q', or 'npshr_q'",
+    ),
+) -> CsvImportResponse:
+    """
+    Parse a CSV file into ``PumpCurveData`` suitable for ``POST /compute/pump``.
+
+    The CSV must have exactly 2 columns: the Q column (``Q_m3h``) and one
+    value column whose name depends on ``curve_type``:
+
+    | curve_type | Expected columns          |
+    |------------|---------------------------|
+    | hq         | Q_m3h, H_m                |
+    | eta_q      | Q_m3h, eta_pct            |
+    | p_q        | Q_m3h, P_kW               |
+    | npshr_q    | Q_m3h, NPSHr_m            |
+
+    The first row must be a header row. Non-numeric rows are skipped with
+    a warning. At least 2 valid data rows are required.
+    """
+    import csv
+    import io
+
+    if curve_type not in _VALID_CURVE_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Invalid curve_type '{curve_type}'. "
+                f"Must be one of: {sorted(_VALID_CURVE_TYPES)}"
+            ),
+        )
+
+    q_col, v_col = _CSV_CURVE_COLS[curve_type]
+
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8-sig")   # handle optional BOM
+    except UnicodeDecodeError:
+        text = raw.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+    if reader.fieldnames is None or q_col not in reader.fieldnames or v_col not in reader.fieldnames:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"CSV is missing required columns. "
+                f"Expected headers: '{q_col}', '{v_col}'. "
+                f"Found: {list(reader.fieldnames or [])}"
+            ),
+        )
+
+    pts: list[CurvePoint] = []
+    parse_warns: list[str] = []
+
+    for row_num, row in enumerate(reader, start=2):
+        try:
+            q = float(row[q_col])
+            v = float(row[v_col])
+            pts.append(CurvePoint(Q_m3h=q, value=v))
+        except (ValueError, KeyError):
+            parse_warns.append(f"Row {row_num}: non-numeric values skipped ({dict(row)})")
+
+    if len(pts) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"CSV must contain at least 2 valid numeric data rows; "
+                f"found {len(pts)} after skipping non-numeric rows."
+            ),
+        )
+
+    # Build PumpCurveData — put parsed points in the correct slot
+    cd_kwargs: dict = {}
+    if curve_type == "hq":
+        cd_kwargs["hq"] = pts
+    elif curve_type == "eta_q":
+        # Need a placeholder HQ for PumpCurveData validation; use flat 0s
+        cd_kwargs["hq"] = [CurvePoint(Q_m3h=pts[0].Q_m3h, value=0.0),
+                           CurvePoint(Q_m3h=pts[-1].Q_m3h, value=0.0)]
+        cd_kwargs["eta_q"] = pts
+    elif curve_type == "p_q":
+        cd_kwargs["hq"] = [CurvePoint(Q_m3h=pts[0].Q_m3h, value=0.0),
+                           CurvePoint(Q_m3h=pts[-1].Q_m3h, value=0.0)]
+        cd_kwargs["p_q"] = pts
+    elif curve_type == "npshr_q":
+        cd_kwargs["hq"] = [CurvePoint(Q_m3h=pts[0].Q_m3h, value=0.0),
+                           CurvePoint(Q_m3h=pts[-1].Q_m3h, value=0.0)]
+        cd_kwargs["npshr_q"] = pts
+
+    curve_data = PumpCurveData(**cd_kwargs)
+
+    return CsvImportResponse(curve_data=curve_data, warnings=parse_warns)

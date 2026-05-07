@@ -289,3 +289,94 @@ export async function computePumpSelection(
   );
   return res.data;
 }
+
+// ---------------------------------------------------------------------------
+// Pump curve compute
+// ---------------------------------------------------------------------------
+
+export interface CurvePoint {
+  Q_m3h: number;
+  value: number;
+}
+
+export interface PumpCurveData {
+  hq: CurvePoint[];
+  eta_q?: CurvePoint[];
+  p_q?: CurvePoint[];
+  npshr_q?: CurvePoint[];
+  interp_method?: "linear" | "poly";
+  poly_degree?: number;
+}
+
+export interface SpeedCurve {
+  speed_pct: number;
+  hq_pts: CurvePoint[];
+}
+
+export interface PumpOperatingPoint {
+  n_pumps: number;
+  Q_m3h: number;
+  H_m: number;
+  eta_pct: number | null;
+  power_kW: number | null;
+  npshr_m: number | null;
+  npsha_m: number | null;
+  npsh_margin_m: number | null;
+  warnings: string[];
+}
+
+export interface PumpComputeRequest {
+  active: boolean;
+  pump_id?: string;
+  curve_data?: PumpCurveData;
+  arrangement?: "single" | "parallel" | "series";
+  n_pumps?: number;
+  staging?: boolean;
+  vfd?: boolean;
+  speed_pct?: number;
+  speed_pct_min?: number;
+  speed_pct_max?: number;
+  n_speed_steps?: number;
+  system_curve_pts?: CurvePoint[];
+  static_head_m?: number;
+  npsha_m?: number;
+}
+
+export interface PumpComputeResponse {
+  active: boolean;
+  hq_curve: CurvePoint[];
+  eta_curve: CurvePoint[];
+  p_curve: CurvePoint[];
+  npshr_curve: CurvePoint[];
+  speed_curves: SpeedCurve[];
+  operating_points: PumpOperatingPoint[];
+  non_physical_fit: boolean;
+  warnings: string[];
+}
+
+export interface CsvImportResponse {
+  curve_data: PumpCurveData;
+  warnings: string[];
+}
+
+export async function computePump(
+  req: PumpComputeRequest
+): Promise<PumpComputeResponse> {
+  const res = await axios.post<PumpComputeResponse>("/compute/pump", req);
+  return res.data;
+}
+
+export async function importPumpCurveCsv(
+  file: File,
+  curveType: "hq" | "eta_q" | "p_q" | "npshr_q"
+): Promise<CsvImportResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("curve_type", curveType);
+  const res = await axios.post<CsvImportResponse>(
+    "/compute/pump-curves/import-csv",
+    form,
+    { headers: { "Content-Type": "multipart/form-data" } }
+  );
+  return res.data;
+}

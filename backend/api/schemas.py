@@ -898,3 +898,257 @@ class PumpSelectionResponse(BaseModel):
         default_factory=list,
         description="Actionable advisory warnings for this pump selection",
     )
+
+
+# ---------------------------------------------------------------------------
+# Pump curve compute — request / response schemas
+# ---------------------------------------------------------------------------
+
+
+class CurvePoint(BaseModel):
+    """A single (Q, value) point on any pump or system curve."""
+
+    model_config = ConfigDict(frozen=True)
+
+    Q_m3h: float = Field(description="Flow rate [m³/h]")
+    value: float = Field(description="Curve value at this flow (H_m, eta_pct, P_kW, NPSHr_m, or system H_m)")
+
+
+class PumpCurveData(BaseModel):
+    """
+    Manual pump curve data — tabular points for any combination of curves.
+
+    At minimum ``hq`` must be supplied (≥ 2 points) to compute anything.
+    ``eta_q``, ``p_q`` and ``npshr_q`` are optional — when absent those
+    charts / analyses are skipped.
+    """
+
+    model_config = ConfigDict()
+
+    hq: List[CurvePoint] = Field(
+        description="H-Q curve tabular data (≥ 2 points, Q ascending, H ≥ 0)",
+    )
+    eta_q: Optional[List[CurvePoint]] = Field(
+        default=None,
+        description="Efficiency-Q curve [%] (optional)",
+    )
+    p_q: Optional[List[CurvePoint]] = Field(
+        default=None,
+        description="Shaft-power-Q curve [kW] (optional)",
+    )
+    npshr_q: Optional[List[CurvePoint]] = Field(
+        default=None,
+        description="NPSHr-Q curve [m] (optional)",
+    )
+    interp_method: Literal["linear", "poly"] = Field(
+        default="linear",
+        description="Interpolation method: 'linear' (piecewise-linear) or 'poly' (least-squares polynomial)",
+    )
+    poly_degree: int = Field(
+        default=2,
+        ge=1,
+        le=6,
+        description="Polynomial degree for 'poly' interpolation (ignored for 'linear')",
+    )
+
+    @model_validator(mode="after")
+    def check_hq_minimum_points(self) -> "PumpCurveData":
+        if len(self.hq) < 2:
+            raise ValueError("hq must contain at least 2 data points")
+        return self
+
+
+class SpeedCurve(BaseModel):
+    """H-Q curve at one VFD speed setting (affinity law applied)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    speed_pct: float = Field(description="Speed as percentage of rated speed [%]")
+    hq_pts: List[CurvePoint] = Field(description="H-Q curve points at this speed")
+
+
+class OperatingPoint(BaseModel):
+    """System–pump intersection at one staging level."""
+
+    model_config = ConfigDict()
+
+    n_pumps: int = Field(description="Number of duty pumps for this operating point")
+    Q_m3h: float = Field(description="Operating flow [m³/h]")
+    H_m: float = Field(description="Operating head [m]")
+    eta_pct: Optional[float] = Field(default=None, description="Pump efficiency at operating point [%]")
+    power_kW: Optional[float] = Field(default=None, description="Shaft power at operating point [kW]")
+    npshr_m: Optional[float] = Field(default=None, description="Required NPSH at operating point [m]")
+    npsha_m: Optional[float] = Field(default=None, description="Available NPSH supplied in request [m]")
+    npsh_margin_m: Optional[float] = Field(default=None, description="NPSHa − NPSHr margin [m]")
+    warnings: List[str] = Field(default_factory=list, description="NPSH or off-BEP warnings for this point")
+
+
+class PumpComputeRequest(BaseModel):
+    """
+    Pump curve compute request.
+
+    Supply either ``pump_id`` (library lookup) or ``curve_data`` (manual entry).
+    When ``active=False`` the endpoint returns immediately (bypass pattern).
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    active: bool = Field(
+        default=True,
+        description="True = compute. False = bypass (empty response).",
+    )
+
+    # Curve source — exactly one must be supplied when active=True
+    pump_id: Optional[str] = Field(
+        default=None,
+        description="Library pump ID (from GET /api/v1/pump-library)",
+    )
+    curve_data: Optional[PumpCurveData] = Field(
+        default=None,
+        description="Manual curve data (used when pump_id is None)",
+    )
+
+    # Arrangement
+    arrangement: Literal["single", "parallel", "series"] = Field(
+        default="single",
+        description="Pump arrangement: 'single', 'parallel', or 'series'",
+    )
+    n_pumps: int = Field(
+        default=1,
+        ge=1,
+        le=10,
+        description="Number of identical pumps in the arrangement (≥ 1)",
+    )
+    staging: bool = Field(
+        default=False,
+        description=(
+            "When True and arrangement='parallel', generate operating points "
+            "for 1, 2, … n_pumps duty pumps (staging analysis)."
+        ),
+    )
+
+    # VFD
+    vfd: bool = Field(default=False, description="True = apply affinity-law speed curves")
+    speed_pct: float = Field(
+        default=100.0,
+        ge=10.0,
+        le=110.0,
+        description="Current VFD speed setting [% of rated] for the primary operating point",
+    )
+    speed_pct_min: float = Field(
+        default=50.0,
+        ge=10.0,
+        le=110.0,
+        description="Minimum speed for speed-curve fan [%]",
+    )
+    speed_pct_max: float = Field(
+        default=100.0,
+        ge=10.0,
+        le=110.0,
+        description="Maximum speed for speed-curve fan [%]",
+    )
+    n_speed_steps: int = Field(
+        default=5,
+        ge=2,
+        le=10,
+        description="Number of speed curves to generate between speed_pct_min and speed_pct_max",
+    )
+
+    # System curve (for operating-point intersection)
+    system_curve_pts: List[CurvePoint] = Field(
+        default_factory=list,
+        description=(
+            "Tabular system H-Q data from a hydraulic compute result. "
+            "When ≥ 2 points are supplied, the operating point is computed."
+        ),
+    )
+    static_head_m: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Static (elevation + pressure) head component [m] — used as minimum for system curve",
+    )
+
+    # NPSH
+    npsha_m: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        description="Available NPSH at the pump suction [m]. When supplied, NPSHa vs NPSHr is checked.",
+    )
+
+    @model_validator(mode="after")
+    def check_active_source(self) -> "PumpComputeRequest":
+        if self.active and self.pump_id is None and self.curve_data is None:
+            raise ValueError(
+                "Either 'pump_id' or 'curve_data' must be supplied when active=True."
+            )
+        if self.vfd and self.speed_pct_min > self.speed_pct_max:
+            raise ValueError("speed_pct_min must be ≤ speed_pct_max")
+        return self
+
+
+class PumpComputeResponse(BaseModel):
+    """Full response from POST /compute/pump."""
+
+    model_config = ConfigDict()
+
+    active: bool = Field(description="Mirrors the request active flag")
+
+    # Primary curves (single pump at rated speed, or compound arrangement)
+    hq_curve: List[CurvePoint] = Field(
+        default_factory=list,
+        description="H-Q curve for the specified arrangement at rated speed",
+    )
+    eta_curve: List[CurvePoint] = Field(
+        default_factory=list,
+        description="Efficiency-Q curve [%] — empty when eta data unavailable",
+    )
+    p_curve: List[CurvePoint] = Field(
+        default_factory=list,
+        description="Power-Q curve [kW] — empty when power data unavailable",
+    )
+    npshr_curve: List[CurvePoint] = Field(
+        default_factory=list,
+        description="NPSHr-Q curve [m] — empty when NPSHr data unavailable",
+    )
+
+    # VFD speed fan
+    speed_curves: List[SpeedCurve] = Field(
+        default_factory=list,
+        description="H-Q curves at each VFD speed step (empty when vfd=False)",
+    )
+
+    # Operating points
+    operating_points: List[OperatingPoint] = Field(
+        default_factory=list,
+        description=(
+            "Operating point(s) — one entry per staging level when staging=True, "
+            "otherwise at most one entry."
+        ),
+    )
+
+    # Quality flags
+    non_physical_fit: bool = Field(
+        default=False,
+        description="True when a polynomial fit detected a non-physical curve shape",
+    )
+    warnings: List[str] = Field(
+        default_factory=list,
+        description="General advisory warnings (not per-operating-point NPSH)",
+    )
+
+
+# ---------------------------------------------------------------------------
+# CSV import response
+# ---------------------------------------------------------------------------
+
+
+class CsvImportResponse(BaseModel):
+    """Response from POST /compute/pump-curves/import-csv."""
+
+    model_config = ConfigDict()
+
+    curve_data: PumpCurveData = Field(description="Parsed curve data ready for POST /compute/pump")
+    warnings: List[str] = Field(
+        default_factory=list,
+        description="Parse warnings (e.g. skipped non-numeric rows)",
+    )

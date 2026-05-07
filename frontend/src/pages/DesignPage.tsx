@@ -1,6 +1,7 @@
 import { useState } from "react";
 import CalculationForm from "../components/CalculationForm";
 import ClearWellStep from "../components/ClearWellStep";
+import PumpCurveStep from "../components/PumpCurveStep";
 import PumpSelectionStep from "../components/PumpSelectionStep";
 import ResultsPanel from "../components/ResultsPanel";
 import SystemCurveChart from "../components/SystemCurveChart";
@@ -146,6 +147,11 @@ export default function DesignPage() {
             {/* Pump Type Selection */}
             <div>
               <PumpSelectionStep />
+            </div>
+
+            {/* Pump Curves & Operating Point */}
+            <div>
+              <PumpCurveStep />
             </div>
 
             {/* Clear Well Sizing */}

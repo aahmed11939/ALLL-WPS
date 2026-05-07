@@ -7,9 +7,9 @@ All data is cached at module import time (read-once on server start).
 
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 from pathlib import Path
+from typing import Optional
 
 import yaml
 
@@ -47,6 +47,24 @@ def load_pump_library() -> list[dict]:
     with open(path, "r") as fh:
         data = yaml.safe_load(fh)
     return data["pumps"]
+
+
+def get_pump_by_id(pump_id: str) -> Optional[dict]:
+    """
+    Look up a pump record by its ``id`` field.
+
+    Parameters
+    ----------
+    pump_id : str  The pump identifier (e.g. ``"KSB-ETANORM-125-100-200"``).
+
+    Returns
+    -------
+    The full pump record dict, or None if not found.
+    """
+    for record in load_pump_library():
+        if record.get("id") == pump_id:
+            return record
+    return None
 
 
 def get_roughness_m(material: str) -> float:

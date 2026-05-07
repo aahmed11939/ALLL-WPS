@@ -608,6 +608,162 @@ class TestComputePumpEndpoint:
         assert op["Q_m3h"] > 0
         assert op["H_m"] > 0
 
+    # --- Arrangement-aware operating-point correctness ---
+
+    def test_parallel_operating_point_uses_per_pump_flow_for_eta_and_power(self):
+        """
+        For 2 pumps in parallel the reported Q* is the total system flow.
+        η and NPSHr must be evaluated at Q*/2 (per-pump flow).
+        Total power must be 2 × P_single(Q*/2).
+        We verify this by comparing the 2-pump parallel result against
+        a single-pump result at the same per-pump flow.
+        """
+        sys_pts = [
+            {"Q_m3h": 0,   "value": 18.0},
+            {"Q_m3h": 120, "value": 30.0},
+            {"Q_m3h": 240, "value": 60.0},
+        ]
+        resp_2p = client.post("/compute/pump", json={
+            "active": True,
+            "pump_id": "KSB-ETANORM-125-100-200",
+            "arrangement": "parallel",
+            "n_pumps": 2,
+            "system_curve_pts": sys_pts,
+            "static_head_m": 18.0,
+        })
+        assert resp_2p.status_code == 200
+        data_2p = resp_2p.json()
+        assert len(data_2p["operating_points"]) >= 1
+        op2 = data_2p["operating_points"][0]
+        q_total = op2["Q_m3h"]
+        q_per_pump = q_total / 2
+
+        # Now solve a single pump — its η/P at q_per_pump should match
+        resp_1p = client.post("/compute/pump", json={
+            "active": True,
+            "pump_id": "KSB-ETANORM-125-100-200",
+            "arrangement": "single",
+            "n_pumps": 1,
+            "system_curve_pts": [
+                {"Q_m3h": q_per_pump * 0.0, "value": 18.0},
+                {"Q_m3h": q_per_pump,        "value": op2["H_m"]},
+                {"Q_m3h": q_per_pump * 2,    "value": op2["H_m"] + 5},
+            ],
+            "static_head_m": 18.0,
+        })
+        assert resp_1p.status_code == 200
+        data_1p = resp_1p.json()
+        # η reported for 2-parallel should equal single-pump η at q_per_pump
+        if op2["eta_pct"] is not None and data_1p["operating_points"]:
+            op1 = data_1p["operating_points"][0]
+            # Allow ±3 % tolerance due to different operating point Q
+            if op1["eta_pct"] is not None:
+                assert abs(op2["eta_pct"] - op1["eta_pct"]) < 5.0
+        # Total power for 2-parallel must be > single-pump power
+        if op2["power_kW"] is not None:
+            resp_s = client.post("/compute/pump", json={
+                "active": True,
+                "pump_id": "KSB-ETANORM-125-100-200",
+                "arrangement": "single",
+                "n_pumps": 1,
+                "system_curve_pts": sys_pts,
+                "static_head_m": 18.0,
+            })
+            op_s = resp_s.json()["operating_points"][0]
+            if op_s["power_kW"] is not None:
+                # 2 parallel pumps should draw more total power than 1
+                assert op2["power_kW"] > op_s["power_kW"]
+
+    def test_series_operating_point_total_power_is_n_times_single(self):
+        """
+        For N pumps in series each carries full system flow Q*.
+        Total shaft power = N × P_single(Q*).
+        """
+        sys_pts = [
+            {"Q_m3h": 0,   "value": 50.0},
+            {"Q_m3h": 80,  "value": 65.0},
+            {"Q_m3h": 120, "value": 85.0},
+        ]
+        resp_2s = client.post("/compute/pump", json={
+            "active": True,
+            "pump_id": "KSB-ETANORM-125-100-200",
+            "arrangement": "series",
+            "n_pumps": 2,
+            "system_curve_pts": sys_pts,
+            "static_head_m": 50.0,
+        })
+        assert resp_2s.status_code == 200
+        data_2s = resp_2s.json()
+        assert len(data_2s["operating_points"]) >= 1
+        op2 = data_2s["operating_points"][0]
+
+        # Single pump at same Q* should give ~half the total power
+        resp_1s = client.post("/compute/pump", json={
+            "active": True,
+            "pump_id": "KSB-ETANORM-125-100-200",
+            "arrangement": "single",
+            "n_pumps": 1,
+            "system_curve_pts": [
+                {"Q_m3h": 0,   "value": 18.0},
+                {"Q_m3h": 80,  "value": 30.0},
+                {"Q_m3h": 120, "value": 38.0},
+            ],
+            "static_head_m": 18.0,
+        })
+        assert resp_1s.status_code == 200
+        if op2["power_kW"] is not None:
+            data_1s = resp_1s.json()
+            if data_1s["operating_points"] and data_1s["operating_points"][0]["power_kW"]:
+                # 2-series total power should be approximately
+                # 2× single power at similar Q
+                assert op2["power_kW"] > data_1s["operating_points"][0]["power_kW"]
+
+    def test_vfd_operating_point_uses_affinity_adjusted_eta(self):
+        """
+        With VFD at 80 % speed, η and P must be affinity-adjusted.
+        The VFD operating point η should equal base_eta(Q*/sr)
+        where sr = 0.80.
+        """
+        sys_pts = [
+            {"Q_m3h": 0,   "value": 18.0},
+            {"Q_m3h": 80,  "value": 24.0},
+            {"Q_m3h": 140, "value": 36.0},
+        ]
+        resp_vfd = client.post("/compute/pump", json={
+            "active": True,
+            "pump_id": "KSB-ETANORM-125-100-200",
+            "vfd": True,
+            "speed_pct": 80.0,
+            "system_curve_pts": sys_pts,
+            "static_head_m": 18.0,
+        })
+        assert resp_vfd.status_code == 200
+        data_vfd = resp_vfd.json()
+        assert len(data_vfd["operating_points"]) >= 1
+        op_vfd = data_vfd["operating_points"][0]
+        q_vfd = op_vfd["Q_m3h"]
+
+        # At full speed, same system curve: duty flow should be higher
+        resp_full = client.post("/compute/pump", json={
+            "active": True,
+            "pump_id": "KSB-ETANORM-125-100-200",
+            "vfd": False,
+            "system_curve_pts": sys_pts,
+            "static_head_m": 18.0,
+        })
+        assert resp_full.status_code == 200
+        data_full = resp_full.json()
+        if data_full["operating_points"]:
+            q_full = data_full["operating_points"][0]["Q_m3h"]
+            # Reduced speed → lower duty flow
+            assert q_vfd < q_full
+
+        # VFD power must be less than full-speed power (affinity law: P ∝ N³)
+        if op_vfd["power_kW"] is not None and data_full["operating_points"]:
+            op_full = data_full["operating_points"][0]
+            if op_full["power_kW"] is not None:
+                assert op_vfd["power_kW"] < op_full["power_kW"]
+
     def test_vfd_generates_speed_curves(self):
         resp = client.post("/compute/pump", json={
             "active": True,

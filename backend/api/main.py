@@ -971,16 +971,39 @@ def _solve_op(
     npshr_fn,
     npsha_m: float | None,
     n_pumps: int,
+    arrangement: str = "single",
 ) -> "OperatingPoint | None":
-    """Solve for one operating point and enrich with η, P, NPSHr, NPSH margin."""
+    """
+    Solve for one operating point and enrich with η, P, NPSHr, NPSH margin.
+
+    Flow-basis rules
+    ----------------
+    Parallel: each pump carries Q*/n_pumps of flow.
+      - η and NPSHr are evaluated at Q*/n_pumps (single-pump duty point).
+      - Total shaft power = n_pumps × P_single(Q*/n_pumps).
+
+    Series: all pumps carry the same total flow Q*.
+      - η and NPSHr are evaluated at Q*.
+      - Total shaft power = n_pumps × P_single(Q*).
+
+    Single / VFD: n_pumps == 1 (or eta_fn / p_fn are already speed-adjusted).
+      - Same as series: evaluate at Q*.
+    """
     op_raw = find_operating_point(pump_hq_fn, sys_fn, q_min=0.01, q_max=q_max * 0.99)
     if op_raw is None:
         return None
 
     q_star, h_star = op_raw
-    eta_val  = round(eta_fn(q_star),   2) if eta_fn   else None
-    p_val    = round(p_fn(q_star),     2) if p_fn     else None
-    npshr_val = round(npshr_fn(q_star), 3) if npshr_fn else None
+
+    # Per-pump operating flow
+    q_per_pump = q_star / n_pumps if arrangement == "parallel" else q_star
+
+    # Efficiency and NPSHr at per-pump duty flow
+    eta_val   = round(eta_fn(q_per_pump),   2) if eta_fn   else None
+    npshr_val = round(npshr_fn(q_per_pump), 3) if npshr_fn else None
+
+    # Total shaft power = n_pumps × single-pump power at per-pump flow
+    p_val = round(n_pumps * p_fn(q_per_pump), 2) if p_fn else None
 
     op_warns: list[str] = []
     npsh_margin_val: float | None = None
@@ -1068,21 +1091,51 @@ def compute_pump(req: PumpComputeRequest) -> PumpComputeResponse:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Error building curves from supplied data: {exc}",
             )
-        # Check for non-physical polynomial fit
+        # Check all polynomial fits for non-physical behaviour
         if interp == "poly":
             from backend.engine.pump_curves import fit_polynomial
-            q_h = [pt.Q_m3h for pt in req.curve_data.hq]
-            h   = [pt.value  for pt in req.curve_data.hq]
-            try:
-                _, non_phys = fit_polynomial(q_h, h, degree)
-                if non_phys:
-                    warns.append(
-                        "The polynomial fit to the supplied H-Q data appears non-physical "
-                        "(rising slope at high flow or values > 110%). "
-                        "Consider using 'linear' interpolation instead."
-                    )
-            except ValueError:
-                pass
+            _non_phys_labels: list[str] = []
+            _curves_to_check: list[tuple[str, list, float | None]] = [
+                ("H-Q",   [pt.Q_m3h for pt in req.curve_data.hq],
+                          [pt.value  for pt in req.curve_data.hq],  None),
+            ]
+            if req.curve_data.eta_q:
+                _curves_to_check.append(
+                    ("η-Q",
+                     [pt.Q_m3h for pt in req.curve_data.eta_q],
+                     [pt.value  for pt in req.curve_data.eta_q],
+                     100.0)  # η must not exceed 100 %
+                )
+            if req.curve_data.p_q:
+                _curves_to_check.append(
+                    ("P-Q",
+                     [pt.Q_m3h for pt in req.curve_data.p_q],
+                     [pt.value  for pt in req.curve_data.p_q],
+                     None)
+                )
+            if req.curve_data.npshr_q:
+                _curves_to_check.append(
+                    ("NPSHr-Q",
+                     [pt.Q_m3h for pt in req.curve_data.npshr_q],
+                     [pt.value  for pt in req.curve_data.npshr_q],
+                     None)
+                )
+            for label, q_c, v_c, ub in _curves_to_check:
+                try:
+                    _, _flag = fit_polynomial(q_c, v_c, degree,
+                                             value_upper_bound=ub)
+                    if _flag:
+                        _non_phys_labels.append(label)
+                        non_phys = True
+                except ValueError:
+                    pass
+            if _non_phys_labels:
+                warns.append(
+                    f"Polynomial fit appears non-physical for: "
+                    f"{', '.join(_non_phys_labels)}. "
+                    "Rising slope in right-half operating range or η > 100 % detected. "
+                    "Consider using 'linear' interpolation instead."
+                )
 
     # ------------------------------------------------------------------ #
     # 2. Build compound curve for the primary arrangement                  #
@@ -1141,24 +1194,39 @@ def compute_pump(req: PumpComputeRequest) -> PumpComputeResponse:
         sys_fn    = build_system_hq_fn(sys_q_pts, sys_h_pts, req.static_head_m)
 
         if req.staging and req.arrangement == "parallel":
-            # Solve for 1, 2, … n_pumps duty pumps
+            # Solve for 1, 2, … n_pumps duty pumps; each k-pump group is parallel
             for k in range(1, req.n_pumps + 1):
                 k_hq_fn = _compound_hq(base_hq_fn, "parallel", k)
                 q_max_k = q_max_single * k
                 op = _solve_op(k_hq_fn, sys_fn, q_max_k,
-                               eta_fn, p_fn, npshr_fn, req.npsha_m, k)
+                               eta_fn, p_fn, npshr_fn, req.npsha_m, k,
+                               arrangement="parallel")
                 if op is not None:
                     operating_points.append(op)
         else:
             # Single operating point (with VFD speed if applicable)
-            active_hq = compound_hq
+            active_hq  = compound_hq
+            active_eta = eta_fn
+            active_p   = p_fn
+
             if req.vfd:
                 sr = req.speed_pct / 100.0
                 active_hq = affinity_hq_fn(compound_hq, sr)
                 q_max_compound = q_max_compound * sr
 
+                # η affinity: η_vfd(Q) ≈ η_base(Q / sr)  [duty point unchanged]
+                if eta_fn is not None:
+                    active_eta = affinity_eta_fn(eta_fn, sr)
+
+                # P affinity: P_vfd(Q) = sr³ × P_base(Q / sr)
+                if p_fn is not None:
+                    _sr = sr
+                    _base_p = p_fn
+                    active_p = lambda q, _sr=_sr, _bp=_base_p: (_sr ** 3) * _bp(q / _sr)
+
             op = _solve_op(active_hq, sys_fn, q_max_compound,
-                           eta_fn, p_fn, npshr_fn, req.npsha_m, req.n_pumps)
+                           active_eta, active_p, npshr_fn, req.npsha_m,
+                           req.n_pumps, arrangement=req.arrangement)
             if op is not None:
                 operating_points.append(op)
 

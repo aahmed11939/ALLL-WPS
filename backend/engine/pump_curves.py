@@ -84,6 +84,7 @@ def fit_polynomial(
     q_pts: List[float],
     v_pts: List[float],
     degree: int = 2,
+    value_upper_bound: Optional[float] = None,
 ) -> Tuple[List[float], bool]:
     """
     Least-squares polynomial fit using NumPy.
@@ -95,9 +96,12 @@ def fit_polynomial(
     coefficients — NumPy descending-order coefficients [a_n, ..., a_1, a_0]
                    suitable for np.polyval(coeffs, q).
     non_physical — True when:
-        * The H-Q curve has a local *minimum* or *rising slope* in the
-          right-half operating range (Q > Q_bep), or
-        * Any evaluated value exceeds 110 (guards η fits).
+        * The curve has a rising slope in the right-half operating range
+          (Q > Q_mid), which is non-physical for pump H-Q, η-Q, and P-Q
+          curves; or
+        * Any evaluated value exceeds ``value_upper_bound`` (when given).
+          Pass ``value_upper_bound=100.0`` for efficiency curves where
+          η > 100 % is physically impossible.
 
     Raises
     ------
@@ -127,10 +131,11 @@ def fit_polynomial(
         v_eval[i + 1] - v_eval[i]
         for i in range(mid, len(q_eval) - 1)
     ]
-    non_physical = (
-        any(s > 1e-3 for s in slopes_right)
-        or any(v > 110 for v in v_eval)
-    )
+    non_physical = any(s > 1e-3 for s in slopes_right)
+
+    # Upper-bound check (caller-supplied; use 100.0 for efficiency curves)
+    if value_upper_bound is not None:
+        non_physical = non_physical or any(v > value_upper_bound for v in v_eval)
 
     return coeffs, non_physical
 
@@ -211,7 +216,8 @@ def build_eta_fn(
 ) -> Callable[[float], float]:
     """Build η(Q) function returning efficiency in % clamped to [0, 100]."""
     if interp_method == "poly":
-        coeffs, _ = fit_polynomial(q_pts, eta_pts, poly_degree)
+        # value_upper_bound=100 so that η>100% is flagged as non-physical
+        coeffs, _ = fit_polynomial(q_pts, eta_pts, poly_degree, value_upper_bound=100.0)
         return _make_poly_fn(coeffs, lo_clamp=0.0, hi_clamp=100.0)
     return _make_linear_fn(q_pts, eta_pts, lo_clamp=0.0, hi_clamp=100.0)
 

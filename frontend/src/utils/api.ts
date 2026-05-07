@@ -801,6 +801,7 @@ export interface SurgeTankDeviceInput {
 export interface PRVDeviceInput {
   type: "prv";
   enabled: boolean;
+  boundary_side: "A" | "B";
   H_set_m: number;
   Q_relief_m3s?: number;
 }
@@ -808,6 +809,7 @@ export interface PRVDeviceInput {
 export interface VacuumReliefDeviceInput {
   type: "vacuum_relief";
   enabled: boolean;
+  boundary_side: "A" | "B";
   H_admit_m: number;
 }
 

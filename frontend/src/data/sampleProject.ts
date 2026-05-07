@@ -100,4 +100,5 @@ export const SAMPLE_PROJECT: ProjectDraft = {
   mocResult: null,
   suctionSurgeConfig: null,
   suctionSurgeResult: null,
+  whatIfResult: null,
 };

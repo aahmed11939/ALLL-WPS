@@ -243,7 +243,6 @@ export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIf
             {all.map((run, ri) => {
               const isBase  = ri === 0;
               const color   = PALETTE[ri] ?? "#64748b";
-              const baseRisk = result.baseline.cavitation_risk ?? false;
               const devRisk  = run.cavitation_risk ?? false;
               return (
                 <tr key={ri} className={`border-b border-slate-100 ${isBase ? "bg-slate-50/80" : "bg-white hover:bg-slate-50/40"}`}>
@@ -328,10 +327,10 @@ export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIf
             <YAxis tick={{ fontSize: 9 }} tickFormatter={v => `${v.toFixed(0)}`}
               label={{ value: "Head (m)", angle: -90, position: "insideLeft", offset: 10, fontSize: 9 }} />
             <Tooltip
-              formatter={(val: number, name: string) => {
-                const idx = parseInt(name.split("_")[1]);
-                const label = all[idx]?.label ?? name;
-                return [`${val.toFixed(2)} m`, label];
+              formatter={(val, name) => {
+                const idx = parseInt(String(name).split("_")[1]);
+                const label = all[idx]?.label ?? String(name);
+                return [`${(Number(val) || 0).toFixed(2)} m`, label];
               }}
               contentStyle={{ fontSize: 10 }}
             />

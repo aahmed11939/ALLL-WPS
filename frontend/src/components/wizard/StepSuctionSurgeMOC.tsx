@@ -108,7 +108,7 @@ export default function StepSuctionSurgeMOC() {
   const cfg = draft.suctionSurgeConfig;
 
   const autoQ0_m3s = (draft.hydraulicsResult?.design_Q_m3h ?? draft.designFlow_m3h) / 3600;
-  const autoH0_m   = draft.hydraulicsResult?.suction_head_m
+  const autoH0_m   = draft.hydraulicsResult?.friction_head_m
     ?? Math.abs(draft.upstreamNode.elevation_m - draft.downstreamNode.elevation_m);
   const waveSpeedFromA = draft.waterHammerConfig?.wave_speed_ms ?? 1000;
 
@@ -125,10 +125,10 @@ export default function StepSuctionSurgeMOC() {
   const [rhoStr,       setRhoStr]       = useState(cfg?.rho_kg_m3 ?? "1000");
   const [tempStr,      setTempStr]      = useState(cfg?.temperature_C ?? "20");
   const [pressRating,  setPressRating]  = useState(cfg?.pressure_rating_kPa ?? "");
-  const [npshrStr,     setNpshrStr]     = useState(cfg?.NPSHr_m ?? "");
+  const [npshrStr,     setNpshrStr]     = useState(cfg?.NPSHr_m_override ?? "");
   const [nReaches,     setNReaches]     = useState(cfg?.n_reaches ?? "");
   const [tTotalStr,    setTTotalStr]    = useState(cfg?.t_total_s ?? "");
-  const [pumpNodeFrac, setPumpNodeFrac] = useState(cfg?.pump_node_frac ?? "1.0");
+  const [pumpNodeFrac, setPumpNodeFrac] = useState(String(cfg?.pump_node_frac ?? 1.0));
 
   // Boundary A — wet well / suction source (upstream end of suction pipe)
   const [bcAType,   setBcAType]   = useState(cfg?.boundary_A?.type ?? "reservoir");
@@ -188,18 +188,22 @@ export default function StepSuctionSurgeMOC() {
         rho_kg_m3:            rhoStr,
         temperature_C:        tempStr,
         pressure_rating_kPa:  pressRating,
-        NPSHr_m:              npshrStr,
-        pump_node_frac:       pumpNodeFrac,
+        NPSHr_m_override:     npshrStr,
+        pump_node_frac:       parseFloat(pumpNodeFrac) || 1.0,
         boundary_A: {
           type: bcAType as "reservoir" | "suction_pump_trip",
           H_m: bcA_H_m, H_sump_m: bcA_Hsump,
           Q_m3s: bcA_Q, t_trip_s: bcA_tTrip,
+          H_pump_m: "", H_reservoir_m: bcA_H_m, t_close_s: "", profile: "linear" as const,
         },
         boundary_B: {
           type: bcBType as "reservoir" | "suction_pump_trip",
           H_m: bcB_H_m, H_sump_m: bcB_Hsump,
           Q_m3s: bcB_Q, t_trip_s: bcB_tTrip,
+          H_pump_m: "", H_reservoir_m: bcB_H_m, t_close_s: "", profile: "linear" as const,
         },
+        atm_pressure_kPa: "101.325",
+        obs_points: [],
         n_reaches: nReaches,
         t_total_s: tTotalStr,
       },
@@ -276,7 +280,7 @@ export default function StepSuctionSurgeMOC() {
     const ratingV = parseFloat(pressRating);
     const nR = parseInt(nReaches) || undefined;
     const tT = parseFloat(tTotalStr) || undefined;
-    const pnf = parseFloat(pumpNodeFrac);
+    const pnf = parseFloat(String(pumpNodeFrac));
 
     const req: SuctionTransientRequest = {
       wave_speed_ms:       a,
@@ -488,7 +492,7 @@ export default function StepSuctionSurgeMOC() {
               <Label>Boundary type</Label>
               <select
                 value={bcAType}
-                onChange={e => setBcAType(e.target.value)}
+                onChange={e => setBcAType(e.target.value as "reservoir" | "suction_pump_trip")}
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-400"
               >
                 <option value="reservoir">Reservoir / Fixed HGL (wet well free surface)</option>
@@ -533,7 +537,7 @@ export default function StepSuctionSurgeMOC() {
               <Label>Boundary type</Label>
               <select
                 value={bcBType}
-                onChange={e => setBcBType(e.target.value)}
+                onChange={e => setBcBType(e.target.value as "reservoir" | "suction_pump_trip")}
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-400"
               >
                 <option value="suction_pump_trip">Suction Pump Trip (pump demand collapses)</option>

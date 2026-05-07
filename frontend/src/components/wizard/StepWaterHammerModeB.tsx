@@ -946,10 +946,14 @@ export default function StepWaterHammerModeB() {
           )}
 
           {/* Grid info strip */}
-          <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 grid grid-cols-4 gap-3 text-xs font-mono text-slate-700">
+          <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 grid grid-cols-5 gap-3 text-xs font-mono text-slate-700">
             <div>
               <span className="text-slate-400 font-sans text-[10px] block uppercase tracking-wide mb-0.5">N reaches</span>
               {result.N}
+            </div>
+            <div>
+              <span className="text-slate-400 font-sans text-[10px] block uppercase tracking-wide mb-0.5">Courant</span>
+              {result.courant.toFixed(3)}
             </div>
             <div>
               <span className="text-slate-400 font-sans text-[10px] block uppercase tracking-wide mb-0.5">Δx</span>

@@ -1,4 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ReferenceLine, ResponsiveContainer, Cell,
+} from "recharts";
 import TermTip from "../TermTip";
 import { useProject } from "../../contexts/ProjectContext";
 import { computeSurgeQuick, computeWaveSpeed } from "../../utils/api";
@@ -968,6 +972,111 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
               Simplified Mode A envelope. Max = H₀ + ΔH_eff; Min = H₀ − ΔH_eff.
               Vapour pressure = {displayVapHead.toFixed(2)} m gauge at {result.temperature_C} °C.
             </p>
+          </Section>
+
+          <Section title="Pressure Envelope — Head Chart">
+            <p className="text-[10px] text-slate-400 -mt-2 mb-2 leading-relaxed">
+              Red bars = max transient head; blue bars = min transient head (red when below h_vap, amber when sub-atmospheric).
+              Dashed amber = vapour pressure threshold. Dashed grey = 0 m (atmospheric).
+            </p>
+            <ChartErrorBoundary label="Mode A Envelope Chart">
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart
+                  data={result.envelope.map(pt => ({
+                    name: pt.location,
+                    max: pt.max_head_m,
+                    min: pt.min_head_m,
+                  }))}
+                  margin={{ top: 8, right: 24, left: 0, bottom: 4 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                  <YAxis
+                    tick={{ fontSize: 10 }}
+                    label={{ value: "Head (m)", angle: -90, position: "insideLeft", fontSize: 10 }}
+                  />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload?.length) return null;
+                      return (
+                        <div className="rounded-xl border border-slate-200 bg-white shadow-lg px-3 py-2.5 text-xs space-y-1.5 min-w-[160px]">
+                          <p className="font-semibold text-slate-500 border-b border-slate-100 pb-1.5 mb-1">{label}</p>
+                          {payload.map((p) => (
+                            <div key={p.dataKey as string} className="flex justify-between gap-4">
+                              <span className="flex items-center gap-1.5">
+                                <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: p.color }} />
+                                <span className="text-slate-600">{p.name}</span>
+                              </span>
+                              <span className="font-bold font-mono text-slate-800">
+                                {typeof p.value === "number" ? `${(p.value as number).toFixed(2)} m` : "—"}
+                              </span>
+                            </div>
+                          ))}
+                          <div className="border-t border-slate-100 pt-1.5 text-[10px] text-amber-600 font-mono">
+                            h_vap = {result.vapor_pressure_head_m.toFixed(2)} m
+                          </div>
+                        </div>
+                      );
+                    }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 10 }} />
+                  <Bar dataKey="max" name="H_max" radius={[3, 3, 0, 0]}>
+                    {result.envelope.map((_, i) => (
+                      <Cell key={i} fill="#dc2626" />
+                    ))}
+                  </Bar>
+                  <Bar dataKey="min" name="H_min" radius={[3, 3, 0, 0]}>
+                    {result.envelope.map((pt, i) => (
+                      <Cell
+                        key={i}
+                        fill={
+                          pt.min_head_m < result.vapor_pressure_head_m
+                            ? "#dc2626"
+                            : pt.min_head_m < 0
+                              ? "#f59e0b"
+                              : "#2563eb"
+                        }
+                      />
+                    ))}
+                  </Bar>
+                  <ReferenceLine
+                    y={result.vapor_pressure_head_m}
+                    stroke={result.min_pressure_head_m < result.vapor_pressure_head_m ? "#dc2626" : "#f59e0b"}
+                    strokeDasharray="5 3"
+                    label={{
+                      value: `h_vap = ${result.vapor_pressure_head_m.toFixed(1)} m`,
+                      fontSize: 9,
+                      fill: result.min_pressure_head_m < result.vapor_pressure_head_m ? "#dc2626" : "#d97706",
+                      position: "insideTopLeft",
+                    }}
+                  />
+                  <ReferenceLine
+                    y={0}
+                    stroke={result.min_pressure_head_m < 0 ? "#dc2626" : "#94a3b8"}
+                    strokeDasharray="2 2"
+                    label={{
+                      value: "0 m (atm)",
+                      fontSize: 9,
+                      fill: result.min_pressure_head_m < 0 ? "#dc2626" : "#94a3b8",
+                      position: "insideBottomRight",
+                    }}
+                  />
+                  {result.rating_check && (
+                    <ReferenceLine
+                      y={result.rating_check.pressure_rating_kPa / (result.rho_kg_m3 * 9.81 / 1000)}
+                      stroke="#16a34a"
+                      strokeDasharray="5 3"
+                      label={{
+                        value: `PN = ${(result.rating_check.pressure_rating_kPa / 10).toFixed(0)} bar`,
+                        fontSize: 9,
+                        fill: "#16a34a",
+                        position: "insideTopRight",
+                      }}
+                    />
+                  )}
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartErrorBoundary>
           </Section>
 
           {ratingCheckToShow && (

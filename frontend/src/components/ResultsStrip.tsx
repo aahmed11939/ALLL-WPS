@@ -5,10 +5,11 @@ export default function ResultsStrip() {
   const r  = draft.hydraulicsResult;
   const pr = draft.pumpResult;
   const op = pr?.operating_points?.[0] ?? null;
+  const wh    = draft.waterHammerResult as { max_pressure_head_m?: number; min_pressure_head_m?: number; vapor_pressure_head_m?: number } | null;
   const moc   = draft.mocResult   as { global_max_H_m?: number; global_min_H_m?: number; h_vap_m?: number } | null;
   const surge = draft.suctionSurgeResult as { npsha_min_m?: number; transient_npsh_risk?: boolean } | null;
 
-  const hasData = !!(r || op || moc || surge);
+  const hasData = !!(r || op || wh || moc || surge);
   if (!hasData) return null;
 
   const us = draft.unitSystem === "US";
@@ -38,11 +39,25 @@ export default function ResultsStrip() {
         color: op.npsh_margin_m < 0 ? "text-red-700" : op.npsh_margin_m < 0.5 ? "text-amber-600" : "text-emerald-700" });
   }
 
+  if (wh?.max_pressure_head_m !== undefined) {
+    items.push({ label: "Surge max", value: fmtH(wh.max_pressure_head_m), color: "text-red-700" });
+    if (wh.min_pressure_head_m !== undefined)
+      items.push({
+        label: "Surge min", value: fmtH(wh.min_pressure_head_m),
+        color:
+          wh.vapor_pressure_head_m !== undefined && wh.min_pressure_head_m < wh.vapor_pressure_head_m
+            ? "text-red-700"
+            : wh.min_pressure_head_m < 0
+              ? "text-amber-600"
+              : "text-blue-700",
+      });
+  }
+
   if (moc?.global_max_H_m !== undefined) {
-    items.push({ label: "Surge max", value: fmtH(moc.global_max_H_m), color: "text-red-700" });
+    items.push({ label: "MOC max", value: fmtH(moc.global_max_H_m), color: "text-red-700" });
     if (moc.global_min_H_m !== undefined)
       items.push({
-        label: "Surge min", value: fmtH(moc.global_min_H_m),
+        label: "MOC min", value: fmtH(moc.global_min_H_m),
         color: moc.h_vap_m !== undefined && moc.global_min_H_m < moc.h_vap_m ? "text-red-700" : "text-blue-700",
       });
   }

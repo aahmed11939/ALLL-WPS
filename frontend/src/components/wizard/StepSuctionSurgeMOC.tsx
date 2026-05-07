@@ -25,6 +25,7 @@ import type {
 } from "../../utils/api";
 import ProtectionDevicePanel from "./ProtectionDevicePanel";
 import WhatIfComparisonPanel from "./WhatIfComparisonPanel";
+import ChartErrorBoundary from "../ChartErrorBoundary";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -722,6 +723,7 @@ export default function StepSuctionSurgeMOC() {
                 {result.npsha_risk_duration_s > 0 &&
                   ` Red zone: NPSHa below NPSHr for ${result.npsha_risk_duration_s.toFixed(2)} s.`}
               </p>
+              <ChartErrorBoundary label="NPSHa Time History">
               <ResponsiveContainer width="100%" height={240}>
                 <LineChart data={npshaData} margin={{ top: 4, right: 24, left: 0, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -764,6 +766,7 @@ export default function StepSuctionSurgeMOC() {
                   )}
                 </LineChart>
               </ResponsiveContainer>
+              </ChartErrorBoundary>
             </Section>
           )}
 
@@ -773,6 +776,7 @@ export default function StepSuctionSurgeMOC() {
               <p className="text-[10px] text-slate-400 -mt-2 leading-relaxed">
                 Red = max transient head; Blue = min transient head; shaded = pipe elevation profile; amber dashed = vapour pressure.
               </p>
+              <ChartErrorBoundary label="Pressure Envelope">
               <ResponsiveContainer width="100%" height={260}>
                 <ComposedChart data={envelopeData} margin={{ top: 8, right: 20, left: 0, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -811,12 +815,14 @@ export default function StepSuctionSurgeMOC() {
                   />
                 </ComposedChart>
               </ResponsiveContainer>
+              </ChartErrorBoundary>
             </Section>
           )}
 
           {/* Time histories */}
           {historyData.length > 0 && (
             <Section title="Time History — Head at Observation Points">
+              <ChartErrorBoundary label="Observation Point Histories">
               <ResponsiveContainer width="100%" height={200}>
                 <LineChart data={historyData} margin={{ top: 4, right: 20, left: 0, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -846,6 +852,7 @@ export default function StepSuctionSurgeMOC() {
                   />
                 </LineChart>
               </ResponsiveContainer>
+              </ChartErrorBoundary>
             </Section>
           )}
 

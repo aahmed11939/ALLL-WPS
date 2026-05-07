@@ -30,28 +30,29 @@ import type { CalculationResponse, ClearWellResponse, PumpComputeResponse, Surge
 // ---------------------------------------------------------------------------
 
 type Action =
-  | { type: "SET_META";                  meta: ProjectMeta }
-  | { type: "SET_UNIT_SYSTEM";           unitSystem: UnitSystem }
-  | { type: "SET_SHOW_BOTH";             showBoth: boolean }
-  | { type: "SET_DESIGN_FLOW";           flow: number }
-  | { type: "SET_UPSTREAM_NODE";         node: NodeDraft }
-  | { type: "SET_DOWNSTREAM_NODE";       node: NodeDraft }
-  | { type: "SET_SUCTION";               suction: PipelineDraft }
-  | { type: "SET_DISCHARGE";             discharge: PipelineDraft }
-  | { type: "SET_CLEARWELL_CONFIG";      config: ClearwellFormConfig | null }
-  | { type: "SET_PUMP_SELECTION_CONFIG"; config: PumpSelectionConfig | null }
-  | { type: "SET_PUMP_CURVE_CONFIG";     config: PumpCurveConfig | null }
-  | { type: "SET_HYDRAULICS";            result: CalculationResponse | null; error: string | null }
-  | { type: "SET_PUMP_RESULT";           result: PumpComputeResponse | null }
-  | { type: "SET_CLEARWELL_RESULT";      result: ClearWellResponse | null }
-  | { type: "SET_WATER_HAMMER_CONFIG";   config: WaterHammerConfig | null }
-  | { type: "SET_WATER_HAMMER_RESULT";   result: SurgeQuickResponse | null }
-  | { type: "SET_MOC_CONFIG";            config: MOCConfig | null }
-  | { type: "SET_MOC_RESULT";            result: MOCResponse | null }
-  | { type: "SET_SUCTION_SURGE_CONFIG";  config: SuctionSurgeConfig | null }
-  | { type: "SET_SUCTION_SURGE_RESULT";  result: SuctionTransientResult | null }
-  | { type: "SET_WHATIF_RESULT";         result: WhatIfResponse | null }
-  | { type: "LOAD";                      draft: ProjectDraft };
+  | { type: "SET_META";                      meta: ProjectMeta }
+  | { type: "SET_UNIT_SYSTEM";               unitSystem: UnitSystem }
+  | { type: "SET_SHOW_BOTH";                 showBoth: boolean }
+  | { type: "SET_DESIGN_FLOW";               flow: number }
+  | { type: "SET_UPSTREAM_NODE";             node: NodeDraft }
+  | { type: "SET_DOWNSTREAM_NODE";           node: NodeDraft }
+  | { type: "SET_SUCTION";                   suction: PipelineDraft }
+  | { type: "SET_DISCHARGE";                 discharge: PipelineDraft }
+  | { type: "SET_CLEARWELL_CONFIG";          config: ClearwellFormConfig | null }
+  | { type: "SET_PUMP_SELECTION_CONFIG";     config: PumpSelectionConfig | null }
+  | { type: "SET_PUMP_CURVE_CONFIG";         config: PumpCurveConfig | null }
+  | { type: "SET_HYDRAULICS";                result: CalculationResponse | null; error: string | null }
+  | { type: "SET_HYDRAULICS_FIELD_ERRORS";   errors: Array<{ loc: string[]; msg: string; type: string }> }
+  | { type: "SET_PUMP_RESULT";               result: PumpComputeResponse | null }
+  | { type: "SET_CLEARWELL_RESULT";          result: ClearWellResponse | null }
+  | { type: "SET_WATER_HAMMER_CONFIG";       config: WaterHammerConfig | null }
+  | { type: "SET_WATER_HAMMER_RESULT";       result: SurgeQuickResponse | null }
+  | { type: "SET_MOC_CONFIG";               config: MOCConfig | null }
+  | { type: "SET_MOC_RESULT";               result: MOCResponse | null }
+  | { type: "SET_SUCTION_SURGE_CONFIG";     config: SuctionSurgeConfig | null }
+  | { type: "SET_SUCTION_SURGE_RESULT";     result: SuctionTransientResult | null }
+  | { type: "SET_WHATIF_RESULT";            result: WhatIfResponse | null }
+  | { type: "LOAD";                         draft: ProjectDraft };
 
 function reducer(state: ProjectDraft, action: Action): ProjectDraft {
   switch (action.type) {
@@ -68,6 +69,8 @@ function reducer(state: ProjectDraft, action: Action): ProjectDraft {
     case "SET_PUMP_CURVE_CONFIG":     return { ...state, pumpCurveConfig: action.config };
     case "SET_HYDRAULICS":
       return { ...state, hydraulicsResult: action.result, hydraulicsError: action.error };
+    case "SET_HYDRAULICS_FIELD_ERRORS":
+      return { ...state, hydraulicsFieldErrors: action.errors };
     case "SET_PUMP_RESULT":           return { ...state, pumpResult: action.result };
     case "SET_CLEARWELL_RESULT":      return { ...state, clearwellResult: action.result };
     case "SET_WATER_HAMMER_CONFIG":   return { ...state, waterHammerConfig: action.config };
@@ -115,6 +118,7 @@ function parseDraft(raw: string): ProjectDraft {
     suctionSurgeConfig:   parsed.suctionSurgeConfig   ?? null,
     suctionSurgeResult:   parsed.suctionSurgeResult   ?? null,
     whatIfResult:         parsed.whatIfResult          ?? null,
+    hydraulicsFieldErrors: parsed.hydraulicsFieldErrors ?? [],
   };
 }
 

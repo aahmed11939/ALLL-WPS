@@ -1,6 +1,7 @@
 import { useProject } from "../../contexts/ProjectContext";
 import { useUnitSystem } from "../../contexts/UnitSystemContext";
 import AccessoriesPicker from "../AccessoriesPicker";
+import FieldErrorHint from "../FieldErrorHint";
 import type { PipelineDraft, PipelineSegment } from "../../types/project";
 import type { AccessoryItem } from "../../utils/api";
 import { FT_PER_M, IN_PER_MM, M_PER_FT, MM_PER_IN } from "../../utils/units";
@@ -30,6 +31,7 @@ interface Props {
 export default function StepPipeline({ label }: Props) {
   const { draft, dispatch } = useProject();
   const { unitSystem } = useUnitSystem();
+  const fieldErrors = draft.hydraulicsFieldErrors ?? [];
   const isUS = unitSystem === "US";
 
   const pipeline: PipelineDraft = label === "suction" ? draft.suction : draft.discharge;
@@ -162,10 +164,17 @@ export default function StepPipeline({ label }: Props) {
                     type="number"
                     step="any"
                     min="1"
-                    className={inputCls}
+                    className={`${inputCls} ${
+                      fieldErrors.some(e => e.loc.includes("pipe_diameter_mm"))
+                        ? "border-rose-400 bg-rose-50 focus:border-rose-500 focus:ring-rose-400"
+                        : ""
+                    }`}
                     value={toDispDiam(seg.diameter_mm)}
                     onChange={(e) => updateSegment(idx, "diameter_mm", e.target.value)}
                   />
+                  {idx === 0 && (
+                    <FieldErrorHint fieldPath="pipe_diameter_mm" errors={fieldErrors} />
+                  )}
                 </td>
                 <td className="px-2 py-2">
                   <input

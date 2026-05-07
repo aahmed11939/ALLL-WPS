@@ -198,6 +198,26 @@ app.add_middleware(
 
 
 # ---------------------------------------------------------------------------
+# Pydantic models for structured error responses (OpenAPI schema)
+# ---------------------------------------------------------------------------
+
+
+class FieldErrorItem(BaseModel):
+    """A single field-level validation error returned on HTTP 422."""
+
+    loc: list[str]
+    msg: str
+    type: str
+
+
+class StructuredErrorResponse(BaseModel):
+    """Body returned for HTTP 422 Request Validation Failed responses."""
+
+    detail: str
+    errors: list[FieldErrorItem]
+
+
+# ---------------------------------------------------------------------------
 # Global validation-error handler — structured {loc, msg, type} list
 # ---------------------------------------------------------------------------
 
@@ -269,6 +289,7 @@ def get_pump_library() -> PumpLibraryResponse:
 @app.post(
     "/api/v1/calculate",
     response_model=CalculationResponse,
+    responses={422: {"model": StructuredErrorResponse}},
     tags=["hydraulics"],
     summary="Compute system TDH and system curve",
     status_code=status.HTTP_200_OK,

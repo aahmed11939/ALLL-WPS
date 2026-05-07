@@ -262,6 +262,9 @@ export interface ProjectDraft {
   suctionSurgeResult: SuctionTransientResult | null;
   /** Cached what-if protection comparison result. */
   whatIfResult: WhatIfResponse | null;
+  /** Structured field-level errors from the last failed /api/v1/calculate call.
+   *  Stored in draft so StepPipeline and other steps can display them. */
+  hydraulicsFieldErrors: Array<{ loc: string[]; msg: string; type: string }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -360,4 +363,5 @@ export const DEFAULT_DRAFT: ProjectDraft = {
   suctionSurgeConfig: null,
   suctionSurgeResult: null,
   whatIfResult: null,
+  hydraulicsFieldErrors: [],
 };

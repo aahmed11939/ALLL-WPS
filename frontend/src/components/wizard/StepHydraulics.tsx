@@ -7,7 +7,7 @@ import EquationsPanel from "../EquationsPanel";
 import LossBreakdownPanel from "../LossBreakdownPanel";
 import SystemCurveChart from "../SystemCurveChart";
 import ChartErrorBoundary from "../ChartErrorBoundary";
-import { parseApiErrors } from "../FieldErrorHint";
+import FieldErrorHint, { parseApiErrors } from "../FieldErrorHint";
 import type { FieldError as ApiFieldError } from "../FieldErrorHint";
 import {
   calculate,
@@ -94,7 +94,9 @@ export default function StepHydraulics() {
 
   const handleCompute = async () => {
     setLoading(true);
+    setFieldErrors([]);
     dispatch({ type: "SET_HYDRAULICS", result: null, error: null });
+    dispatch({ type: "SET_HYDRAULICS_FIELD_ERRORS", errors: [] });
     setBreakdown(null);
 
     const suctionSegs   = draft.suction.segments;
@@ -182,6 +184,7 @@ export default function StepHydraulics() {
       const responseData = (err as { response?: { data?: unknown } })?.response?.data;
       const parsedFieldErrors = parseApiErrors(responseData);
       setFieldErrors(parsedFieldErrors);
+      dispatch({ type: "SET_HYDRAULICS_FIELD_ERRORS", errors: parsedFieldErrors });
       const rawDetail = (responseData as Record<string, unknown> | undefined)?.detail;
       const msg = typeof rawDetail === "string"
         ? rawDetail
@@ -223,25 +226,47 @@ export default function StepHydraulics() {
           Assembled Inputs
         </p>
         <div className="grid grid-cols-3 gap-x-6 gap-y-2 text-xs">
-          <div className="flex justify-between col-span-1">
-            <span className="text-slate-400">Design flow</span>
-            <span className="font-mono text-slate-700">{draft.designFlow_m3h.toFixed(2)} m³/h</span>
+          <div className="col-span-1">
+            <div className={`flex justify-between rounded px-1.5 py-0.5 ${
+              fieldErrors.some(e => e.loc.includes("Q_m3h")) ? "bg-rose-50 outline outline-1 outline-rose-400" : ""
+            }`}>
+              <span className="text-slate-400">Design flow</span>
+              <span className="font-mono text-slate-700">{draft.designFlow_m3h.toFixed(2)} m³/h</span>
+            </div>
+            <FieldErrorHint fieldPath="Q_m3h" errors={fieldErrors} />
           </div>
-          <div className="flex justify-between col-span-1">
-            <span className="text-slate-400">Upstream elev.</span>
-            <span className="font-mono text-slate-700">{draft.upstreamNode.elevation_m.toFixed(2)} m</span>
+          <div className="col-span-1">
+            <div className={`flex justify-between rounded px-1.5 py-0.5 ${
+              fieldErrors.some(e => e.loc.includes("elev_us_m")) ? "bg-rose-50 outline outline-1 outline-rose-400" : ""
+            }`}>
+              <span className="text-slate-400">Upstream elev.</span>
+              <span className="font-mono text-slate-700">{draft.upstreamNode.elevation_m.toFixed(2)} m</span>
+            </div>
+            <FieldErrorHint fieldPath="elev_us_m" errors={fieldErrors} />
           </div>
-          <div className="flex justify-between col-span-1">
-            <span className="text-slate-400">Downstream elev.</span>
-            <span className="font-mono text-slate-700">{draft.downstreamNode.elevation_m.toFixed(2)} m</span>
+          <div className="col-span-1">
+            <div className={`flex justify-between rounded px-1.5 py-0.5 ${
+              fieldErrors.some(e => e.loc.includes("elev_ds_m")) ? "bg-rose-50 outline outline-1 outline-rose-400" : ""
+            }`}>
+              <span className="text-slate-400">Downstream elev.</span>
+              <span className="font-mono text-slate-700">{draft.downstreamNode.elevation_m.toFixed(2)} m</span>
+            </div>
+            <FieldErrorHint fieldPath="elev_ds_m" errors={fieldErrors} />
+          </div>
+          <div className="col-span-1">
+            <div className={`flex justify-between rounded px-1.5 py-0.5 ${
+              fieldErrors.some(e => e.loc.includes("pipe_diameter_mm")) ? "bg-rose-50 outline outline-1 outline-rose-400" : ""
+            }`}>
+              <span className="text-slate-400">Pipe diam. (primary)</span>
+              <span className="font-mono text-slate-700">
+                {(draft.discharge.segments[0] ?? draft.suction.segments[0])?.diameter_mm ?? "—"} mm
+              </span>
+            </div>
+            <FieldErrorHint fieldPath="pipe_diameter_mm" errors={fieldErrors} />
           </div>
           <div className="flex justify-between col-span-1">
             <span className="text-slate-400">Suction segs</span>
             <span className="font-mono text-slate-700">{draft.suction.segments.length}</span>
-          </div>
-          <div className="flex justify-between col-span-1">
-            <span className="text-slate-400">Discharge segs</span>
-            <span className="font-mono text-slate-700">{draft.discharge.segments.length}</span>
           </div>
           <div className="flex justify-between col-span-1">
             <span className="text-slate-400">Combined ΣK</span>

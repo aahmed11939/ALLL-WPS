@@ -10,6 +10,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { useProject } from "../../contexts/ProjectContext";
+import ChartErrorBoundary from "../ChartErrorBoundary";
 
 interface ChartPt {
   Q: number;
@@ -77,6 +78,7 @@ export default function StepCurves() {
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-4">
             H-Q Overlay
           </p>
+          <ChartErrorBoundary label="H-Q Overlay">
           <ResponsiveContainer width="100%" height={320}>
             <ComposedChart data={chartData} margin={{ top: 4, right: 20, left: 10, bottom: 20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -152,6 +154,7 @@ export default function StepCurves() {
               )}
             </ComposedChart>
           </ResponsiveContainer>
+          </ChartErrorBoundary>
           {!hasSys && hasPump && (
             <p className="mt-2 text-xs text-slate-400 text-center">
               Run Compute on Step 7 to add the system curve.

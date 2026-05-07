@@ -11,6 +11,7 @@ import type { WaterHammerConfig } from "../../types/project";
 import StepWaterHammerModeB  from "./StepWaterHammerModeB";
 import StepSuctionSurgeMOC   from "./StepSuctionSurgeMOC";
 import SurgeSummaryPanel      from "./SurgeSummaryPanel";
+import ChartErrorBoundary     from "../ChartErrorBoundary";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -1107,16 +1108,24 @@ export default function StepWaterHammer() {
         {/* Tab content */}
         <div className="p-5">
           {activePipeline === "discharge" && activeSub === "quick" && (
-            <QuickAnalysisPanel activePipeline="discharge" />
+            <ChartErrorBoundary label="Discharge Quick Surge">
+              <QuickAnalysisPanel activePipeline="discharge" />
+            </ChartErrorBoundary>
           )}
           {activePipeline === "discharge" && activeSub === "moc" && (
-            <StepWaterHammerModeB />
+            <ChartErrorBoundary label="Discharge MOC">
+              <StepWaterHammerModeB />
+            </ChartErrorBoundary>
           )}
           {activePipeline === "suction" && activeSub === "quick" && (
-            <QuickAnalysisPanel activePipeline="suction" />
+            <ChartErrorBoundary label="Suction Quick Surge">
+              <QuickAnalysisPanel activePipeline="suction" />
+            </ChartErrorBoundary>
           )}
           {activePipeline === "suction" && activeSub === "moc" && (
-            <StepSuctionSurgeMOC />
+            <ChartErrorBoundary label="Suction MOC">
+              <StepSuctionSurgeMOC />
+            </ChartErrorBoundary>
           )}
         </div>
       </div>

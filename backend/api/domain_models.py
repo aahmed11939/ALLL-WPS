@@ -628,7 +628,7 @@ class ValveSpec(BaseModel):
         Field(default=True,
               description="Whether this valve is NSF/ANSI 61 listed for potable water contact"),
     ]
-    notes: str = Field(default="")
+    notes: str = Field(default="", description="Additional notes or source reference")
 
 
 class InstrumentSpec(BaseModel):
@@ -636,10 +636,10 @@ class InstrumentSpec(BaseModel):
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    type: Annotated[str, Field(min_length=1, description="Instrument type")]
-    enabled: bool = Field(default=True)
-    standard: str = Field(default="")
-    notes: str = Field(default="")
+    type: Annotated[str, Field(min_length=1, description="Instrument type (e.g. 'pressure_transmitter', 'level_sensor')")]
+    enabled: Annotated[bool, Field(default=True, description="Whether this instrument is included in the design")]
+    standard: Annotated[str, Field(default="", description="Governing standard or calibration reference")]
+    notes: Annotated[str, Field(default="", description="Additional notes, tag number, or installation notes")]
 
 
 class AccessoriesLibrary(BaseModel):
@@ -920,7 +920,7 @@ class ProjectModel(BaseModel):
                                 f"the potable-service guideline of {POTABLE_HF_GRADIENT_MAX} m/100 m. "
                                 "Review pipe sizing."
                             )
-                    except Exception:
+                    except (ValueError, ZeroDivisionError):
                         pass  # advisory only; never block construction
 
         # --- Unknown fitting types ---

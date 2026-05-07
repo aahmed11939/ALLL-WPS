@@ -365,39 +365,47 @@ def _sh_hydraulics(wb: Workbook, draft: dict) -> None:
     us = draft.get("unitSystem", "SI")
 
     col_hdrs = ["Seg #", "Material", "DN (mm)", "L (m)", "v (m/s)",
-                "Re", "f (D-W)", "Hf (m)", "Hf display", "Cumul. Hf (m)"]
+                "Re", "f (D-W)", "Hf (m)", "Hm (m)", "Hf display", "Cumul. Hf (m)"]
     for ci, h in enumerate(col_hdrs, 1):
         _hdr(ws, row, ci, h, BLUE_MID)
     row += 1
+    ws.freeze_panes = f"A{row}"
 
     cum_hf = 0.0
     grand_hf = 0.0
     for pipe_key, pipe_lbl in [("suction", "SUCTION"), ("discharge", "DISCHARGE")]:
-        _section_hdr(ws, row, f"— {pipe_lbl} pipeline —", 10)
+        _section_hdr(ws, row, f"— {pipe_lbl} pipeline —", 11)
         row += 1
-        segs = (draft.get(pipe_key) or {}).get("segments", [])
+        pipe     = draft.get(pipe_key) or {}
+        segs     = pipe.get("segments", [])
+        K_total  = pipe.get("accessories_K_sum", 0.0) or 0.0
+        n_segs   = len(segs) if segs else 1
         seg_hf_total = 0.0
         for j, seg in enumerate(segs):
             s   = _seg_darcy(Q, seg)
             alt = (j % 2 == 1)
+            # Distribute pipeline-level minor loss K equally across segments
+            K_seg = K_total / n_segs
+            Hm_seg = K_seg * s["v"] ** 2 / (2 * G_ACC) if s["v"] else 0.0
             disp_hf, disp_hf_unit = _us(us, s["Hf"], "head")
-            _dat(ws, row, 1, j + 1,               align="center", alt=alt)
-            _dat(ws, row, 2, seg.get("material",""), alt=alt)
-            _dat(ws, row, 3, seg.get("diameter_mm",0), fmt="0.0", align="right", alt=alt)
-            _dat(ws, row, 4, s["L_m"],             fmt="#,##0.00", align="right", alt=alt)
-            _dat(ws, row, 5, round(s["v"],   4),   fmt="#,##0.0000", align="right", alt=alt)
-            _dat(ws, row, 6, int(s["Re"]),          fmt="#,##0", align="right", alt=alt)
-            _dat(ws, row, 7, round(s["f"],   5),   fmt="0.00000", align="right", alt=alt)
-            _dat(ws, row, 8, round(s["Hf"],  3),   fmt="#,##0.000", align="right", alt=alt)
-            _dat(ws, row, 9, f"{disp_hf:.3f} {disp_hf_unit}", alt=alt)
+            _dat(ws, row,  1, j + 1,                    align="center", alt=alt)
+            _dat(ws, row,  2, seg.get("material", ""),   alt=alt)
+            _dat(ws, row,  3, seg.get("diameter_mm", 0), fmt="0.0", align="right", alt=alt)
+            _dat(ws, row,  4, s["L_m"],                  fmt=FMT_DIST, align="right", alt=alt)
+            _dat(ws, row,  5, round(s["v"],   4),        fmt=FMT_VEL,  align="right", alt=alt)
+            _dat(ws, row,  6, int(s["Re"]),               fmt=FMT_FLOW, align="right", alt=alt)
+            _dat(ws, row,  7, round(s["f"],   5),        fmt="0.00000", align="right", alt=alt)
+            _dat(ws, row,  8, round(s["Hf"],  3),        fmt=FMT_HEAD, align="right", alt=alt)
+            _dat(ws, row,  9, round(Hm_seg,   3),        fmt=FMT_HEAD, align="right", alt=alt)
+            _dat(ws, row, 10, f"{disp_hf:.3f} {disp_hf_unit}", alt=alt)
             cum_hf += s["Hf"]
             seg_hf_total += s["Hf"]
-            _dat(ws, row, 10, round(cum_hf, 3),    fmt="#,##0.000", align="right", alt=alt)
+            _dat(ws, row, 11, round(cum_hf, 3),          fmt=FMT_HEAD, align="right", alt=alt)
             row += 1
         grand_hf += seg_hf_total
         # Subtotal row
         _dat(ws, row, 1, f"{pipe_lbl} subtotal", bold=True, alt=True)
-        _dat(ws, row, 8, round(seg_hf_total, 3), fmt="#,##0.000", align="right", bold=True, alt=True)
+        _dat(ws, row, 8, round(seg_hf_total, 3), fmt=FMT_HEAD, align="right", bold=True, alt=True)
         row += 1
 
     row += 1
@@ -431,7 +439,7 @@ def _sh_hydraulics(wb: Workbook, draft: dict) -> None:
     if not r:
         _no_data(ws, row)
 
-    _col_widths(ws, [28, 14, 10, 10, 12, 12, 10, 12, 18, 16])
+    _col_widths(ws, [28, 14, 10, 10, 12, 12, 10, 12, 12, 18, 16])
 
 
 # ---------------------------------------------------------------------------
@@ -540,12 +548,12 @@ def _sh_system_curve(wb: Workbook, draft: dict) -> None:
             chart.series[idx].graphicalProperties.line.solidFill = clr
             chart.series[idx].graphicalProperties.line.width = 22000
 
-    # Add per-speed curve series
+    # Add per-speed curve series — do NOT call set_categories again; the
+    # chart keeps the categories set above (main Q column).  Calling
+    # set_categories() a second time overwrites the x-axis for ALL series.
     for si, (col_q, col_h, r_s, r_e, lbl) in enumerate(spd_series):
         spd_ref = Reference(ws, min_col=col_h, min_row=r_s, max_row=r_e)
-        spd_xr  = Reference(ws, min_col=col_q, min_row=r_s + 1, max_row=r_e)
         chart.add_data(spd_ref, titles_from_data=True)
-        chart.set_categories(spd_xr)
         clr_idx = 2 + si
         if clr_idx < len(chart.series):
             chart.series[clr_idx].graphicalProperties.line.solidFill = _series_colors[clr_idx % len(_series_colors)]

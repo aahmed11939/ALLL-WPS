@@ -91,6 +91,7 @@ from backend.api.schemas import (
     TypeSpecificField,
     VerticalTurbineExtras,
     VolumeCurvePoint,
+    ExcelExportRequest,
 )
 from backend.engine.pump_types import (
     get_pump_type,
@@ -2522,24 +2523,15 @@ async def surge_device_size(req: _DeviceSizeRequest) -> dict:
     response_description="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     tags=["Export"],
 )
-async def export_excel(request: Request) -> StreamingResponse:
+async def export_excel(body: ExcelExportRequest) -> StreamingResponse:
     """
-    Accept the full ProjectDraft JSON and return a .xlsx workbook.
+    Accept the full ProjectDraft as a typed Pydantic model and return a .xlsx workbook.
 
-    The workbook contains 11 sheets and 6 embedded charts covering all
-    computed results (hydraulics, pump curves, wet well, surge analyses,
-    engineering checks, and protection device comparisons).
-
-    The request body is accepted as raw JSON (any dict) so that no schema
-    drift occurs as the frontend ProjectDraft evolves.
+    ExcelExportRequest uses extra='allow' so any future ProjectDraft fields pass
+    through without validation errors.  The workbook contains 11 sheets and 6
+    embedded charts covering all computed results.
     """
-    try:
-        draft: dict = await request.json()
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Request body must be valid JSON.",
-        )
+    draft: dict = body.model_dump()
 
     try:
         xlsx_bytes = build_workbook(draft)

@@ -53,11 +53,31 @@ function CheckSummaryRow({ check }: { check: CheckResult }) {
   );
 }
 
+function SuccessToast({ message, onClose }: { message: string; onClose: () => void }) {
+  return (
+    <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 shadow-lg px-4 py-3 max-w-sm animate-in slide-in-from-bottom-2">
+      <div className="h-8 w-8 shrink-0 rounded-full bg-emerald-100 flex items-center justify-center">
+        <svg className="h-4 w-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-emerald-800">{message}</p>
+        <p className="text-xs text-emerald-600 mt-0.5">Your download has started automatically.</p>
+      </div>
+      <button type="button" onClick={onClose} className="text-emerald-400 hover:text-emerald-600 text-lg leading-none">
+        ×
+      </button>
+    </div>
+  );
+}
+
 export default function StepExports() {
   const { draft } = useProject();
-  const [toast, setToast]       = useState<string | null>(null);
+  const [toast, setToast]             = useState<string | null>(null);
   const [excelLoading, setExcelLoading] = useState(false);
   const [excelError,   setExcelError]   = useState<string | null>(null);
+  const [excelSuccess, setExcelSuccess] = useState(false);
 
   const showToast = (label: string) => {
     setToast(label);
@@ -66,11 +86,14 @@ export default function StepExports() {
 
   const handleExportExcel = async () => {
     setExcelError(null);
+    setExcelSuccess(false);
     setExcelLoading(true);
     try {
       const safeName = (draft.meta.name || "project")
         .replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
       await exportExcel(draft, `${safeName}.xlsx`);
+      setExcelSuccess(true);
+      setTimeout(() => setExcelSuccess(false), 4000);
     } catch (e: unknown) {
       const msg =
         (e as { response?: { data?: { detail?: string } }; message?: string })
@@ -128,6 +151,12 @@ export default function StepExports() {
 
   return (
     <div className="space-y-6">
+      {excelSuccess && (
+        <SuccessToast
+          message="Excel workbook exported successfully!"
+          onClose={() => setExcelSuccess(false)}
+        />
+      )}
       {toast && <FeatureToast message={toast} onClose={() => setToast(null)} />}
 
       <div>

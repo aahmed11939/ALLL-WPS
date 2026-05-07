@@ -5,7 +5,7 @@ Pydantic v2 request/response schemas for the ALLL WPS Designer API.
 
 from __future__ import annotations
 
-from typing import Annotated, List, Literal, Optional, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -2191,4 +2191,37 @@ class WhatIfResponse(BaseModel):
     t_total_s: float
     T_char_s: float
     pipeline: str
+
+
+# ---------------------------------------------------------------------------
+# Excel export request
+# ---------------------------------------------------------------------------
+
+
+class ExcelExportRequest(BaseModel):
+    """
+    Full project draft sent to POST /export/excel.
+
+    Uses extra='allow' so that any future ProjectDraft fields (frontend may
+    add fields faster than the backend schema is updated) pass through
+    without validation errors.  The excel builder accesses all data via
+    dict .get() calls, so unknown extra fields are harmless.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    meta: Optional[Dict[str, Any]] = None
+    unitSystem: Optional[str] = "SI"
+    designFlow_m3h: Optional[float] = None
+    upstreamNode: Optional[Dict[str, Any]] = None
+    downstreamNode: Optional[Dict[str, Any]] = None
+    suction: Optional[Dict[str, Any]] = None
+    discharge: Optional[Dict[str, Any]] = None
+    hydraulicsResult: Optional[Dict[str, Any]] = None
+    pumpResult: Optional[Dict[str, Any]] = None
+    clearwellResult: Optional[Dict[str, Any]] = None
+    waterHammerResult: Optional[Dict[str, Any]] = None
+    mocResult: Optional[Dict[str, Any]] = None
+    suctionSurgeResult: Optional[Dict[str, Any]] = None
+    whatIfResult: Optional[Dict[str, Any]] = None
 

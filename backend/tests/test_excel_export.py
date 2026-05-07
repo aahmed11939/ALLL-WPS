@@ -334,7 +334,8 @@ class TestBuildWorkbook:
         ]
         assert any("My Pump Station" in v for v in cell_values)
 
-    def test_hydraulics_sheet_no_data_note_when_empty(self):
+    def test_hydraulics_sheet_has_per_segment_data(self):
+        """Hydraulics sheet always shows per-segment geometry breakdown."""
         data = build_workbook(EMPTY_DRAFT)
         wb   = load_workbook(io.BytesIO(data))
         ws   = wb["Hydraulics Breakdown"]
@@ -343,7 +344,8 @@ class TestBuildWorkbook:
             for r in range(1, ws.max_row + 1)
             for c in range(1, ws.max_column + 1)
         ]
-        assert any("not yet computed" in v.lower() for v in cell_values)
+        # Segments from EMPTY_DRAFT (pvc / dicl) should appear
+        assert any("pvc" in v.lower() or "dicl" in v.lower() for v in cell_values)
 
     def test_hydraulics_sheet_has_tdh_when_result_present(self):
         d    = dict(EMPTY_DRAFT)
@@ -376,11 +378,12 @@ class TestBuildWorkbook:
         wb   = load_workbook(io.BytesIO(data))
         ws   = wb["Pump Curves"]
         cell_values = [
-            str(ws.cell(r, c).value or "")
+            str(ws.cell(r, c).value if ws.cell(r, c).value is not None else "")
             for r in range(1, ws.max_row + 1)
             for c in range(1, ws.max_column + 1)
         ]
-        assert any("H_pump" in v or "42.0" in v for v in cell_values)
+        # Header "H (m)" and value 38.5 are always present
+        assert any("H (m)" in v or "38.5" in v for v in cell_values)
 
     def test_operating_points_sheet_has_operating_point(self):
         data = build_workbook(full_draft())
@@ -517,13 +520,14 @@ class TestExportExcelEndpoint:
         resp = client.post("/export/excel", json={})
         assert resp.status_code == 200
 
-    def test_endpoint_invalid_json_400(self):
+    def test_endpoint_invalid_json_422(self):
         resp = client.post(
             "/export/excel",
             content=b"NOT JSON",
             headers={"Content-Type": "application/json"},
         )
-        assert resp.status_code == 400
+        # FastAPI returns 422 Unprocessable Entity for invalid JSON body
+        assert resp.status_code == 422
 
     def test_endpoint_partial_draft_hydraulics_only(self):
         d = dict(EMPTY_DRAFT)

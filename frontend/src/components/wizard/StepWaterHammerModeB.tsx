@@ -984,13 +984,11 @@ export default function StepWaterHammerModeB() {
                   tick={{ fontSize: 10 }}
                 />
                 <Tooltip
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  formatter={(v: any, name: any) => [
-                    `${Number(v).toFixed(2)} m`,
+                  formatter={(value, name) => [
+                    `${Number(value).toFixed(2)} m`,
                     name === "Hmax" ? "H_max" : name === "Hmin" ? "H_min" : String(name),
-                  ] as any}
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  labelFormatter={(x: any) => `x = ${Number(x).toFixed(0)} m`}
+                  ]}
+                  labelFormatter={(label) => `x = ${Number(label).toFixed(0)} m`}
                 />
                 <Legend wrapperStyle={{ fontSize: 10 }} />
                 <Area
@@ -1038,10 +1036,8 @@ export default function StepWaterHammerModeB() {
                     tick={{ fontSize: 10 }}
                   />
                   <Tooltip
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    formatter={(v: any, name: any) => [`${Number(v).toFixed(2)} m`, String(name)] as any}
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    labelFormatter={(t: any) => `t = ${Number(t).toFixed(3)} s`}
+                    formatter={(value, name) => [`${Number(value).toFixed(2)} m`, String(name)]}
+                    labelFormatter={(label) => `t = ${Number(label).toFixed(3)} s`}
                   />
                   <Legend wrapperStyle={{ fontSize: 10 }} />
                   {result.observations.map((obs, ki) => (

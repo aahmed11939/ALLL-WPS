@@ -96,7 +96,7 @@ def build_grid(
 
     # Grid resolution
     if n_reaches_override is not None:
-        N = max(2, min(200, int(n_reaches_override)))
+        N = max(10, min(200, int(n_reaches_override)))
     else:
         N = max(10, min(200, round(L_total / dx_target_m)))
 

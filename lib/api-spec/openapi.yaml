@@ -298,20 +298,48 @@ components:
         label: { type: string }
         frac: { type: number }
         node_index: { type: integer }
-        time_history:
+        x_m:
+          type: number
+          description: Exact x-position of the observation node [m]
+        history:
           type: array
           items:
             $ref: "#/components/schemas/MOCTimePoint"
-      required: [label, frac, node_index, time_history]
+          description: Piezometric head time-history at this node
+      required: [label, frac, node_index, x_m, history]
 
     MOCPressureRatingCheck:
       type: object
+      description: >
+        Pipe pressure class pass/fail check.
+        Matches backend PressureRatingCheck schema exactly.
       properties:
-        rating_kPa: { type: number }
-        max_P_kPa: { type: number }
-        passes: { type: boolean }
-        margin_pct: { type: number }
-      required: [rating_kPa, max_P_kPa, passes, margin_pct]
+        steady_state_pressure_kPa:
+          type: number
+          description: Steady-state pressure at event origin H₀·ρg [kPa gauge]
+        max_transient_kPa:
+          type: number
+          description: Maximum transient pressure from envelope [kPa gauge]
+        min_transient_kPa:
+          type: number
+          description: Minimum transient pressure from envelope [kPa gauge]
+        pressure_rating_kPa:
+          type: number
+          description: Pipe pressure class supplied [kPa]
+        factor_of_safety:
+          type: number
+          description: "FoS = pressure_rating / max_transient"
+        rating_status:
+          type: string
+          enum: [pass, caution, fail]
+          description: "pass ≥ 1.25 | caution 1.0–1.25 | fail < 1.0"
+      required:
+        - steady_state_pressure_kPa
+        - max_transient_kPa
+        - min_transient_kPa
+        - pressure_rating_kPa
+        - factor_of_safety
+        - rating_status
 
     MOCResponse:
       type: object

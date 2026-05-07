@@ -1987,7 +1987,7 @@ async def moc_transient(req: MOCRequest) -> MOCResponse:
     | `valve_closure` | downstream | Gate-valve model Q = Q₀·τ(t)² |
     | `suction_pump_trip` | downstream | Pump demand collapse on suction line |
 
-    Returns pressure-envelope arrays, time histories at up to 5 observation
+    Returns pressure-envelope arrays, time histories at up to 3 observation
     nodes, grid metadata, and an optional pipe-rating FoS check.
     """
     segs = [

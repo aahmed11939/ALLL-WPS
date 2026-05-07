@@ -38,6 +38,42 @@ export interface PumpCurveStepProps {
   designTdhM?: number;
   /** Called whenever a pump compute result is available (or cleared) */
   onResult?: (result: PumpComputeResponse | null) => void;
+  /** Seeds arrangement/curve state on first mount. Re-mount (new key) for fresh project. */
+  initialConfig?: {
+    sourceTab?: SourceTab;
+    selectedPumpId?: string;
+    arrangement?: Arrangement;
+    nPumps?: number;
+    staging?: boolean;
+    vfd?: boolean;
+    speedPct?: number;
+    speedMin?: number;
+    speedMax?: number;
+    hqRows?: { Q: string; value: string }[];
+    etaRows?: { Q: string; value: string }[];
+    pRows?: { Q: string; value: string }[];
+    npshRows?: { Q: string; value: string }[];
+    npsha?: string;
+    staticHeadOverride?: number;
+  };
+  /** Called (debounced 800 ms) whenever arrangement / source state changes. */
+  onConfigChange?: (cfg: {
+    sourceTab: SourceTab;
+    selectedPumpId: string;
+    arrangement: Arrangement;
+    nPumps: number;
+    staging: boolean;
+    vfd: boolean;
+    speedPct: number;
+    speedMin: number;
+    speedMax: number;
+    hqRows: { Q: string; value: string }[];
+    etaRows: { Q: string; value: string }[];
+    pRows: { Q: string; value: string }[];
+    npshRows: { Q: string; value: string }[];
+    npsha: string;
+    staticHeadOverride: number;
+  }) => void;
 }
 
 const inputCls =
@@ -348,27 +384,31 @@ function ManualCurveEditor({ rows, label, unit, onChange }: ManualCurveEditorPro
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h, designTdhM, onResult }: PumpCurveStepProps) {
+export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h, designTdhM, onResult, initialConfig, onConfigChange }: PumpCurveStepProps) {
   const { unitSystem } = useUnitSystem();
   const isUS = unitSystem === "US";
 
   const [stepState, setStepState] = useState<StepState>("active");
-  const [sourceTab, setSourceTab] = useState<SourceTab>("library");
+  const [sourceTab, setSourceTab] = useState<SourceTab>(initialConfig?.sourceTab ?? "library");
 
   // Library tab — load on mount, not lazily
   const [libraryPumps, setLibraryPumps] = useState<PumpRecord[]>([]);
   const [pumpsLoaded, setPumpsLoaded] = useState(false);
-  const [selectedPumpId, setSelectedPumpId] = useState<string>("");
+  const [selectedPumpId, setSelectedPumpId] = useState<string>(initialConfig?.selectedPumpId ?? "");
   const [typeFilter, setTypeFilter] = useState<string>("all");
 
   useEffect(() => {
     fetchPumpLibrary()
       .then((pumps) => {
         setLibraryPumps(pumps);
-        if (pumps.length) setSelectedPumpId(pumps[0].id);
+        // Only fall back to first pump if no initialConfig provided a selection
+        if (pumps.length && !initialConfig?.selectedPumpId) {
+          setSelectedPumpId(pumps[0].id);
+        }
       })
       .catch(() => {/* silently ignore if backend not ready */})
       .finally(() => setPumpsLoaded(true));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Derived: unique pump types for filter
@@ -377,14 +417,14 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
     ? libraryPumps
     : libraryPumps.filter((p) => p.type === typeFilter);
 
-  // Manual tab
-  const [hqRows, setHqRows]     = useState<ManualPoint[]>([
+  // Manual tab — seed from initialConfig if provided
+  const [hqRows, setHqRows]     = useState<ManualPoint[]>(initialConfig?.hqRows ?? [
     { Q: "0", value: "42" }, { Q: "60", value: "36" },
     { Q: "120", value: "28" }, { Q: "160", value: "18" },
   ]);
-  const [etaRows, setEtaRows]   = useState<ManualPoint[]>([]);
-  const [pRows, setPRows]       = useState<ManualPoint[]>([]);
-  const [npshRows, setNpshRows] = useState<ManualPoint[]>([]);
+  const [etaRows, setEtaRows]   = useState<ManualPoint[]>(initialConfig?.etaRows   ?? []);
+  const [pRows, setPRows]       = useState<ManualPoint[]>(initialConfig?.pRows     ?? []);
+  const [npshRows, setNpshRows] = useState<ManualPoint[]>(initialConfig?.npshRows  ?? []);
 
   // CSV tab
   const csvFileRef = useRef<HTMLInputElement>(null);
@@ -395,22 +435,37 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
     npshr_q?: CurvePoint[];
   } | null>(null);
 
-  // Arrangement
-  const [arrangement, setArrangement] = useState<Arrangement>("single");
-  const [nPumps, setNPumps] = useState(1);
-  const [staging, setStaging] = useState(false);
+  // Arrangement — seed from initialConfig
+  const [arrangement, setArrangement] = useState<Arrangement>(initialConfig?.arrangement ?? "single");
+  const [nPumps, setNPumps] = useState(initialConfig?.nPumps ?? 1);
+  const [staging, setStaging] = useState(initialConfig?.staging ?? false);
 
-  // VFD
-  const [vfd, setVfd] = useState(false);
-  const [speedPct, setSpeedPct] = useState(100);
-  const [speedMin, setSpeedMin] = useState(50);
-  const [speedMax, setSpeedMax] = useState(100);
+  // VFD — seed from initialConfig
+  const [vfd, setVfd] = useState(initialConfig?.vfd ?? false);
+  const [speedPct, setSpeedPct] = useState(initialConfig?.speedPct ?? 100);
+  const [speedMin, setSpeedMin] = useState(initialConfig?.speedMin ?? 50);
+  const [speedMax, setSpeedMax] = useState(initialConfig?.speedMax ?? 100);
 
   // NPSH
-  const [npsha, setNpsha] = useState<string>("");
+  const [npsha, setNpsha] = useState<string>(initialConfig?.npsha ?? "");
 
   // Static head override (when no system curve from parent)
-  const [staticHeadOverride, setStaticHeadOverride] = useState(10);
+  const [staticHeadOverride, setStaticHeadOverride] = useState(initialConfig?.staticHeadOverride ?? 10);
+
+  // Report arrangement/source state to parent so ProjectDraft stays in sync (debounced)
+  const configTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (configTimerRef.current) clearTimeout(configTimerRef.current);
+    configTimerRef.current = setTimeout(() => {
+      onConfigChange?.({
+        sourceTab, selectedPumpId, arrangement, nPumps, staging,
+        vfd, speedPct, speedMin, speedMax,
+        hqRows, etaRows, pRows, npshRows, npsha, staticHeadOverride,
+      });
+    }, 800);
+    return () => { if (configTimerRef.current) clearTimeout(configTimerRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceTab, selectedPumpId, arrangement, nPumps, staging, vfd, speedPct, speedMin, speedMax, hqRows, etaRows, pRows, npshRows, npsha, staticHeadOverride]);
 
   // Results
   const [result, setResult] = useState<PumpComputeResponse | null>(null);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   fetchPumpTypes,
   computePumpSelection,
@@ -352,27 +352,73 @@ function defaultExtrasForSchema(schema: string | null): ExtrasValues {
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function PumpSelectionStep() {
+export interface PumpSelectionStepProps {
+  /** Seeds control state on first mount. Re-mount (new key) to apply a fresh project. */
+  initialConfig?: {
+    selectedTypeKey: string | null;
+    controlMode: ControlMode;
+    nDuty: number;
+    nStandby: number;
+    extrasValues: ExtrasValues;
+  };
+  /** Called whenever any selection/control state changes. */
+  onConfigChange?: (cfg: {
+    selectedTypeKey: string | null;
+    controlMode: ControlMode;
+    nDuty: number;
+    nStandby: number;
+    extrasValues: ExtrasValues;
+  }) => void;
+}
+
+export default function PumpSelectionStep({ initialConfig, onConfigChange }: PumpSelectionStepProps = {}) {
   const [stepState, setStepState] = useState<StepState>("active");
   const [pumpTypes, setPumpTypes] = useState<PumpTypeInfo[]>([]);
   const [loadingTypes, setLoadingTypes] = useState(true);
   const [selectedType, setSelectedType] = useState<PumpTypeInfo | null>(null);
-  const [controlMode, setControlMode] = useState<ControlMode>("constant_speed");
-  const [nDuty, setNDuty] = useState(1);
-  const [nStandby, setNStandby] = useState(1);
-  const [extrasValues, setExtrasValues] = useState<ExtrasValues>({});
+  const [controlMode, setControlMode] = useState<ControlMode>(initialConfig?.controlMode ?? "constant_speed");
+  const [nDuty, setNDuty] = useState(initialConfig?.nDuty ?? 1);
+  const [nStandby, setNStandby] = useState(initialConfig?.nStandby ?? 1);
+  const [extrasValues, setExtrasValues] = useState<ExtrasValues>(initialConfig?.extrasValues ?? {});
   const [result, setResult] = useState<PumpSelectionResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [showInfo, setShowInfo] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  // When pump types arrive from backend, restore selectedType from initialConfig
+  const appliedInitialRef = useRef(false);
   useEffect(() => {
     fetchPumpTypes()
-      .then((data) => setPumpTypes(data.pump_types ?? []))
+      .then((data) => {
+        const types = data.pump_types ?? [];
+        setPumpTypes(types);
+        if (!appliedInitialRef.current && initialConfig?.selectedTypeKey) {
+          const match = types.find((t) => t.key === initialConfig.selectedTypeKey);
+          if (match) {
+            setSelectedType(match);
+            setExtrasValues(initialConfig.extrasValues ?? {});
+          }
+          appliedInitialRef.current = true;
+        }
+      })
       .catch(() => setPumpTypes([]))
       .finally(() => setLoadingTypes(false));
+  // run once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Report config changes to parent (ProjectDraft)
+  useEffect(() => {
+    onConfigChange?.({
+      selectedTypeKey: selectedType?.key ?? null,
+      controlMode,
+      nDuty,
+      nStandby,
+      extrasValues,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedType, controlMode, nDuty, nStandby, extrasValues]);
 
   const handleSelectType = useCallback((pt: PumpTypeInfo) => {
     setSelectedType(pt);

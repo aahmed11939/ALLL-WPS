@@ -187,6 +187,12 @@ export default function WizardPage() {
   const [navError, setNavError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showRestoreBanner, setShowRestoreBanner] = useState(() => hadStoredSession());
+  /**
+   * Incremented on every Load / New / Sample action. Passed as part of each
+   * step wrapper's React key so all step components remount — ensuring they
+   * rehydrate from the freshly-loaded ProjectDraft (initialConfig props).
+   */
+  const [projectVersion, setProjectVersion] = useState(0);
 
   const loadFileRef = useRef<HTMLInputElement>(null);
   const contentRef  = useRef<HTMLDivElement>(null);
@@ -259,9 +265,12 @@ export default function WizardPage() {
           meta:           { ...DEFAULT_DRAFT.meta,            ...(parsed.meta           ?? {}) },
           upstreamNode:   { ...DEFAULT_DRAFT.upstreamNode,   ...(parsed.upstreamNode   ?? {}) },
           downstreamNode: { ...DEFAULT_DRAFT.downstreamNode, ...(parsed.downstreamNode ?? {}) },
-          hydraulicsResult: parsed.hydraulicsResult ?? null,
-          hydraulicsError:  parsed.hydraulicsError  ?? null,
-          pumpResult:       parsed.pumpResult       ?? null,
+          hydraulicsResult:    parsed.hydraulicsResult    ?? null,
+          hydraulicsError:     parsed.hydraulicsError     ?? null,
+          pumpResult:          parsed.pumpResult          ?? null,
+          clearwellConfig:     parsed.clearwellConfig     ?? null,
+          pumpSelectionConfig: parsed.pumpSelectionConfig ?? null,
+          pumpCurveConfig:     parsed.pumpCurveConfig     ?? null,
         };
         dispatch({ type: "LOAD", draft: loaded });
         setUnitSystem(loaded.unitSystem);
@@ -271,6 +280,7 @@ export default function WizardPage() {
         setStepErrors({});
         setNavError(null);
         setShowRestoreBanner(false);
+        setProjectVersion((v) => v + 1);
       } catch {
         setLoadError("Invalid project file — could not parse JSON.");
       }
@@ -289,6 +299,7 @@ export default function WizardPage() {
     setStepErrors({});
     setNavError(null);
     setShowRestoreBanner(false);
+    setProjectVersion((v) => v + 1);
   };
 
   // ---------- New project ----------
@@ -305,6 +316,7 @@ export default function WizardPage() {
     setStepErrors({});
     setNavError(null);
     setShowRestoreBanner(false);
+    setProjectVersion((v) => v + 1);
   };
 
   return (
@@ -442,7 +454,7 @@ export default function WizardPage() {
               navigating between wizard steps. Only the active step is visible. */}
           <div ref={contentRef} className="flex-1 overflow-y-auto px-6 py-6">
             {STEPS.map((_, idx) => (
-              <div key={idx} className={currentStep === idx ? "block" : "hidden"}>
+              <div key={`${idx}-${projectVersion}`} className={currentStep === idx ? "block" : "hidden"}>
                 <StepContent index={idx} />
               </div>
             ))}

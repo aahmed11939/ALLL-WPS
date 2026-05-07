@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm, useFieldArray, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -72,7 +72,29 @@ const DEFAULT_HOURLY = Array(24).fill({ Q: 36 });
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function ClearWellStep() {
+export interface ClearWellStepProps {
+  /** Seeds the form on first mount. Re-mount (new key) to apply a fresh project. */
+  initialConfig?: Partial<FormValues>;
+  /** Called (debounced 600 ms) whenever any form value changes. */
+  onConfigChange?: (cfg: FormValues) => void;
+}
+
+const BUILT_IN_DEFAULTS: FormValues = {
+  shape: "cylindrical",
+  diameter_m: 5.0,
+  LLL_m: 0.30,
+  LWL_m: 0.80,
+  HWL_m: 2.50,
+  HHL_m: 3.00,
+  pump_stages: [{ stage: 1, Q_pump_m3h: 72.0, label: "Duty" }],
+  inflow_type: "constant",
+  Q_in_m3h: 36.0,
+  hourly_Q: DEFAULT_HOURLY,
+  max_cycles_per_hour: 6,
+  required_detention_min: 0,
+};
+
+export default function ClearWellStep({ initialConfig, onConfigChange }: ClearWellStepProps = {}) {
   const [stepState, setStepState] = useState<StepState>("active");
   const [result, setResult] = useState<ClearWellResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -87,21 +109,23 @@ export default function ClearWellStep() {
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      shape: "cylindrical",
-      diameter_m: 5.0,
-      LLL_m: 0.30,
-      LWL_m: 0.80,
-      HWL_m: 2.50,
-      HHL_m: 3.00,
-      pump_stages: [{ stage: 1, Q_pump_m3h: 72.0, label: "Duty" }],
-      inflow_type: "constant",
-      Q_in_m3h: 36.0,
-      hourly_Q: DEFAULT_HOURLY,
-      max_cycles_per_hour: 6,
-      required_detention_min: 0,
-    },
+    defaultValues: initialConfig ? { ...BUILT_IN_DEFAULTS, ...initialConfig } : BUILT_IN_DEFAULTS,
   });
+
+  // Propagate form changes to parent so ProjectDraft stays in sync (debounced)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const subscription = watch((values) => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => {
+        onConfigChange?.(values as FormValues);
+      }, 600);
+    });
+    return () => {
+      subscription.unsubscribe();
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [watch, onConfigChange]);
 
   const watchShape = watch("shape");
   const watchInflowType = watch("inflow_type");

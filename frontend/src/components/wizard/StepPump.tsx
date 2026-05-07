@@ -2,6 +2,8 @@ import PumpSelectionStep from "../PumpSelectionStep";
 import PumpCurveStep from "../PumpCurveStep";
 import { useProject } from "../../contexts/ProjectContext";
 import type { PumpComputeResponse, CurvePoint } from "../../utils/api";
+import { DEFAULT_PUMP_SELECTION_CONFIG, DEFAULT_PUMP_CURVE_CONFIG } from "../../types/project";
+import type { PumpSelectionConfig, PumpCurveConfig } from "../../types/project";
 
 export default function StepPump() {
   const { draft, dispatch } = useProject();
@@ -14,6 +16,14 @@ export default function StepPump() {
 
   const handlePumpResult = (result: PumpComputeResponse | null) => {
     dispatch({ type: "SET_PUMP_RESULT", result });
+  };
+
+  const handleSelectionChange = (cfg: PumpSelectionConfig) => {
+    dispatch({ type: "SET_PUMP_SELECTION_CONFIG", config: cfg });
+  };
+
+  const handleCurveChange = (cfg: PumpCurveConfig) => {
+    dispatch({ type: "SET_PUMP_CURVE_CONFIG", config: cfg });
   };
 
   return (
@@ -37,7 +47,10 @@ export default function StepPump() {
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">
           Part A — Pump Type &amp; Configuration
         </p>
-        <PumpSelectionStep />
+        <PumpSelectionStep
+          initialConfig={draft.pumpSelectionConfig ?? DEFAULT_PUMP_SELECTION_CONFIG}
+          onConfigChange={handleSelectionChange}
+        />
       </div>
 
       {/* Divider */}
@@ -54,6 +67,8 @@ export default function StepPump() {
           designFlowM3h={draft.hydraulicsResult?.design_Q_m3h}
           designTdhM={draft.hydraulicsResult?.tdh_m}
           onResult={handlePumpResult}
+          initialConfig={draft.pumpCurveConfig ?? DEFAULT_PUMP_CURVE_CONFIG}
+          onConfigChange={handleCurveChange}
         />
       </div>
     </div>

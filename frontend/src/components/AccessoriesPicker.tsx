@@ -50,7 +50,13 @@ export default function AccessoriesPicker({ segment, onChange, initialItems }: P
   const [activeCategory, setActiveCategory] = useState<string>("check_valve");
   const [selected, setSelected]             = useState<Record<string, PickerItem>>({});
   const [searchQuery, setSearchQuery]       = useState<string>("");
-  const initializedRef                      = useRef(false);
+  /**
+   * Tracks the last `initialItems` reference that was used to seed `selected`.
+   * When the reference changes (e.g. because a new project was loaded), the
+   * seeding effect re-runs and re-populates the picker from the new items.
+   * This replaces the old one-shot `initializedRef` approach.
+   */
+  const lastSeededItemsRef = useRef<typeof initialItems>(undefined);
 
   useEffect(() => {
     fetchAccessoriesLibrary()
@@ -64,15 +70,20 @@ export default function AccessoriesPicker({ segment, onChange, initialItems }: P
       .catch(() => setLoadError("Failed to load accessories library."));
   }, []);
 
-  // Once library is available, seed `selected` from initialItems (once only)
+  // Seed `selected` from initialItems whenever the library is ready AND
+  // initialItems identity has changed (new project loaded). This replaces the
+  // one-shot initializedRef approach so subsequent project loads correctly
+  // re-populate the picker.
   useEffect(() => {
     if (library.length === 0) return;
-    if (initializedRef.current) return;
+    // Skip if we already seeded from this exact initialItems reference
+    if (lastSeededItemsRef.current === initialItems) return;
+    lastSeededItemsRef.current = initialItems;
+
     if (!initialItems || initialItems.length === 0) {
-      initializedRef.current = true;
+      setSelected({});
       return;
     }
-    initializedRef.current = true;
     const init: Record<string, PickerItem> = {};
     for (const item of initialItems) {
       if (item.count <= 0) continue;
@@ -85,8 +96,8 @@ export default function AccessoriesPicker({ segment, onChange, initialItems }: P
         expanded: false,
       };
     }
+    setSelected(init);
     if (Object.keys(init).length > 0) {
-      setSelected(init);
       // Notify parent so draft stays in sync
       const items: AccessoryItem[] = [];
       let K_sum = 0;
@@ -104,7 +115,7 @@ export default function AccessoriesPicker({ segment, onChange, initialItems }: P
       onChange(items, K_sum);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [library]);
+  }, [library, initialItems]);
 
   const notify = useCallback(
     (sel: Record<string, PickerItem>) => {

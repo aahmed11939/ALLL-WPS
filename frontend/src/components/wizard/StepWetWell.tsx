@@ -1,6 +1,15 @@
 import ClearWellStep from "../ClearWellStep";
+import { useProject } from "../../contexts/ProjectContext";
+import { DEFAULT_CLEARWELL_CONFIG } from "../../types/project";
+import type { ClearwellFormConfig } from "../../types/project";
 
 export default function StepWetWell() {
+  const { draft, dispatch } = useProject();
+
+  const handleConfigChange = (cfg: ClearwellFormConfig) => {
+    dispatch({ type: "SET_CLEARWELL_CONFIG", config: cfg });
+  };
+
   return (
     <div className="space-y-4">
       <div>
@@ -10,7 +19,10 @@ export default function StepWetWell() {
           and minimum detention time. All parameters are independent of the pipeline steps.
         </p>
       </div>
-      <ClearWellStep />
+      <ClearWellStep
+        initialConfig={draft.clearwellConfig ?? DEFAULT_CLEARWELL_CONFIG}
+        onConfigChange={handleConfigChange}
+      />
     </div>
   );
 }

@@ -392,9 +392,16 @@ export interface AccessoryRecord {
   potable_notes: string[];
 }
 
+export interface AccessoryCategoryGroup {
+  category: string;
+  label: string;
+  accessories: AccessoryRecord[];
+}
+
 export interface AccessoryLibraryResponse {
   accessories: AccessoryRecord[];
   count: number;
+  categories: AccessoryCategoryGroup[];
 }
 
 export async function fetchAccessoriesLibrary(): Promise<AccessoryLibraryResponse> {

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import CalculationForm from "../components/CalculationForm";
+import ClearWellStep from "../components/ClearWellStep";
 import ResultsPanel from "../components/ResultsPanel";
 import SystemCurveChart from "../components/SystemCurveChart";
 import { useUnitSystem } from "../contexts/UnitSystemContext";
@@ -140,6 +141,11 @@ export default function DesignPage() {
                 <SystemCurveChart results={results} />
               </div>
             )}
+
+            {/* Clear Well Sizing */}
+            <div>
+              <ClearWellStep />
+            </div>
           </div>
         </div>
       </main>

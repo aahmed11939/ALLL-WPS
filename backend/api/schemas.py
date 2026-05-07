@@ -4,7 +4,7 @@ Pydantic v2 request/response schemas for the ALLL WPS Designer API.
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Optional
+from typing import Annotated, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -354,4 +354,288 @@ class HydraulicComputeResponse(BaseModel):
     # System curve — 10 points from 0.2 Qd to 1.5 Qd
     system_curve: list[ComputeSystemCurvePoint] = Field(
         description="System H-Q curve: 10 points from 0.2 × Q_design to 1.5 × Q_design"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Clear well sizing — request schemas
+# ---------------------------------------------------------------------------
+
+
+class ClearWellGeometry(BaseModel):
+    """Clear well geometry inputs."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    shape: Literal["cylindrical", "rectangular"] = Field(
+        default="cylindrical",
+        description="Plan geometry: 'cylindrical' (circular tank) or 'rectangular' (basin)",
+    )
+    diameter_m: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="Internal diameter [m] — required for cylindrical",
+    )
+    length_m: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="Internal length [m] — required for rectangular",
+    )
+    width_m: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="Internal width [m] — required for rectangular",
+    )
+
+    @model_validator(mode="after")
+    def check_dimensions(self) -> "ClearWellGeometry":
+        if self.shape == "cylindrical" and self.diameter_m is None:
+            raise ValueError("diameter_m is required for cylindrical geometry")
+        if self.shape == "rectangular" and (
+            self.length_m is None or self.width_m is None
+        ):
+            raise ValueError(
+                "Both length_m and width_m are required for rectangular geometry"
+            )
+        return self
+
+
+class ClearWellLevels(BaseModel):
+    """Operating level inputs — all elevations above project datum [m]."""
+
+    model_config = ConfigDict()
+
+    LLL_m: float = Field(
+        description="Low-Low Level: emergency pump trip / dry-run protection [m]"
+    )
+    LWL_m: float = Field(
+        description="Low Water Level: pump-start (on) elevation [m]"
+    )
+    HWL_m: float = Field(
+        description="High Water Level: pump-stop (off) elevation [m]"
+    )
+    HHL_m: float = Field(
+        description="High-High Level: overflow alarm elevation [m]"
+    )
+
+    @model_validator(mode="after")
+    def check_level_ordering(self) -> "ClearWellLevels":
+        pairs = [
+            ("LLL_m", self.LLL_m, "LWL_m", self.LWL_m),
+            ("LWL_m", self.LWL_m, "HWL_m", self.HWL_m),
+            ("HWL_m", self.HWL_m, "HHL_m", self.HHL_m),
+        ]
+        for lo_name, lo_val, hi_name, hi_val in pairs:
+            if lo_val >= hi_val:
+                raise ValueError(
+                    f"Level ordering violated: {lo_name} ({lo_val} m) must be "
+                    f"strictly less than {hi_name} ({hi_val} m)"
+                )
+        return self
+
+
+class PumpStageInput(BaseModel):
+    """Flow rate for one pump staging level."""
+
+    model_config = ConfigDict()
+
+    stage: Annotated[int, Field(ge=1, description="Staging level index (1 = single pump, 2 = two pumps, …)")]
+    Q_pump_m3h: Annotated[float, Field(gt=0, description="Combined pump flow for this staging level [m³/h]")]
+    label: str = Field(default="", description="Optional label (e.g. 'Duty', '2× Duty')")
+
+
+class InflowProfile(BaseModel):
+    """Inflow to the clear well — constant rate or 24-hour hourly array."""
+
+    model_config = ConfigDict()
+
+    type: Literal["constant", "hourly_24"] = Field(
+        description="'constant' uses Q_in_m3h for all hours; 'hourly_24' uses a 24-value array"
+    )
+    Q_in_m3h: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="Constant inflow rate [m³/h] — required when type='constant'",
+    )
+    hourly_Q_m3h: Optional[List[float]] = Field(
+        default=None,
+        description="24-element array of hourly inflows [m³/h] — required when type='hourly_24'",
+    )
+
+    @model_validator(mode="after")
+    def check_inflow_profile(self) -> "InflowProfile":
+        if self.type == "constant":
+            if self.Q_in_m3h is None:
+                raise ValueError("Q_in_m3h is required when type='constant'")
+        if self.type == "hourly_24":
+            if self.hourly_Q_m3h is None:
+                raise ValueError("hourly_Q_m3h is required when type='hourly_24'")
+            if len(self.hourly_Q_m3h) != 24:
+                raise ValueError(
+                    f"hourly_Q_m3h must have exactly 24 values, got {len(self.hourly_Q_m3h)}"
+                )
+            for i, q in enumerate(self.hourly_Q_m3h):
+                if q < 0:
+                    raise ValueError(
+                        f"hourly_Q_m3h[{i}] must be >= 0, got {q}"
+                    )
+        return self
+
+    @property
+    def average_Q_m3h(self) -> float:
+        """Return the average inflow rate [m³/h]."""
+        if self.type == "constant":
+            return self.Q_in_m3h or 0.0
+        if self.hourly_Q_m3h:
+            return sum(self.hourly_Q_m3h) / 24.0
+        return 0.0
+
+    @property
+    def worst_case_Q_m3h(self) -> float:
+        """Return the worst-case (maximum) inflow rate [m³/h]."""
+        if self.type == "constant":
+            return self.Q_in_m3h or 0.0
+        if self.hourly_Q_m3h:
+            return max(self.hourly_Q_m3h)
+        return 0.0
+
+
+class ClearWellRequest(BaseModel):
+    """
+    Full clear well sizing request.
+
+    When ``active=False`` the endpoint returns immediately with an empty
+    response (no computation); use this for 'bypassed' or 'disabled' states
+    in the UI without sending incomplete data.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    active: bool = Field(
+        default=True,
+        description=(
+            "True = compute sizing. False = skip computation (bypassed/disabled state). "
+            "When False, all other fields are optional and ignored."
+        ),
+    )
+    geometry: Optional[ClearWellGeometry] = Field(
+        default=None,
+        description="Clear well geometry — required when active=True",
+    )
+    levels: Optional[ClearWellLevels] = Field(
+        default=None,
+        description="Operating levels (LLL/LWL/HWL/HHL) — required when active=True",
+    )
+    pump_stages: List[PumpStageInput] = Field(
+        default_factory=list,
+        description="One entry per staging level (e.g. 1-pump, 2-pump). At least 1 required when active=True.",
+    )
+    inflow: Optional[InflowProfile] = Field(
+        default=None,
+        description="Inflow profile — required when active=True",
+    )
+    max_cycles_per_hour: Annotated[int, Field(default=6, ge=1, le=30)] = Field(
+        default=6,
+        description="Maximum allowable pump starts per hour (motor thermal limit). Typical: 4-6.",
+    )
+    required_detention_min: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=(
+            "Minimum hydraulic detention time [min] for CT compliance (SWTR). "
+            "Use 0 to skip the detention check."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def check_active_fields(self) -> "ClearWellRequest":
+        if not self.active:
+            return self
+        if self.geometry is None:
+            raise ValueError("geometry is required when active=True")
+        if self.levels is None:
+            raise ValueError("levels is required when active=True")
+        if not self.pump_stages:
+            raise ValueError("At least one pump_stage is required when active=True")
+        if self.inflow is None:
+            raise ValueError("inflow is required when active=True")
+        return self
+
+
+# ---------------------------------------------------------------------------
+# Clear well sizing — response schemas
+# ---------------------------------------------------------------------------
+
+
+class VolumeCurvePoint(BaseModel):
+    """One point on the level → volume curve."""
+
+    model_config = ConfigDict(frozen=True)
+
+    level_m: float = Field(description="Water level elevation [m above datum]")
+    depth_m: float = Field(description="Depth above LLL [m]")
+    volume_m3: float = Field(description="Stored volume at this level [m³]")
+
+
+class CycleResult(BaseModel):
+    """Pump cycle analysis result for one staging level."""
+
+    model_config = ConfigDict(frozen=True)
+
+    stage: int = Field(description="Staging level index")
+    label: str = Field(description="Staging level label")
+    Q_pump_m3h: float = Field(description="Pump flow for this stage [m³/h]")
+    Q_in_m3h: float = Field(description="Inflow used for this cycle analysis [m³/h]")
+    t_fill_s: Optional[float] = Field(default=None, description="Well fill time (pump off) [s]")
+    t_drain_s: Optional[float] = Field(default=None, description="Well drain time (pump on) [s]")
+    t_cycle_s: Optional[float] = Field(default=None, description="Total cycle time [s]")
+    cycles_per_hour: float = Field(description="Computed cycles per hour at this Q_in")
+    V_req_m3: float = Field(description="AWWA M32 required volume for max cycles constraint [m³]")
+    cycles_ok: bool = Field(description="True if operating volume >= required volume")
+    pump_can_drain: bool = Field(description="False if pump cannot overcome inflow (Q_pump <= Q_in)")
+
+
+class ClearWellResponse(BaseModel):
+    """Full response from POST /compute/clearwell."""
+
+    model_config = ConfigDict()
+
+    active: bool = Field(description="Mirrors the request active flag")
+
+    # Volume curve — empty when active=False
+    volume_curve: List[VolumeCurvePoint] = Field(
+        default_factory=list,
+        description="Level → volume relationship from LLL to HHL (21 points)",
+    )
+
+    # Operating volume summary
+    operating_volume_m3: Optional[float] = Field(
+        default=None,
+        description="Usable volume between LWL and HWL [m³]",
+    )
+
+    # Per-stage cycle analysis
+    cycle_results: List[CycleResult] = Field(
+        default_factory=list,
+        description="Cycle analysis for each pump staging level",
+    )
+
+    # Detention time
+    detention_time_min: Optional[float] = Field(
+        default=None,
+        description="Hydraulic detention time based on average inflow and average stored volume [min]",
+    )
+    required_detention_min: float = Field(
+        default=0.0,
+        description="Minimum required detention time [min] echoed from request",
+    )
+    detention_ok: Optional[bool] = Field(
+        default=None,
+        description="True if detention_time_min >= required_detention_min",
+    )
+
+    # Warnings
+    warnings: List[str] = Field(
+        default_factory=list,
+        description="Actionable advisory warnings with suggested remedies",
     )

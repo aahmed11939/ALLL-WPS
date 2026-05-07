@@ -17,7 +17,10 @@ from backend.api.domain_models import ProjectModel, ValidationResult
 from backend.api.schemas import (
     CalculationRequest,
     CalculationResponse,
+    ClearWellRequest,
+    ClearWellResponse,
     ComputeSystemCurvePoint,
+    CycleResult,
     DisplayValues,
     HydraulicComputeRequest,
     HydraulicComputeResponse,
@@ -28,11 +31,19 @@ from backend.api.schemas import (
     PumpRecord,
     SegmentResult,
     SystemCurvePoint,
+    VolumeCurvePoint,
 )
 from backend.data.loader import (
     get_material_options,
     get_roughness_m,
     load_pump_library,
+)
+from backend.engine.clearwell import (
+    clearwell_volume_curve,
+    cycle_analysis,
+    detention_time,
+    generate_warnings,
+    operating_volume_m3,
 )
 from backend.engine.hydraulics import (
     G,
@@ -472,3 +483,154 @@ async def validate_project(request: Request) -> ValidationResult:
 def project_schema() -> dict:
     """Return the JSON Schema for ``ProjectModel``."""
     return ProjectModel.model_json_schema()
+
+
+# ---------------------------------------------------------------------------
+# Clear well sizing
+# ---------------------------------------------------------------------------
+
+
+@app.post(
+    "/compute/clearwell",
+    tags=["compute"],
+    summary="Size a clear well and run pump cycle analysis (AWWA M32)",
+    status_code=status.HTTP_200_OK,
+)
+def compute_clearwell(req: ClearWellRequest) -> ClearWellResponse:
+    """
+    Size a clear well storage volume and verify pump cycle limits.
+
+    When ``active=False`` the computation is skipped and an empty response
+    is returned immediately — suitable for the 'Bypassed' / 'Disabled' UI states.
+
+    Calculations follow:
+    - AWWA M32 required volume: V_req = Q_pump [m³/s] × 900 / n_max
+    - Detention time: t_d = (V_op / 2) / Q_in [minutes]
+    - Level ordering: LLL < LWL < HWL < HHL
+    """
+    if not req.active:
+        return ClearWellResponse(active=False)
+
+    geom = req.geometry
+    lvl = req.levels
+    inflow = req.inflow
+
+    # ------------------------------------------------------------------
+    # Volume curve (LLL → HHL, 21 points)
+    # ------------------------------------------------------------------
+    raw_curve = clearwell_volume_curve(
+        geometry=geom.shape,
+        LLL_m=lvl.LLL_m,
+        HHL_m=lvl.HHL_m,
+        diameter_m=geom.diameter_m,
+        length_m=geom.length_m,
+        width_m=geom.width_m,
+        n_points=21,
+    )
+    volume_curve = [
+        VolumeCurvePoint(
+            level_m=pt["level_m"],
+            depth_m=pt["depth_m"],
+            volume_m3=pt["volume_m3"],
+        )
+        for pt in raw_curve
+    ]
+
+    # ------------------------------------------------------------------
+    # Operating volume
+    # ------------------------------------------------------------------
+    V_op = operating_volume_m3(
+        geometry=geom.shape,
+        LWL_m=lvl.LWL_m,
+        HWL_m=lvl.HWL_m,
+        diameter_m=geom.diameter_m,
+        length_m=geom.length_m,
+        width_m=geom.width_m,
+    )
+
+    # ------------------------------------------------------------------
+    # Inflow rates for analysis
+    # ------------------------------------------------------------------
+    if inflow.type == "constant":
+        Q_in_cycle_m3h = inflow.Q_in_m3h or 0.0   # worst-case = average for constant
+        Q_in_avg_m3h = inflow.Q_in_m3h or 0.0
+    else:
+        # hourly_24: use worst-case (max) for cycle, average for detention
+        Q_in_cycle_m3h = inflow.worst_case_Q_m3h
+        Q_in_avg_m3h = inflow.average_Q_m3h
+
+    Q_in_cycle_m3s = Q_in_cycle_m3h / 3600.0
+    Q_in_avg_m3s = Q_in_avg_m3h / 3600.0
+
+    # ------------------------------------------------------------------
+    # Cycle analysis — one result per pump stage
+    # ------------------------------------------------------------------
+    cycle_results: list[CycleResult] = []
+    for stage in req.pump_stages:
+        Q_pump_m3s = stage.Q_pump_m3h / 3600.0
+        cr = cycle_analysis(
+            Q_pump_m3s=Q_pump_m3s,
+            Q_in_m3s=Q_in_cycle_m3s,
+            V_op_m3=V_op,
+            max_cycles_per_hour=req.max_cycles_per_hour,
+        )
+        cycle_results.append(
+            CycleResult(
+                stage=stage.stage,
+                label=stage.label or f"Stage {stage.stage}",
+                Q_pump_m3h=stage.Q_pump_m3h,
+                Q_in_m3h=Q_in_cycle_m3h,
+                t_fill_s=cr["t_fill_s"],
+                t_drain_s=cr["t_drain_s"],
+                t_cycle_s=cr["t_cycle_s"],
+                cycles_per_hour=cr["cycles_per_hour"],
+                V_req_m3=cr["V_req_m3"],
+                cycles_ok=cr["cycles_ok"],
+                pump_can_drain=cr["pump_can_drain"],
+            )
+        )
+
+    # ------------------------------------------------------------------
+    # Detention time (use average inflow)
+    # ------------------------------------------------------------------
+    det = detention_time(
+        V_op_m3=V_op,
+        Q_in_m3s=Q_in_avg_m3s,
+        required_detention_min=req.required_detention_min,
+    )
+
+    # ------------------------------------------------------------------
+    # Warnings
+    # ------------------------------------------------------------------
+    raw_cycle_dicts = [
+        {
+            "Q_pump_m3s": cr.Q_pump_m3h / 3600.0,
+            "Q_in_m3s": cr.Q_in_m3h / 3600.0,
+            "V_op_m3": V_op,
+            "V_req_m3": cr.V_req_m3,
+            "cycles_ok": cr.cycles_ok,
+            "pump_can_drain": cr.pump_can_drain,
+        }
+        for cr in cycle_results
+    ]
+    warns = generate_warnings(
+        cycle_results=raw_cycle_dicts,
+        detention_result=det,
+        geometry=geom.shape,
+        diameter_m=geom.diameter_m,
+        length_m=geom.length_m,
+        width_m=geom.width_m,
+        LWL_m=lvl.LWL_m,
+        HWL_m=lvl.HWL_m,
+    )
+
+    return ClearWellResponse(
+        active=True,
+        volume_curve=volume_curve,
+        operating_volume_m3=round(V_op, 4),
+        cycle_results=cycle_results,
+        detention_time_min=det["detention_time_min"],
+        required_detention_min=req.required_detention_min,
+        detention_ok=det["detention_ok"],
+        warnings=warns,
+    )

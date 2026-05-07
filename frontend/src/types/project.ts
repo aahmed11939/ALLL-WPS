@@ -141,6 +141,89 @@ export interface MOCConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Suction surge config / result
+// ---------------------------------------------------------------------------
+
+/** Persisted form state for the Suction Surge MOC tab. */
+export interface SuctionSurgeConfig {
+  wave_speed_ms: number;
+  Q_0_m3s_override: string;
+  H_0_m_override: string;
+  rho_kg_m3: string;
+  temperature_C: string;
+  pressure_rating_kPa: string;
+  atm_pressure_kPa: string;
+  NPSHr_m_override: string;
+  pump_node_frac: number;
+  boundary_A: MOCBoundaryConfig;
+  boundary_B: MOCBoundaryConfig;
+  obs_points: MOCObsConfig[];
+  n_reaches: string;
+  t_total_s: string;
+}
+
+/** One time-step of the NPSHa transient at the pump suction node. */
+export interface NPSHaPoint {
+  t_s: number;
+  H_suction_m: number;
+  NPSHa_m: number;
+  margin_m: number | null;
+  at_risk: boolean;
+}
+
+/** Cached result for the suction transient endpoint. */
+export interface SuctionTransientResult {
+  pipeline: string;
+  N: number;
+  dx_m: number;
+  dt_s: number;
+  courant: number;
+  t_total_s: number;
+  n_steps: number;
+  D_m: number;
+  f: number;
+  T_char_s: number;
+  h_vap_m: number;
+  temperature_C: number;
+  global_max_H_m: number;
+  global_min_H_m: number;
+  global_max_P_kPa: number;
+  global_min_P_kPa: number;
+  cavitation_x_m: number[];
+  npsha_series: NPSHaPoint[];
+  npsha_min_m: number;
+  npsha_steady_m: number;
+  npsha_margin_min_m: number | null;
+  transient_npsh_risk: boolean;
+  npsha_risk_duration_s: number;
+  atm_pressure_kPa: number;
+  NPSHr_m: number | null;
+  pump_node_frac: number;
+  /** Inline to avoid circular import — mirrors PressureRatingCheck from api.ts */
+  rating_check: {
+    steady_state_pressure_kPa: number;
+    max_transient_kPa: number;
+    min_transient_kPa: number;
+    pressure_rating_kPa: number;
+    factor_of_safety: number;
+    rating_status: "pass" | "caution" | "fail";
+  } | null;
+  /** Inline MOCEnvelopePoint */
+  envelope: {
+    x_m: number; elev_m: number;
+    H_max_m: number; H_min_m: number;
+    P_max_kPa: number; P_min_kPa: number;
+  }[];
+  /** Inline MOCObservationResult */
+  observations: {
+    label: string; frac: number; node_index: number; x_m: number;
+    history: { t_s: number; H_m: number; P_kPa: number }[];
+  }[];
+  assumption_notes: string[];
+  unit_system: string;
+}
+
+// ---------------------------------------------------------------------------
 // Top-level draft
 // ---------------------------------------------------------------------------
 
@@ -165,14 +248,18 @@ export interface ProjectDraft {
   pumpResult: PumpComputeResponse | null;
   /** Cached clearwell compute result — used by Engineering Checks for cycling analysis. */
   clearwellResult: ClearWellResponse | null;
-  /** Editable state of Water Hammer step (Step 8). Null until user visits step. */
+  /** Editable state of Water Hammer step (Step 8) — discharge Quick mode. Null until user visits step. */
   waterHammerConfig: WaterHammerConfig | null;
-  /** Cached water hammer compute result. */
+  /** Cached water hammer compute result (discharge Quick mode). */
   waterHammerResult: SurgeQuickResponse | null;
-  /** Editable state of Water Hammer Mode B (MOC). Null until user runs Mode B. */
+  /** Editable state of Discharge Surge MOC (Mode B). Null until user runs Mode B. */
   mocConfig: MOCConfig | null;
-  /** Cached MOC simulation result. */
+  /** Cached Discharge Surge MOC result. */
   mocResult: MOCResponse | null;
+  /** Editable state of Suction Surge MOC. Null until user visits suction MOC tab. */
+  suctionSurgeConfig: SuctionSurgeConfig | null;
+  /** Cached suction transient result (NPSHa time series + MOC). */
+  suctionSurgeResult: SuctionTransientResult | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -268,4 +355,6 @@ export const DEFAULT_DRAFT: ProjectDraft = {
   waterHammerResult: null,
   mocConfig: null,
   mocResult: null,
+  suctionSurgeConfig: null,
+  suctionSurgeResult: null,
 };

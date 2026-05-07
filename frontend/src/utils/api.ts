@@ -723,3 +723,54 @@ export async function computeMOC(req: MOCRequest): Promise<MOCResponse> {
   const res = await axios.post<MOCResponse>("/surge/moc", req);
   return res.data;
 }
+
+// ---------------------------------------------------------------------------
+// Surge — Suction transient / NPSHa analysis
+// ---------------------------------------------------------------------------
+
+export interface NPSHaPoint {
+  t_s: number;
+  H_suction_m: number;
+  NPSHa_m: number;
+  margin_m: number | null;
+  at_risk: boolean;
+}
+
+export interface SuctionTransientRequest {
+  wave_speed_ms: number;
+  Q_0_m3s: number;
+  H_0_m?: number;
+  temperature_C?: number;
+  rho_kg_m3?: number;
+  atm_pressure_kPa?: number;
+  NPSHr_m?: number | null;
+  pressure_rating_kPa?: number | null;
+  segments: MOCSegmentInput[];
+  boundary_A: MOCBoundaryAInput;
+  boundary_B: MOCBoundaryBInput;
+  observation_points?: MOCObservationPoint[];
+  n_reaches?: number | null;
+  t_total_s?: number | null;
+  unit_system?: string;
+  pump_node_frac?: number;
+}
+
+export interface SuctionTransientResponse extends MOCResponse {
+  pipeline: "suction";
+  npsha_series: NPSHaPoint[];
+  npsha_min_m: number;
+  npsha_steady_m: number;
+  npsha_margin_min_m: number | null;
+  transient_npsh_risk: boolean;
+  npsha_risk_duration_s: number;
+  atm_pressure_kPa: number;
+  NPSHr_m: number | null;
+  pump_node_frac: number;
+}
+
+export async function computeSuctionTransient(
+  req: SuctionTransientRequest
+): Promise<SuctionTransientResponse> {
+  const res = await axios.post<SuctionTransientResponse>("/surge/suction", req);
+  return res.data;
+}

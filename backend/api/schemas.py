@@ -1824,3 +1824,123 @@ class MOCResponse(BaseModel):
     rating_check: Optional[PressureRatingCheck] = None
     unit_system: str
 
+
+# ---------------------------------------------------------------------------
+# Suction transient / NPSHa schemas
+# ---------------------------------------------------------------------------
+
+
+class NPSHaPoint(BaseModel):
+    """One time-step of the NPSHa transient profile at the pump suction node."""
+
+    t_s: float
+    H_suction_m: float = Field(
+        description="Gauge piezometric head at pump suction node [m]"
+    )
+    NPSHa_m: float = Field(
+        description="Available NPSH [m] = H_suction_gauge − h_vap_gauge"
+    )
+    margin_m: Optional[float] = Field(
+        default=None,
+        description="NPSHa − NPSHr [m]; null when NPSHr is not supplied",
+    )
+    at_risk: bool = Field(
+        description="True when margin_m < 0 (NPSHa falls below NPSHr)"
+    )
+
+
+class SuctionTransientRequest(BaseModel):
+    """
+    Request body for POST /surge/suction.
+
+    Extends the standard MOC request with NPSHa-specific parameters.
+    ``pipeline`` is forced to ``"suction"`` by the endpoint; boundary_A is
+    typically a reservoir (wet-well constant head); boundary_B is typically
+    ``suction_pump_trip`` (pump demand collapses on power failure).
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    wave_speed_ms: Annotated[float, Field(gt=0, description="Acoustic wave speed a [m/s]")]
+    Q_0_m3s: Annotated[float, Field(ge=0, description="Steady-state flow rate [m³/s]")]
+    H_0_m: float = Field(default=0.0, description="Steady-state upstream piezometric head [m]")
+    temperature_C: float = Field(default=20.0, ge=-10.0, le=100.0)
+    rho_kg_m3: float = Field(default=1000.0, gt=0)
+    atm_pressure_kPa: float = Field(
+        default=101.325, gt=0,
+        description="Local atmospheric pressure [kPa] — used for h_vap conversion",
+    )
+    NPSHr_m: Optional[float] = Field(
+        default=None, ge=0,
+        description="Pump required NPSH at operating flow [m]; enables margin/risk fields",
+    )
+    pressure_rating_kPa: Optional[float] = Field(default=None, gt=0)
+    segments: List[MOCSegmentInput] = Field(min_length=1)
+    boundary_A: MOCBoundaryAInput = Field(
+        description=(
+            "Upstream boundary (wet-well / suction reservoir). "
+            "Typical: reservoir with H_m = wet-well LWL."
+        ),
+    )
+    boundary_B: MOCBoundaryBInput = Field(
+        description=(
+            "Downstream boundary (pump suction node). "
+            "Typical: suction_pump_trip."
+        ),
+    )
+    observation_points: List[MOCObservationPoint] = Field(
+        default_factory=list, max_length=10,
+        description="Up to 10 observation points (pump node is always obs[0])",
+    )
+    n_reaches: Optional[int] = Field(default=None, ge=10, le=200)
+    t_total_s: Optional[float] = Field(default=None, gt=0)
+    unit_system: Literal["SI", "US"] = Field(default="SI")
+    pump_node_frac: float = Field(
+        default=1.0, ge=0.0, le=1.0,
+        description=(
+            "Fractional distance along pipeline of pump suction node "
+            "[0 = upstream end, 1 = downstream end (default)]"
+        ),
+    )
+
+
+class SuctionTransientResponse(MOCResponse):
+    """
+    Full suction-side transient response with NPSHa time-series overlay.
+
+    Extends MOCResponse (pressure envelope + time histories) with pump-suction
+    NPSH analysis derived from the head history at the pump suction node.
+    """
+
+    pipeline: str = "suction"
+    npsha_series: List[NPSHaPoint] = Field(
+        description="NPSHa time history at the pump suction node"
+    )
+    npsha_min_m: float = Field(
+        description="Minimum NPSHa during the transient simulation [m]"
+    )
+    npsha_steady_m: float = Field(
+        description="Steady-state NPSHa at t = 0 [m]"
+    )
+    npsha_margin_min_m: Optional[float] = Field(
+        default=None,
+        description="Minimum NPSHa − NPSHr during the transient [m]; null when NPSHr not supplied",
+    )
+    transient_npsh_risk: bool = Field(
+        description="True if NPSHa < NPSHr at any point during the transient"
+    )
+    npsha_risk_duration_s: float = Field(
+        description="Cumulative duration for which NPSHa < NPSHr [s]"
+    )
+    atm_pressure_kPa: float = Field(
+        description="Atmospheric pressure used in the computation [kPa]"
+    )
+    NPSHr_m: Optional[float] = Field(
+        default=None,
+        description="Required NPSH echoed from the request [m]",
+    )
+    pump_node_frac: float = Field(
+        default=1.0,
+        description="Fractional position of pump suction node used in the run",
+    )
+

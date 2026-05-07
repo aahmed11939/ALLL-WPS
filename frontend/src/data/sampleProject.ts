@@ -98,4 +98,6 @@ export const SAMPLE_PROJECT: ProjectDraft = {
   waterHammerResult: null,
   mocConfig: null,
   mocResult: null,
+  suctionSurgeConfig: null,
+  suctionSurgeResult: null,
 };

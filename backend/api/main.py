@@ -68,6 +68,12 @@ from backend.api.schemas import (
     MOCBCPumpTrip,
     MOCBCValveClosure,
     MOCBCSuctionPumpTrip,
+    MOCEnvelopePoint,
+    MOCTimePoint,
+    MOCObservationResult,
+    NPSHaPoint,
+    SuctionTransientRequest,
+    SuctionTransientResponse,
     SystemCurvePoint,
     TypeSpecificField,
     VerticalTurbineExtras,
@@ -105,6 +111,7 @@ from backend.engine.pump_curves import (
 from backend.engine.surge import surge_quick, wave_speed as compute_wave_speed
 from backend.engine.surge_moc import (
     run_moc,
+    compute_npsha_transient,
     BoundaryCondition,
     ReservoirBC,
     PumpTripBC,
@@ -2029,5 +2036,118 @@ async def moc_transient(req: MOCRequest) -> MOCResponse:
     return MOCResponse(
         pipeline=req.pipeline,
         unit_system=req.unit_system,
+        **raw,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Surge — Suction transient / NPSHa analysis
+# ---------------------------------------------------------------------------
+
+
+@app.post(
+    "/surge/suction",
+    response_model=SuctionTransientResponse,
+    tags=["surge"],
+    summary="Suction-pipeline transient + NPSHa time-series (MOC)",
+    status_code=status.HTTP_200_OK,
+)
+async def suction_transient(req: SuctionTransientRequest) -> SuctionTransientResponse:
+    """
+    Run a 1-D MOC transient simulation on the **suction pipeline** and compute
+    the NPSHa(t) time series at the pump suction node.
+
+    **NPSHa physics**
+
+        NPSHa(t) = H_suction_gauge(t) − h_vap_gauge(T)
+
+    where ``h_vap_gauge`` is the vapour-pressure head expressed as gauge head
+    (always negative for T < 100 °C at standard atmospheric pressure).
+
+    **Typical boundary setup**
+
+    | boundary | type | notes |
+    |----------|------|-------|
+    | A (upstream, node 0) | `reservoir` | wet-well at LWL (worst case) |
+    | B (downstream, node N) | `suction_pump_trip` | pump demand collapses |
+
+    **Risk flag** — ``transient_npsh_risk`` is set when NPSHa(t) < NPSHr at any
+    point during the simulation.  ``NPSHr_m`` is echoed from the request.
+    """
+    # Build observation list: pump suction node first, then user extras (≤ 2)
+    pump_label = f"Pump suction (x = {req.pump_node_frac * 100:.0f}% L)"
+    obs_fracs  = [req.pump_node_frac] + [op.frac  for op in req.observation_points]
+    obs_labels = [pump_label]         + [
+        op.label or f"{op.frac:.0%} L" for op in req.observation_points
+    ]
+
+    segs = [
+        {
+            "L_m":          float(s.L_m),
+            "D_m":          float(s.D_m),
+            "roughness_m":  float(s.roughness_m),
+            "elev_start_m": float(s.elev_start_m),
+            "elev_end_m":   float(s.elev_end_m),
+        }
+        for s in req.segments
+    ]
+
+    try:
+        raw = run_moc(
+            segments=segs,
+            wave_speed_ms=req.wave_speed_ms,
+            Q_0_m3s=req.Q_0_m3s,
+            H_0_m=req.H_0_m,
+            boundary_A=_build_moc_bc(req.boundary_A),
+            boundary_B=_build_moc_bc(req.boundary_B),
+            temperature_C=req.temperature_C,
+            rho_kg_m3=req.rho_kg_m3,
+            pressure_rating_kPa=req.pressure_rating_kPa,
+            observation_fracs=obs_fracs,
+            observation_labels=obs_labels,
+            n_reaches_override=req.n_reaches,
+            t_total_override=req.t_total_s,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
+
+    # Post-process obs[0] (pump suction node) for NPSHa time series
+    npsha_data = compute_npsha_transient(
+        moc_raw=raw,
+        obs_index=0,
+        NPSHr_m=req.NPSHr_m,
+    )
+
+    npsha_points = [NPSHaPoint(**pt) for pt in npsha_data.pop("npsha_series")]
+
+    # Build MOC sub-objects
+    envelope_pts = [MOCEnvelopePoint(**pt) for pt in raw.pop("envelope")]
+    rating_raw   = raw.pop("rating_check", None)
+    rating_check = PressureRatingCheck(**rating_raw) if rating_raw else None
+    obs_results  = [
+        MOCObservationResult(
+            label=ob["label"],
+            frac=ob["frac"],
+            node_index=ob["node_index"],
+            x_m=ob["x_m"],
+            history=[MOCTimePoint(**tp) for tp in ob["history"]],
+        )
+        for ob in raw.pop("observations")
+    ]
+
+    return SuctionTransientResponse(
+        pipeline="suction",
+        unit_system=req.unit_system,
+        atm_pressure_kPa=req.atm_pressure_kPa,
+        NPSHr_m=req.NPSHr_m,
+        pump_node_frac=req.pump_node_frac,
+        npsha_series=npsha_points,
+        **npsha_data,
+        envelope=envelope_pts,
+        observations=obs_results,
+        rating_check=rating_check,
         **raw,
     )

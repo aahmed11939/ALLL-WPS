@@ -604,3 +604,104 @@ def run_moc(
         "assumption_notes": ASSUMPTION_NOTES,
         "rating_check":   rating_check,
     }
+
+
+# ---------------------------------------------------------------------------
+# NPSHa transient post-processor
+# ---------------------------------------------------------------------------
+
+def compute_npsha_transient(
+    moc_raw: dict,
+    obs_index: int,
+    NPSHr_m: float | None,
+) -> dict:
+    """
+    Post-process a run_moc() result to produce an NPSHa(t) time series at the
+    pump suction node identified by *obs_index* in ``moc_raw["observations"]``.
+
+    Physics
+    -------
+    NPSHa(t) = H_suction_abs(t) − h_vap_abs
+             = [H_gauge(t) + H_atm] − [h_vap_gauge + H_atm]
+             = H_gauge(t) − h_vap_gauge
+
+    ``h_vap_m`` stored in the MOC result is the gauge vapour-pressure head
+    (always negative for T < 100 °C), so:
+
+        NPSHa(t) = H_gauge(t) − h_vap_m          (h_vap_m < 0)
+
+    Margin
+    ------
+        margin(t) = NPSHa(t) − NPSHr_m
+        at_risk   = margin < 0
+
+    Parameters
+    ----------
+    moc_raw   : raw dict returned by run_moc()
+    obs_index : index into moc_raw["observations"] that corresponds to the
+                pump suction node
+    NPSHr_m   : required NPSH [m] at the operating point; None → margin/risk
+                fields are omitted
+
+    Returns
+    -------
+    dict with keys:
+        npsha_series         list[dict]   — NPSHaPoint dicts
+        npsha_min_m          float
+        npsha_steady_m       float
+        npsha_margin_min_m   float | None
+        transient_npsh_risk  bool
+        npsha_risk_duration_s float
+    """
+    h_vap_m: float = moc_raw["h_vap_m"]       # gauge, < 0 for typical temps
+    obs = moc_raw["observations"][obs_index]
+
+    npsha_series: list[dict] = []
+    npsha_min = float("inf")
+    npsha_steady: float | None = None
+    risk_duration = 0.0
+    prev_t: float | None = None
+
+    for i, pt in enumerate(obs["history"]):
+        h_g = pt["H_m"]                        # gauge head at pump suction [m]
+        npsha = h_g - h_vap_m                  # NPSHa [m]
+        margin: float | None = (npsha - NPSHr_m) if NPSHr_m is not None else None
+        at_risk = (margin is not None and margin < 0)
+
+        if i == 0:
+            npsha_steady = round(npsha, 4)
+
+        if npsha < npsha_min:
+            npsha_min = npsha
+
+        if at_risk and prev_t is not None:
+            risk_duration += pt["t_s"] - prev_t
+
+        npsha_series.append(
+            {
+                "t_s":          pt["t_s"],
+                "H_suction_m":  round(h_g, 4),
+                "NPSHa_m":      round(npsha, 4),
+                "margin_m":     round(margin, 4) if margin is not None else None,
+                "at_risk":      at_risk,
+            }
+        )
+        prev_t = pt["t_s"]
+
+    npsha_min_safe = round(npsha_min, 4) if math.isfinite(npsha_min) else 0.0
+    steady_safe    = npsha_steady if npsha_steady is not None else 0.0
+
+    min_margin: float | None = None
+    if NPSHr_m is not None:
+        min_margin = round(npsha_min_safe - NPSHr_m, 4)
+
+    transient_risk = min_margin is not None and min_margin < 0
+
+    return {
+        "npsha_series":           npsha_series,
+        "npsha_min_m":            npsha_min_safe,
+        "npsha_steady_m":         round(steady_safe, 4),
+        "npsha_margin_min_m":     min_margin,
+        "transient_npsh_risk":    transient_risk,
+        "npsha_risk_duration_s":  round(risk_duration, 3),
+    }

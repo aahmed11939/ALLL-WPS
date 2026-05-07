@@ -29,6 +29,39 @@ import ChartErrorBoundary from "../ChartErrorBoundary";
 import TermTip from "../TermTip";
 
 // ---------------------------------------------------------------------------
+// Collapsible solver notes banner (default collapsed)
+// ---------------------------------------------------------------------------
+
+function SolverNotesBanner({ notes }: { notes: string[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-amber-100/60 transition-colors"
+      >
+        <span className="text-[11px] font-bold text-amber-800 flex items-center gap-2">
+          <span>⚠</span>
+          Solver assumption notes ({notes.length})
+        </span>
+        <span className={`text-amber-500 text-xs transition-transform ${open ? "rotate-180" : ""}`}>▼</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-3 space-y-1 border-t border-amber-200">
+          {notes.map((note, i) => (
+            <p key={i} className="text-[10px] text-amber-700 leading-snug flex gap-1.5 mt-1">
+              <span className="text-amber-400 shrink-0 mt-0.5">▸</span>
+              <span>{note}</span>
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
@@ -679,6 +712,11 @@ export default function StepSuctionSurgeMOC() {
       {result && (
         <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-6 shadow-sm">
 
+          {/* Solver assumption notes */}
+          {result.assumption_notes?.length > 0 && (
+            <SolverNotesBanner notes={result.assumption_notes} />
+          )}
+
           {/* NPSHa KPI strip */}
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">
@@ -919,13 +957,15 @@ export default function StepSuctionSurgeMOC() {
                   />
                   <ReferenceLine
                     y={result.h_vap_m}
-                    stroke="#f59e0b" strokeDasharray="5 3"
-                    label={{ value: `h_vap = ${result.h_vap_m.toFixed(1)} m`, fontSize: 9, fill: "#d97706", position: "insideTopLeft" }}
+                    stroke={result.global_min_H_m < result.h_vap_m ? "#dc2626" : "#f59e0b"}
+                    strokeDasharray="5 3"
+                    label={{ value: `h_vap = ${result.h_vap_m.toFixed(1)} m`, fontSize: 9, fill: result.global_min_H_m < result.h_vap_m ? "#dc2626" : "#d97706", position: "insideTopLeft" }}
                   />
                   <ReferenceLine
                     y={0}
-                    stroke="#94a3b8" strokeDasharray="2 2"
-                    label={{ value: "0 m (atm)", fontSize: 9, fill: "#94a3b8", position: "insideBottomRight" }}
+                    stroke={result.global_min_H_m < 0 ? "#dc2626" : "#94a3b8"}
+                    strokeDasharray="2 2"
+                    label={{ value: "0 m (atm)", fontSize: 9, fill: result.global_min_H_m < 0 ? "#dc2626" : "#94a3b8", position: "insideBottomRight" }}
                   />
                 </ComposedChart>
               </ResponsiveContainer>
@@ -983,13 +1023,15 @@ export default function StepSuctionSurgeMOC() {
                   ))}
                   <ReferenceLine
                     y={result.h_vap_m}
-                    stroke="#f59e0b" strokeDasharray="4 3"
-                    label={{ value: "h_vap", fontSize: 9, fill: "#d97706" }}
+                    stroke={result.global_min_H_m < result.h_vap_m ? "#dc2626" : "#f59e0b"}
+                    strokeDasharray="4 3"
+                    label={{ value: "h_vap", fontSize: 9, fill: result.global_min_H_m < result.h_vap_m ? "#dc2626" : "#d97706" }}
                   />
                   <ReferenceLine
                     y={0}
-                    stroke="#94a3b8" strokeDasharray="2 2"
-                    label={{ value: "0 m", fontSize: 9, fill: "#94a3b8", position: "insideBottomRight" }}
+                    stroke={result.global_min_H_m < 0 ? "#dc2626" : "#94a3b8"}
+                    strokeDasharray="2 2"
+                    label={{ value: "0 m", fontSize: 9, fill: result.global_min_H_m < 0 ? "#dc2626" : "#94a3b8", position: "insideBottomRight" }}
                   />
                 </LineChart>
               </ResponsiveContainer>

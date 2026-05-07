@@ -40,7 +40,6 @@ Work through the 10 wizard steps in order. Each step persists state automaticall
 - Select unit system: **SI** (m, kPa) or **US** (ft, psi) with the header toggle. Enable **Both units** to show all values dual-labelled.
 - Set the **design flow Q** (m³/h) — this drives all downstream auto-fill.
 
-<!-- screenshot: step-2-system-nodes.png -->
 ### Step 2 — System Nodes
 - Define upstream (source) and downstream (delivery) node elevations in metres above datum.
 - Set fluid properties (water temperature, density). These propagate to surge analysis.
@@ -60,6 +59,7 @@ Work through the 10 wizard steps in order. Each step persists state automaticall
 - Enter efficiency (η), power, and NPSHr curves.
 - Click **Compute Pump** to find the duty operating point Q*, H* against the system curve.
 
+<!-- screenshot: step-6-discharge.png -->
 ### Step 6 — Discharge Pipeline
 - Mirror of Step 3 for the discharge side: segments and fittings.
 - Used by hydraulic compute and Mode B MOC (discharge surge).
@@ -70,11 +70,11 @@ Work through the 10 wizard steps in order. Each step persists state automaticall
 - Click **Compute Hydraulics** at any time to force a full recalculation.
 - Outputs: TDH, velocity, Re, Darcy-f, system H-Q curve, minor-loss breakdown.
 
+<!-- screenshot: step-8-curves.png -->
 ### Step 8 — System Curve & Operating Point
 - System curve (from Step 7) overlaid with the pump H-Q curve (from Step 5).
 - Intersection = duty operating point Q*, H*. Hover the chart for engineering cursor readouts.
 
-<!-- screenshot: step-9-surge.png -->
 ### Step 9 — Water Hammer & Surge
 
 This step has three sub-tabs:

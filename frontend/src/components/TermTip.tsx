@@ -1,6 +1,11 @@
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 
 const GLOSSARY: Record<string, { title: string; body: string; ref?: string }> = {
+  "a": {
+    title: "Wave-propagation celerity a (wave speed)",
+    body: "Speed at which a pressure wave travels in the pipe: a = √(K/ρ / (1 + K·D/(E·e))). Typical values: 900–1400 m/s (steel), 300–500 m/s (HDPE). Lower a → smaller Joukowsky surge but longer T_char = 2L/a.",
+    ref: "Wylie & Streeter (1993)",
+  },
   "Hazen-C": {
     title: "Hazen-Williams C coefficient",
     body: "Empirical roughness coefficient used in the Hazen-Williams formula for gravitational flow in full pipes. C = 150 = smooth (PVC/HDPE); C = 130 = ductile iron; C = 100 = old cast iron. Not valid for non-water fluids or Reynolds < 10⁵.",
@@ -65,17 +70,7 @@ interface TermTipProps {
 
 export default function TermTip({ term, children }: TermTipProps) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLSpanElement>(null);
   const entry = GLOSSARY[term];
-
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
 
   if (!entry) return children ? <>{children}</> : null;
 
@@ -84,11 +79,16 @@ export default function TermTip({ term, children }: TermTipProps) {
   );
 
   return (
-    <span ref={ref} className="relative inline-block">
+    <span
+      className="relative inline-block"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onFocus={() => setOpen(true)}
+      onBlur={() => setOpen(false)}
+    >
       <span
         role="button"
         tabIndex={0}
-        onClick={() => setOpen(v => !v)}
         onKeyDown={e => e.key === "Enter" && setOpen(v => !v)}
         className="cursor-help border-b border-dashed border-slate-400 hover:border-blue-500 hover:text-blue-700 transition-colors outline-none"
         aria-label={`Definition of ${term}`}
@@ -97,7 +97,7 @@ export default function TermTip({ term, children }: TermTipProps) {
       </span>
       {open && (
         <span
-          className="absolute left-0 top-full mt-1.5 z-50 w-72 rounded-xl border border-slate-200 bg-white shadow-xl p-3.5 text-left"
+          className="absolute left-0 top-full mt-1.5 z-50 w-72 rounded-xl border border-slate-200 bg-white shadow-xl p-3.5 text-left pointer-events-none"
           style={{ minWidth: "260px" }}
         >
           <p className="text-xs font-bold text-slate-800 mb-1 leading-snug">{entry.title}</p>
@@ -107,13 +107,6 @@ export default function TermTip({ term, children }: TermTipProps) {
               Ref: {entry.ref}
             </p>
           )}
-          <button
-            onClick={e => { e.stopPropagation(); setOpen(false); }}
-            className="absolute top-2 right-2 text-slate-300 hover:text-slate-500 text-sm leading-none"
-            aria-label="Close"
-          >
-            ×
-          </button>
         </span>
       )}
     </span>

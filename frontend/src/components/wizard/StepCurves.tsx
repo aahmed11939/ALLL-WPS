@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import {
   ComposedChart,
   Line,
@@ -10,6 +11,9 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { useProject } from "../../contexts/ProjectContext";
+import { useDebounce } from "../../hooks/useDebounce";
+import { computePump } from "../../utils/api";
+import { buildPumpReqFromConfig } from "../../utils/pumpUtils";
 import ChartErrorBoundary from "../ChartErrorBoundary";
 
 interface ChartPt {
@@ -19,9 +23,27 @@ interface ChartPt {
 }
 
 export default function StepCurves() {
-  const { draft } = useProject();
+  const { draft, dispatch } = useProject();
   const r  = draft.hydraulicsResult;
   const pr = draft.pumpResult;
+
+  // Auto-refresh pump overlay when pump config changes (400 ms debounce)
+  const pumpCfgKey = useDebounce(JSON.stringify(draft.pumpCurveConfig), 400);
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) { mountedRef.current = true; return; }
+    const cfg = draft.pumpCurveConfig;
+    if (!cfg) return;
+    const sysCurvePts = r?.system_curve
+      ? r.system_curve.map((pt) => ({ Q_m3h: pt.Q_m3h, value: pt.H_m }))
+      : undefined;
+    const req = buildPumpReqFromConfig(cfg, sysCurvePts, r?.static_head_m ?? 0);
+    if (!req) return;
+    computePump(req)
+      .then((result) => dispatch({ type: "SET_PUMP_RESULT", result }))
+      .catch(() => { /* silent — pump recompute is optional */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pumpCfgKey]);
 
   const op = pr?.operating_points?.[0] ?? null;
 

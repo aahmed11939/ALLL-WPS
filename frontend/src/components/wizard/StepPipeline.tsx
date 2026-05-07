@@ -1,5 +1,6 @@
 import { useProject } from "../../contexts/ProjectContext";
 import { useUnitSystem } from "../../contexts/UnitSystemContext";
+import TermTip from "../TermTip";
 import AccessoriesPicker from "../AccessoriesPicker";
 import FieldErrorHint from "../FieldErrorHint";
 import type { PipelineDraft, PipelineSegment } from "../../types/project";
@@ -130,7 +131,7 @@ export default function StepPipeline({ label }: Props) {
                 #
               </th>
               <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                Material
+                Material <TermTip term="roughness" />
               </th>
               <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                 Dia ({diamUnit})

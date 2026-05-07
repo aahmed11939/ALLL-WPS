@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import TermTip from "../TermTip";
 import { useProject } from "../../contexts/ProjectContext";
 import { computeSurgeQuick, computeWaveSpeed } from "../../utils/api";
 import type {
@@ -669,7 +670,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
         <Section title="Pipe & Fluid">
           <FieldRow>
             <div>
-              <Label>Wave speed a [m/s]</Label>
+              <Label>Wave speed <TermTip term="a" /> [m/s]</Label>
               <input
                 type="number" min={10} max={2000} step={10}
                 value={wavespeed}

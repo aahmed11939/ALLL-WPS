@@ -25,7 +25,7 @@ import TermTip from "../TermTip";
 // ---------------------------------------------------------------------------
 
 function SolverNotesBanner({ notes }: { notes: string[] }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50 overflow-hidden">
       <button
@@ -1100,13 +1100,15 @@ export default function StepWaterHammerModeB() {
                 />
                 <ReferenceLine
                   y={result.h_vap_m}
-                  stroke="#f59e0b" strokeDasharray="5 3"
-                  label={{ value: `h_vap = ${result.h_vap_m.toFixed(1)} m`, fontSize: 9, fill: "#d97706", position: "insideTopLeft" }}
+                  stroke={result.global_min_H_m < result.h_vap_m ? "#dc2626" : "#f59e0b"}
+                  strokeDasharray="5 3"
+                  label={{ value: `h_vap = ${result.h_vap_m.toFixed(1)} m`, fontSize: 9, fill: result.global_min_H_m < result.h_vap_m ? "#dc2626" : "#d97706", position: "insideTopLeft" }}
                 />
                 <ReferenceLine
                   y={0}
-                  stroke="#94a3b8" strokeDasharray="2 2"
-                  label={{ value: "0 m (atm)", fontSize: 9, fill: "#94a3b8", position: "insideBottomRight" }}
+                  stroke={result.global_min_H_m < 0 ? "#dc2626" : "#94a3b8"}
+                  strokeDasharray="2 2"
+                  label={{ value: "0 m (atm)", fontSize: 9, fill: result.global_min_H_m < 0 ? "#dc2626" : "#94a3b8", position: "insideBottomRight" }}
                 />
                 {ratingH !== null && (
                   <ReferenceLine
@@ -1177,13 +1179,15 @@ export default function StepWaterHammerModeB() {
                   ))}
                   <ReferenceLine
                     y={result.h_vap_m}
-                    stroke="#f59e0b" strokeDasharray="4 3"
-                    label={{ value: "h_vap", fontSize: 9, fill: "#d97706" }}
+                    stroke={result.global_min_H_m < result.h_vap_m ? "#dc2626" : "#f59e0b"}
+                    strokeDasharray="4 3"
+                    label={{ value: "h_vap", fontSize: 9, fill: result.global_min_H_m < result.h_vap_m ? "#dc2626" : "#d97706" }}
                   />
                   <ReferenceLine
                     y={0}
-                    stroke="#94a3b8" strokeDasharray="2 2"
-                    label={{ value: "0 m", fontSize: 9, fill: "#94a3b8", position: "insideBottomRight" }}
+                    stroke={result.global_min_H_m < 0 ? "#dc2626" : "#94a3b8"}
+                    strokeDasharray="2 2"
+                    label={{ value: "0 m", fontSize: 9, fill: result.global_min_H_m < 0 ? "#dc2626" : "#94a3b8", position: "insideBottomRight" }}
                   />
                 </LineChart>
               </ResponsiveContainer>

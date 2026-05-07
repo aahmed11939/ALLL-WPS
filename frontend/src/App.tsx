@@ -1,10 +1,13 @@
 import { UnitSystemProvider } from "./contexts/UnitSystemContext";
-import DesignPage from "./pages/DesignPage";
+import { ProjectProvider } from "./contexts/ProjectContext";
+import WizardPage from "./pages/WizardPage";
 
 export default function App() {
   return (
     <UnitSystemProvider>
-      <DesignPage />
+      <ProjectProvider>
+        <WizardPage />
+      </ProjectProvider>
     </UnitSystemProvider>
   );
 }

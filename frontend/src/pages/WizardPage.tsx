@@ -178,7 +178,7 @@ function RestoreBanner({ projectName, onDismiss }: { projectName: string; onDism
 // ---------------------------------------------------------------------------
 
 export default function WizardPage() {
-  const { draft, dispatch } = useProject();
+  const { draft, dispatch, loadJSON } = useProject();
   const { setUnitSystem, setShowBoth } = useUnitSystem();
 
   const [currentStep, setCurrentStep] = useState(0);
@@ -255,34 +255,19 @@ export default function WizardPage() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-      try {
-        const parsed = JSON.parse(ev.target?.result as string) as Partial<ProjectDraft>;
-        const loaded: ProjectDraft = {
-          ...DEFAULT_DRAFT,
-          ...parsed,
-          suction:        { ...DEFAULT_DRAFT.suction,        ...(parsed.suction        ?? {}) },
-          discharge:      { ...DEFAULT_DRAFT.discharge,       ...(parsed.discharge      ?? {}) },
-          meta:           { ...DEFAULT_DRAFT.meta,            ...(parsed.meta           ?? {}) },
-          upstreamNode:   { ...DEFAULT_DRAFT.upstreamNode,   ...(parsed.upstreamNode   ?? {}) },
-          downstreamNode: { ...DEFAULT_DRAFT.downstreamNode, ...(parsed.downstreamNode ?? {}) },
-          hydraulicsResult:    parsed.hydraulicsResult    ?? null,
-          hydraulicsError:     parsed.hydraulicsError     ?? null,
-          pumpResult:          parsed.pumpResult          ?? null,
-          clearwellConfig:     parsed.clearwellConfig     ?? null,
-          pumpSelectionConfig: parsed.pumpSelectionConfig ?? null,
-          pumpCurveConfig:     parsed.pumpCurveConfig     ?? null,
-        };
-        dispatch({ type: "LOAD", draft: loaded });
-        setUnitSystem(loaded.unitSystem);
-        setShowBoth(loaded.showBoth);
+      const json = ev.target?.result as string;
+      const result = loadJSON(json);
+      if (!result.ok || !result.loaded) {
+        setLoadError(`Invalid project file — ${result.error ?? "could not parse JSON."}`);
+      } else {
+        setUnitSystem(result.loaded.unitSystem);
+        setShowBoth(result.loaded.showBoth);
         setVisitedSteps(new Set([0]));
         setCurrentStep(0);
         setStepErrors({});
         setNavError(null);
         setShowRestoreBanner(false);
         setProjectVersion((v) => v + 1);
-      } catch {
-        setLoadError("Invalid project file — could not parse JSON.");
       }
     };
     reader.readAsText(file);

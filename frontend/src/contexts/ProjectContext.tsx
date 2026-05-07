@@ -121,8 +121,12 @@ interface ProjectContextType {
   update: (path: string, value: unknown) => void;
   /** Reset draft to factory defaults and clear localStorage. */
   reset: () => void;
-  /** Parse a full JSON string and load it as the active draft. */
-  loadJSON: (json: string) => { ok: boolean; error?: string };
+  /**
+   * Parse a full JSON string and load it as the active draft.
+   * Returns the parsed draft on success so callers can sync ancillary UI state
+   * (e.g. unitSystem, showBoth) without re-parsing the JSON themselves.
+   */
+  loadJSON: (json: string) => { ok: boolean; error?: string; loaded?: ProjectDraft };
 }
 
 const ProjectContext = createContext<ProjectContextType>({
@@ -163,11 +167,11 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "LOAD", draft: blank });
   }, []);
 
-  const loadJSON = useCallback((json: string): { ok: boolean; error?: string } => {
+  const loadJSON = useCallback((json: string): { ok: boolean; error?: string; loaded?: ProjectDraft } => {
     try {
       const loaded = parseDraft(json);
       dispatch({ type: "LOAD", draft: loaded });
-      return { ok: true };
+      return { ok: true, loaded };
     } catch (e) {
       return { ok: false, error: (e as Error).message ?? "Parse error" };
     }

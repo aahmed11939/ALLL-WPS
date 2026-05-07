@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useProject } from "../../contexts/ProjectContext";
 import { useUnitSystem } from "../../contexts/UnitSystemContext";
+import type { PumpCurveConfig } from "../../types/project";
 import ResultsPanel from "../ResultsPanel";
 import EquationsPanel from "../EquationsPanel";
 import LossBreakdownPanel from "../LossBreakdownPanel";
@@ -8,9 +9,64 @@ import SystemCurveChart from "../SystemCurveChart";
 import {
   calculate,
   computeLossBreakdown,
+  computePump,
   type CalculationRequest,
   type LossBreakdownResponse,
+  type PumpComputeRequest,
+  type CurvePoint,
 } from "../../utils/api";
+
+/** Parse manual-entry rows (Q/value strings) into CurvePoint[]. Returns null on parse failure. */
+function parseManualRows(rows: { Q: string; value: string }[]): CurvePoint[] | null {
+  const pts = rows.map((r) => ({ Q_m3h: parseFloat(r.Q), value: parseFloat(r.value) }));
+  if (pts.some((p) => isNaN(p.Q_m3h) || isNaN(p.value))) return null;
+  return pts;
+}
+
+/** Build a PumpComputeRequest from persisted PumpCurveConfig + hydraulics results. */
+function buildPumpReqFromConfig(
+  cfg: PumpCurveConfig,
+  systemCurvePts: CurvePoint[] | undefined,
+  staticHeadM: number,
+): PumpComputeRequest | null {
+  const common: Omit<PumpComputeRequest, "pump_id" | "curve_data"> = {
+    active: true,
+    arrangement: cfg.arrangement,
+    n_pumps: cfg.nPumps,
+    staging: cfg.staging && cfg.arrangement === "parallel",
+    vfd: cfg.vfd,
+    speed_pct: cfg.speedPct,
+    speed_pct_min: cfg.speedMin,
+    speed_pct_max: cfg.speedMax,
+    n_speed_steps: 5,
+    system_curve_pts: systemCurvePts,
+    static_head_m: staticHeadM,
+    npsha_m: cfg.npsha !== "" ? parseFloat(cfg.npsha) : undefined,
+  };
+
+  if (cfg.sourceTab === "library") {
+    if (!cfg.selectedPumpId) return null;
+    return { ...common, pump_id: cfg.selectedPumpId };
+  }
+
+  if (cfg.sourceTab === "manual") {
+    const hqPts = parseManualRows(cfg.hqRows);
+    if (!hqPts || hqPts.length < 2) return null;
+    return {
+      ...common,
+      curve_data: {
+        hq: hqPts,
+        eta_q:   cfg.etaRows.length  >= 2 ? (parseManualRows(cfg.etaRows)  ?? undefined) : undefined,
+        p_q:     cfg.pRows.length    >= 2 ? (parseManualRows(cfg.pRows)    ?? undefined) : undefined,
+        npshr_q: cfg.npshRows.length >= 2 ? (parseManualRows(cfg.npshRows) ?? undefined) : undefined,
+        interp_method: "linear",
+        poly_degree: 2,
+      },
+    };
+  }
+
+  return null; // CSV source not reconstructable from config alone
+}
 
 function expandKValues(items: { count: number; K_override?: number | null; default_K?: number }[]): number[] {
   const ks: number[] = [];
@@ -99,6 +155,24 @@ export default function StepHydraulics() {
           const bd = await computeLossBreakdown(bdReq);
           setBreakdown(bd);
         } catch { /* breakdown is optional */ }
+      }
+
+      // Also compute pump operating point from persisted PumpCurveConfig (Step 5),
+      // so Step 7 produces a fully-joined hydraulics + pump result in one click.
+      const pumpCfg = draft.pumpCurveConfig;
+      if (pumpCfg) {
+        const sysCurvePts = data.system_curve
+          ? (data.system_curve as { Q_m3h: number; H_m: number }[]).map(
+              (pt) => ({ Q_m3h: pt.Q_m3h, value: pt.H_m })
+            )
+          : undefined;
+        const pumpReq = buildPumpReqFromConfig(pumpCfg, sysCurvePts, data.static_head_m);
+        if (pumpReq) {
+          try {
+            const pumpData = await computePump(pumpReq);
+            dispatch({ type: "SET_PUMP_RESULT", result: pumpData });
+          } catch { /* pump compute is optional — don't fail the hydraulics step */ }
+        }
       }
     } catch (err: unknown) {
       const msg =

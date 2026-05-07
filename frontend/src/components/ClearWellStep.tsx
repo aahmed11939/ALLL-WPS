@@ -7,6 +7,7 @@ import {
   type ClearWellRequest,
   type ClearWellResponse,
 } from "../utils/api";
+import ClearWellDiagram from "./ClearWellDiagram";
 
 // ---------------------------------------------------------------------------
 // Zod schema for the form
@@ -104,6 +105,17 @@ export default function ClearWellStep() {
 
   const watchShape = watch("shape");
   const watchInflowType = watch("inflow_type");
+
+  // Live-watch all diagram-relevant fields
+  const watchDiameter = watch("diameter_m");
+  const watchLength = watch("length_m");
+  const watchWidth = watch("width_m");
+  const watchLLL = watch("LLL_m");
+  const watchLWL = watch("LWL_m");
+  const watchHWL = watch("HWL_m");
+  const watchHHL = watch("HHL_m");
+  const watchStages = watch("pump_stages");
+  const watchMaxCycles = watch("max_cycles_per_hour");
 
   const { fields: stageFields, append: appendStage, remove: removeStage } =
     useFieldArray({ control, name: "pump_stages" });
@@ -243,6 +255,10 @@ export default function ClearWellStep() {
       {/* ---- Active: form + results ---- */}
       {stepState === "active" && (
         <div className="p-5 space-y-6">
+          {/* Two-column layout: form left, live diagram right */}
+          <div className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-6 items-start">
+          {/* ---- Form column ---- */}
+          <div>
           <form onSubmit={handleSubmit(submit)} className="space-y-6">
             {/* ---- Geometry ---- */}
             <div>
@@ -533,6 +549,25 @@ export default function ClearWellStep() {
               {loading ? "Computing…" : "Compute Clear Well Sizing"}
             </button>
           </form>
+          </div>{/* end form column */}
+
+          {/* ---- Diagram column (sticky, updates live) ---- */}
+          <div className="xl:sticky xl:top-4">
+            <ClearWellDiagram
+              shape={watchShape}
+              diameter_m={watchDiameter}
+              length_m={watchLength}
+              width_m={watchWidth}
+              LLL_m={watchLLL}
+              LWL_m={watchLWL}
+              HWL_m={watchHWL}
+              HHL_m={watchHHL}
+              pump_stages={watchStages ?? []}
+              max_cycles_per_hour={watchMaxCycles ?? 6}
+            />
+          </div>
+
+          </div>{/* end two-column grid */}
 
           {/* ---- API error ---- */}
           {apiError && (

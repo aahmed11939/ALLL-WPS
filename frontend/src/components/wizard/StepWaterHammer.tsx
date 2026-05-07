@@ -231,11 +231,23 @@ export default function StepWaterHammer() {
   const validTemp = !isNaN(tempCNum) && tempCNum >= -10 && tempCNum <= 100;
   const localVapHead = validTemp ? localVaporPressureHead(tempCNum, previewRho) : -10.09;
 
-  // Local pressure rating check (computed from result + input, updates live)
-  const localRatingCheck: PressureRatingCheck | null = useMemo(() => {
+  // Pressure rating check: prefer backend result.rating_check when the
+  // pressure class matches what was sent; otherwise compute locally so
+  // the display updates immediately when the user changes the PN class.
+  const ratingCheckToShow: PressureRatingCheck | null = useMemo(() => {
     if (!result) return null;
     const rating = parseFloat(pressRatingKPa);
     if (isNaN(rating) || rating <= 0) return null;
+
+    // Use backend result if it matches the current input (same pressure class)
+    if (
+      result.rating_check &&
+      Math.abs(result.rating_check.pressure_rating_kPa - rating) < 0.5
+    ) {
+      return result.rating_check;
+    }
+
+    // Fall back to local computation when the user adjusts PN class after compute
     const maxKPa = result.max_pressure_kPa;
     const minKPa = result.min_pressure_kPa;
     const steadyKPa = result.H_operating_m * result.rho_kg_m3 * G / 1000;
@@ -517,6 +529,34 @@ export default function StepWaterHammer() {
               </div>
             </div>
 
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <Label>Water temperature [°C]</Label>
+                <span className="text-xs font-mono font-semibold text-blue-700">
+                  {temperatureC} °C
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={50}
+                step={0.5}
+                value={temperatureC}
+                onChange={e => setTemperatureC(e.target.value)}
+                className="w-full accent-blue-600"
+              />
+              <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
+                <span>0 °C</span>
+                <span>
+                  h_vap = {localVaporPressureHead(
+                    parseFloat(temperatureC) || 20,
+                    parseFloat(rho) || 1000
+                  ).toFixed(2)} m gauge
+                </span>
+                <span>50 °C</span>
+              </div>
+            </div>
+
             {waveCalcError && (
               <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
                 {waveCalcError}
@@ -726,18 +766,18 @@ export default function StepWaterHammer() {
               <Hint>Steady-state head at event origin. Pump discharge ≈ TDH.</Hint>
             </div>
 
-            <div>
-              <Label>Water temperature [°C]</Label>
-              <input
-                type="number" min={0} max={50} step={0.5}
-                value={temperatureC}
-                onChange={e => setTemperatureC(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
-              />
-              <Hint>
-                Vapour pressure threshold: {localVapHead.toFixed(2)} m gauge
-                {validTemp && tempCNum !== 20 ? ` at ${tempCNum} °C` : " (20 °C default)"}
-              </Hint>
+            <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2.5 text-[11px] text-blue-700 flex items-center justify-between">
+              <span>
+                Temperature: <strong className="font-mono">{temperatureC} °C</strong>
+                {" · "}h<sub>vap</sub>:{" "}
+                <strong className="font-mono">{localVapHead.toFixed(2)} m</strong> gauge
+              </span>
+              <button
+                onClick={() => setShowWaveCalc(true)}
+                className="text-[10px] underline text-blue-500 hover:text-blue-700 whitespace-nowrap ml-2"
+              >
+                adjust in Wave Speed ↑
+              </button>
             </div>
           </FieldRow>
         </Section>
@@ -986,12 +1026,12 @@ export default function StepWaterHammer() {
           </Section>
 
           {/* ── Pressure Rating Check ────────────────────────────────────── */}
-          {localRatingCheck && (
+          {ratingCheckToShow && (
             <Section title="Pressure Rating Check">
-              <RatingCheckPanel rc={localRatingCheck} us={us} />
+              <RatingCheckPanel rc={ratingCheckToShow} us={us} />
             </Section>
           )}
-          {!localRatingCheck && (
+          {!ratingCheckToShow && (
             <div className="rounded-lg bg-slate-50 border border-dashed border-slate-200 px-4 py-3">
               <p className="text-[10px] text-slate-400">
                 Enter a pipe pressure class in the form above (e.g. PN 16 = 1600 kPa) to see a

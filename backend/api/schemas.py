@@ -1612,12 +1612,12 @@ class WaveSpeedRequest(BaseModel):
     wall_thickness_mm: Optional[float] = Field(
         default=None,
         gt=0,
-        description="Wall thickness e [mm] — provide this or sdr",
+        description="Wall thickness e [mm] — provide this or sdr (not both)",
     )
     sdr: Optional[float] = Field(
         default=None,
         gt=2,
-        description="Standard Dimension Ratio (e = D_o/SDR) — provide this or wall_thickness_mm",
+        description="Standard Dimension Ratio (e = D_o/SDR) — provide this or wall_thickness_mm (not both)",
     )
     restraint: Literal["free", "anchored_upstream", "restrained"] = Field(
         default="restrained",
@@ -1636,6 +1636,22 @@ class WaveSpeedRequest(BaseModel):
         gt=0,
         description="Fluid density [kg/m³]",
     )
+
+    @model_validator(mode="after")
+    def check_wall_xor_sdr(self) -> "WaveSpeedRequest":
+        """Exactly one of wall_thickness_mm or sdr must be provided."""
+        has_wall = self.wall_thickness_mm is not None
+        has_sdr  = self.sdr is not None
+        if not has_wall and not has_sdr:
+            raise ValueError(
+                "Provide either wall_thickness_mm [mm] or sdr — exactly one is required."
+            )
+        if has_wall and has_sdr:
+            raise ValueError(
+                "Provide wall_thickness_mm OR sdr — not both. "
+                "Remove one to avoid ambiguity."
+            )
+        return self
 
 
 class WaveSpeedResponse(BaseModel):

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, MutableRefObject } from "react";
 import wpsLogo from "../assets/WPS_Logo_1778184724504.png";
 import { useProject } from "../contexts/ProjectContext";
 import { useUnitSystem } from "../contexts/UnitSystemContext";
@@ -9,7 +9,7 @@ import { SAMPLE_PROJECT_VT } from "../data/sampleProjectVT";
 import { SAMPLE_PROJECT_BOOSTER } from "../data/sampleProjectBooster";
 import type { ProjectDraft } from "../types/project";
 import { DEFAULT_DRAFT } from "../types/project";
-import { calculate } from "../utils/api";
+import { calculate, saveProject, updateProject, type ProjectLoadResponse } from "../utils/api";
 
 import StepMeta        from "../components/wizard/StepMeta";
 import StepNodes       from "../components/wizard/StepNodes";
@@ -185,7 +185,31 @@ function RestoreBanner({ projectName, onDismiss }: { projectName: string; onDism
 // Main WizardPage
 // ---------------------------------------------------------------------------
 
-export default function WizardPage() {
+type WizardMode = "resume" | "new" | "open" | "import";
+
+interface WizardPageProps {
+  /** A project loaded from the server that should be injected on mount. */
+  pendingProject?: ProjectLoadResponse | null;
+  /**
+   * Controls how the wizard initialises on mount:
+   * - "resume"  — restore whatever is in context/localStorage (default)
+   * - "new"     — reset to a blank DEFAULT_DRAFT immediately
+   * - "open"    — load pendingProject from the server
+   * - "import"  — open the file picker immediately (handled by importTriggerRef timing)
+   */
+  wizardMode?: WizardMode;
+  /** Navigate back to the projects landing page. */
+  onGoToLanding?: () => void;
+  /** A ref whose `.current` is wired to the hidden file input's click handler. */
+  importTriggerRef?: MutableRefObject<(() => void) | null>;
+}
+
+export default function WizardPage({
+  pendingProject,
+  wizardMode = "resume",
+  onGoToLanding,
+  importTriggerRef,
+}: WizardPageProps = {}) {
   const { draft, dispatch, loadJSON } = useProject();
   const { setUnitSystem, setShowBoth } = useUnitSystem();
 
@@ -194,7 +218,9 @@ export default function WizardPage() {
   const [stepErrors, setStepErrors] = useState<Record<number, string>>({});
   const [navError, setNavError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [showRestoreBanner, setShowRestoreBanner] = useState(() => hadStoredSession());
+  const [showRestoreBanner, setShowRestoreBanner] = useState(
+    () => !pendingProject && hadStoredSession()
+  );
   /**
    * Incremented on every Load / New / Sample action. Passed as part of each
    * step wrapper's React key so all step components remount — ensuring they
@@ -203,14 +229,63 @@ export default function WizardPage() {
   const [projectVersion, setProjectVersion] = useState(0);
   const [showSampleMenu, setShowSampleMenu] = useState(false);
 
+  // Server save state
+  const [currentSlug, setCurrentSlug] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">("idle");
+  const saveStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const loadFileRef  = useRef<HTMLInputElement>(null);
   const contentRef   = useRef<HTMLDivElement>(null);
   const sampleBtnRef = useRef<HTMLDivElement>(null);
 
-  // Sync unit system from project draft → UnitSystemContext on mount
+  // Wire the import trigger ref so App.tsx can programmatically open the file picker
   useEffect(() => {
-    setUnitSystem(draft.unitSystem);
-    setShowBoth(draft.showBoth);
+    if (importTriggerRef) {
+      importTriggerRef.current = () => loadFileRef.current?.click();
+    }
+    return () => {
+      if (importTriggerRef) importTriggerRef.current = null;
+    };
+  }, [importTriggerRef]);
+
+  // Mount-time initialisation — runs exactly once, driven by wizardMode
+  useEffect(() => {
+    if (wizardMode === "open" && pendingProject) {
+      // Load a project fetched from the server
+      const result = loadJSON(JSON.stringify(pendingProject.data));
+      if (result.ok && result.loaded) {
+        setUnitSystem(result.loaded.unitSystem);
+        setShowBoth(result.loaded.showBoth);
+        setCurrentSlug(pendingProject.slug);
+        setVisitedSteps(new Set([0]));
+        setCurrentStep(0);
+        setStepErrors({});
+        setNavError(null);
+        setShowRestoreBanner(false);
+        setProjectVersion((v) => v + 1);
+      }
+    } else if (wizardMode === "new") {
+      // Explicitly blank the draft so prior in-memory state is cleared
+      const blank: ProjectDraft = {
+        ...DEFAULT_DRAFT,
+        meta: { ...DEFAULT_DRAFT.meta, date: new Date().toISOString().slice(0, 10) },
+      };
+      dispatch({ type: "LOAD", draft: blank });
+      setUnitSystem(blank.unitSystem);
+      setShowBoth(blank.showBoth);
+      setCurrentSlug(null);
+      setVisitedSteps(new Set([0]));
+      setCurrentStep(0);
+      setStepErrors({});
+      setNavError(null);
+      setShowRestoreBanner(false);
+      setProjectVersion((v) => v + 1);
+    } else {
+      // "resume" or "import" — use whatever is already in the context
+      setUnitSystem(draft.unitSystem);
+      setShowBoth(draft.showBoth);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -243,8 +318,8 @@ export default function WizardPage() {
     if (currentStep > 0) goToStep(currentStep - 1);
   };
 
-  // ---------- Save JSON ----------
-  const handleSave = () => {
+  // ---------- Export JSON (download) ----------
+  const handleExportJSON = () => {
     const blob = new Blob([JSON.stringify(draft, null, 2)], { type: "application/json" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
@@ -256,6 +331,30 @@ export default function WizardPage() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  // ---------- Save to server ----------
+  const handleSaveToServer = async () => {
+    if (saving) return;
+    setSaving(true);
+    setSaveStatus("idle");
+    if (saveStatusTimerRef.current) clearTimeout(saveStatusTimerRef.current);
+    try {
+      const data = draft as unknown as Record<string, unknown>;
+      let row;
+      if (currentSlug) {
+        row = await updateProject(currentSlug, data);
+      } else {
+        row = await saveProject(data);
+        setCurrentSlug(row.slug);
+      }
+      setSaveStatus("saved");
+    } catch {
+      setSaveStatus("error");
+    } finally {
+      setSaving(false);
+      saveStatusTimerRef.current = setTimeout(() => setSaveStatus("idle"), 3000);
+    }
   };
 
   // ---------- Load JSON ----------
@@ -272,12 +371,14 @@ export default function WizardPage() {
       } else {
         setUnitSystem(result.loaded.unitSystem);
         setShowBoth(result.loaded.showBoth);
+        setCurrentSlug(null);
         setVisitedSteps(new Set([0]));
         setCurrentStep(0);
         setStepErrors({});
         setNavError(null);
         setShowRestoreBanner(false);
         setProjectVersion((v) => v + 1);
+        setSaveStatus("idle");
       }
     };
     reader.readAsText(file);
@@ -347,12 +448,14 @@ export default function WizardPage() {
     dispatch({ type: "LOAD", draft: blank });
     setUnitSystem(blank.unitSystem);
     setShowBoth(blank.showBoth);
+    setCurrentSlug(null);
     setVisitedSteps(new Set([0]));
     setCurrentStep(0);
     setStepErrors({});
     setNavError(null);
     setShowRestoreBanner(false);
     setProjectVersion((v) => v + 1);
+    setSaveStatus("idle");
   };
 
   return (
@@ -419,6 +522,23 @@ export default function WizardPage() {
             {loadError && (
               <span className="text-xs text-rose-600 font-medium">{loadError}</span>
             )}
+
+            {/* Open Project (back to landing page) */}
+            {onGoToLanding && (
+              <button
+                type="button"
+                onClick={onGoToLanding}
+                className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-slate-400 hover:bg-slate-50 transition-colors flex items-center gap-1.5"
+                title="Browse saved projects"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                </svg>
+                Open Project
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handleNew}
@@ -426,13 +546,45 @@ export default function WizardPage() {
             >
               New
             </button>
+
+            {/* Save to server */}
             <button
               type="button"
-              onClick={handleSave}
+              onClick={handleSaveToServer}
+              disabled={saving}
+              className={`rounded border px-3 py-1.5 text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                saveStatus === "saved"
+                  ? "border-teal-400 bg-teal-50 text-teal-700"
+                  : saveStatus === "error"
+                  ? "border-rose-300 bg-rose-50 text-rose-700"
+                  : "border-teal-500 bg-teal-600 text-white hover:bg-teal-500"
+              } disabled:opacity-60 disabled:cursor-not-allowed`}
+              title={currentSlug ? "Update saved project" : "Save project to server"}
+            >
+              {saving ? (
+                <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              ) : saveStatus === "saved" ? (
+                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                </svg>
+              )}
+              {saveStatus === "saved" ? "Saved!" : saveStatus === "error" ? "Error" : "Save"}
+            </button>
+
+            {/* Export JSON download */}
+            <button
+              type="button"
+              onClick={handleExportJSON}
               className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-slate-400 hover:bg-slate-50 transition-colors"
             >
-              Save JSON
+              Export JSON
             </button>
+
             <input
               ref={loadFileRef}
               type="file"
@@ -445,7 +597,7 @@ export default function WizardPage() {
               onClick={() => loadFileRef.current?.click()}
               className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-slate-400 hover:bg-slate-50 transition-colors"
             >
-              Load JSON
+              Import JSON
             </button>
             <div ref={sampleBtnRef} className="relative">
               <button

@@ -8,6 +8,7 @@ Run with:
 from __future__ import annotations
 
 import copy
+import json
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
@@ -17,6 +18,14 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ValidationError
 
 from backend.api.domain_models import ProjectModel, ValidationResult
+from backend.api.project_store import (
+    init_db,
+    list_projects,
+    create_project,
+    update_project,
+    load_project,
+    delete_project,
+)
 from backend.api.schemas import (
     AccessoryCategoryGroup,
     AccessoryItem,
@@ -187,6 +196,9 @@ app = FastAPI(
     redoc_url="/api/v1/redoc",
     openapi_url="/api/v1/openapi.json",
 )
+
+# Initialise the project SQLite store on startup
+init_db()
 
 app.add_middleware(
     CORSMiddleware,
@@ -2698,3 +2710,130 @@ async def export_excel(body: ExcelExportRequest) -> StreamingResponse:
             "Content-Length": str(len(xlsx_bytes)),
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Project persistence — save / load / list / delete
+# ---------------------------------------------------------------------------
+
+
+class ProjectSaveRequest(BaseModel):
+    """Payload for saving a project.  ``slug`` is optional on create."""
+    slug: str | None = None
+    data: dict
+
+
+class ProjectMeta(BaseModel):
+    slug: str
+    name: str
+    created_at: str
+    updated_at: str
+
+
+class ProjectListResponse(BaseModel):
+    projects: list[ProjectMeta]
+    count: int
+
+
+class ProjectSaveResponse(BaseModel):
+    slug: str
+    name: str
+    created_at: str
+    updated_at: str
+
+
+class ProjectLoadResponse(BaseModel):
+    slug: str
+    name: str
+    data: dict
+    created_at: str
+    updated_at: str
+
+
+@app.get(
+    "/api/v1/projects",
+    response_model=ProjectListResponse,
+    tags=["projects"],
+    summary="List all saved projects",
+)
+def api_list_projects() -> ProjectListResponse:
+    """Return all persisted projects ordered by last-modified descending."""
+    rows = list_projects()
+    return ProjectListResponse(
+        projects=[ProjectMeta(**r) for r in rows],
+        count=len(rows),
+    )
+
+
+@app.post(
+    "/api/v1/projects",
+    response_model=ProjectSaveResponse,
+    tags=["projects"],
+    summary="Create a new project",
+    status_code=status.HTTP_201_CREATED,
+)
+def api_create_project(body: ProjectSaveRequest) -> ProjectSaveResponse:
+    """
+    Create a new project record.  A globally-unique slug is derived from the
+    project name inside ``data.meta.name`` and a UUID4 suffix — no two creates
+    can produce the same slug even if called with identical names concurrently.
+    """
+    data_json = json.dumps(body.data)
+    try:
+        row = create_project(data_json)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return ProjectSaveResponse(**row)
+
+
+@app.put(
+    "/api/v1/projects/{slug}",
+    response_model=ProjectSaveResponse,
+    tags=["projects"],
+    summary="Update an existing project by slug",
+)
+def api_update_project(slug: str, body: ProjectSaveRequest) -> ProjectSaveResponse:
+    """
+    Overwrite an existing project identified by *slug*.
+    ``created_at`` is preserved from the original record.
+    """
+    data_json = json.dumps(body.data)
+    try:
+        row = update_project(slug, data_json)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Project '{slug}' not found.")
+    return ProjectSaveResponse(**row)
+
+
+@app.get(
+    "/api/v1/projects/{slug}",
+    response_model=ProjectLoadResponse,
+    tags=["projects"],
+    summary="Load a project by slug",
+)
+def api_load_project(slug: str) -> ProjectLoadResponse:
+    """Return the full project payload (including ``data``) for the given slug."""
+    row = load_project(slug)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Project '{slug}' not found.")
+    parsed_data: dict = json.loads(row["data"])
+    return ProjectLoadResponse(
+        slug=row["slug"],
+        name=row["name"],
+        data=parsed_data,
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+@app.delete(
+    "/api/v1/projects/{slug}",
+    tags=["projects"],
+    summary="Delete a project by slug",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def api_delete_project(slug: str) -> None:
+    """Permanently remove a saved project."""
+    removed = delete_project(slug)
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"Project '{slug}' not found.")

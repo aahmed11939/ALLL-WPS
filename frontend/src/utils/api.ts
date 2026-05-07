@@ -508,6 +508,67 @@ export async function computeLossBreakdown(
 }
 
 // ---------------------------------------------------------------------------
+// Project persistence — save / load / list / delete
+// ---------------------------------------------------------------------------
+
+export interface ProjectMeta {
+  slug: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectListResponse {
+  projects: ProjectMeta[];
+  count: number;
+}
+
+export interface ProjectSaveResponse {
+  slug: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectLoadResponse {
+  slug: string;
+  name: string;
+  /** Full ProjectDraft JSON object */
+  data: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listProjects(): Promise<ProjectListResponse> {
+  const res = await axios.get<ProjectListResponse>(`${BASE}/projects`);
+  return res.data;
+}
+
+export async function saveProject(
+  data: Record<string, unknown>
+): Promise<ProjectSaveResponse> {
+  const res = await axios.post<ProjectSaveResponse>(`${BASE}/projects`, { data });
+  return res.data;
+}
+
+export async function updateProject(
+  slug: string,
+  data: Record<string, unknown>
+): Promise<ProjectSaveResponse> {
+  const res = await axios.put<ProjectSaveResponse>(`${BASE}/projects/${slug}`, { slug, data });
+  return res.data;
+}
+
+export async function fetchProject(slug: string): Promise<ProjectLoadResponse> {
+  const res = await axios.get<ProjectLoadResponse>(`${BASE}/projects/${slug}`);
+  return res.data;
+}
+
+export async function deleteProject(slug: string): Promise<void> {
+  await axios.delete(`${BASE}/projects/${slug}`);
+}
+
+// ---------------------------------------------------------------------------
 // Surge / Water Hammer — Mode A Quick Check
 // ---------------------------------------------------------------------------
 

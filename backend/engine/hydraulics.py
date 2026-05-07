@@ -8,10 +8,7 @@ Units: SI throughout (m, m³/s, m/s, Pa).
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Callable, NamedTuple
-
-if TYPE_CHECKING:
-    pass
+from typing import Callable, NamedTuple
 
 # Kinematic viscosity of water at 20 °C [m²/s]
 NU_WATER: float = 1.004e-6

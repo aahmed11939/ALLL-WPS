@@ -15,7 +15,6 @@ from pydantic import ValidationError
 
 from backend.api.domain_models import ProjectModel, ValidationResult
 from backend.api.schemas import (
-    AssemblyInput,
     CalculationRequest,
     CalculationResponse,
     ComputeSystemCurvePoint,
@@ -211,7 +210,7 @@ def calculate(req: CalculationRequest) -> CalculationResponse:
 
 def _compute_segment(
     Q_m3s: float,
-    seg: "PipeSegment",
+    seg: PipeSegment,
     assembly_name: str,
     index: int,
 ) -> tuple[SegmentResult, float, float]:
@@ -300,7 +299,8 @@ def compute_hydraulics(req: HydraulicComputeRequest) -> HydraulicComputeResponse
     segment_results: list[SegmentResult] = []
     total_hf = 0.0
     total_hm = 0.0
-    velocities: list[float] = []
+    # Track full-precision velocities separately for Δvelocity_head computation.
+    velocities_raw: list[float] = []
 
     try:
         idx = 0
@@ -309,7 +309,7 @@ def compute_hydraulics(req: HydraulicComputeRequest) -> HydraulicComputeResponse
             segment_results.append(res)
             total_hf += hf
             total_hm += hm
-            velocities.append(res.velocity_ms)
+            velocities_raw.append(velocity(Q_m3s, seg.D_m) if Q_m3s > 0 else 0.0)
             idx += 1
 
         for seg in req.discharge.segments:
@@ -317,7 +317,7 @@ def compute_hydraulics(req: HydraulicComputeRequest) -> HydraulicComputeResponse
             segment_results.append(res)
             total_hf += hf
             total_hm += hm
-            velocities.append(res.velocity_ms)
+            velocities_raw.append(velocity(Q_m3s, seg.D_m) if Q_m3s > 0 else 0.0)
             idx += 1
 
     except (ValueError, ZeroDivisionError) as exc:
@@ -339,10 +339,11 @@ def compute_hydraulics(req: HydraulicComputeRequest) -> HydraulicComputeResponse
         req.discharge.pressure_head_end_m - req.suction.pressure_head_start_m
     )
 
-    # Velocity head change: last segment outlet vs. first segment inlet
-    if velocities:
-        v_in = velocities[0]
-        v_out = velocities[-1]
+    # Velocity head change: last segment outlet vs. first segment inlet.
+    # Uses full-precision (unrounded) velocities to avoid accumulated rounding drift.
+    if velocities_raw:
+        v_in = velocities_raw[0]
+        v_out = velocities_raw[-1]
     else:
         v_in = v_out = 0.0
     dv_head = (v_out ** 2 - v_in ** 2) / (2.0 * G)

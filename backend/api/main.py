@@ -169,6 +169,7 @@ from backend.engine.hydraulics import (
 )
 from backend.engine.units import convert
 from backend.engine.excel_export import _wb_to_bytes, build_workbook
+from backend.export.word_export import build_document, _doc_to_bytes
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -2511,6 +2512,56 @@ async def surge_device_size(req: _DeviceSizeRequest) -> dict:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         )
+
+
+# ---------------------------------------------------------------------------
+# Word design report export
+# ---------------------------------------------------------------------------
+
+@app.post(
+    "/export/word",
+    summary="Export project as an engineering Word design report (.docx)",
+    response_description="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    tags=["Export"],
+)
+async def export_word(body: ExcelExportRequest) -> StreamingResponse:
+    """
+    Accept the full ProjectDraft as a typed Pydantic model and return a .docx report.
+
+    The report contains: title page, executive summary, hydraulic analysis,
+    pump analysis, wet well sizing, engineering checks, surge analysis,
+    protection device comparison, and appendices. Figures are embedded as PNG.
+    """
+    draft: dict = body.model_dump()
+
+    try:
+        docx_bytes = _doc_to_bytes(build_document(draft))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Word report build failed: {exc}",
+        )
+
+    project_name = ""
+    meta = draft.get("meta")
+    if isinstance(meta, dict):
+        project_name = meta.get("name", "") or ""
+
+    safe_name = (
+        "".join(c if c.isalnum() or c in "._-" else "_" for c in project_name)
+        or "wps_project"
+    )
+    filename = f"{safe_name}.docx"
+
+    import io as _io
+    return StreamingResponse(
+        _io.BytesIO(docx_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(docx_bytes)),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

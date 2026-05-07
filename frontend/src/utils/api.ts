@@ -909,9 +909,30 @@ export async function computeDeviceSize(req: DeviceSizeRequest): Promise<Record<
 // ---------------------------------------------------------------------------
 
 /**
- * POST the full ProjectDraft to the backend and trigger a .xlsx download.
- * Uses a hidden anchor element to auto-download the binary response.
+ * POST the full ProjectDraft to the backend and trigger a .docx download.
  */
+export async function exportWord(draft: unknown, filename?: string): Promise<void> {
+  const res = await axios.post("/export/word", draft, {
+    responseType: "blob",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  const blob = new Blob([res.data], {
+    type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  });
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement("a");
+
+  const disposition: string = res.headers["content-disposition"] ?? "";
+  const match = disposition.match(/filename="?([^";\n]+)"?/);
+  a.download = match?.[1] ?? filename ?? "wps_project.docx";
+  a.href     = url;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export async function exportExcel(draft: unknown, filename?: string): Promise<void> {
   const res = await axios.post("/export/excel", draft, {
     responseType: "blob",

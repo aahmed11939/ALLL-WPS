@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useProject } from "../../contexts/ProjectContext";
 import { runChecks, checksToText, type CheckResult } from "../../utils/engineeringChecks";
-import { exportExcel } from "../../utils/api";
+import { exportExcel, exportWord } from "../../utils/api";
 
 function FeatureToast({ message, onClose }: { message: string; onClose: () => void }) {
   return (
@@ -78,10 +78,35 @@ export default function StepExports() {
   const [excelLoading, setExcelLoading] = useState(false);
   const [excelError,   setExcelError]   = useState<string | null>(null);
   const [excelSuccess, setExcelSuccess] = useState(false);
+  const [wordLoading,  setWordLoading]  = useState(false);
+  const [wordError,    setWordError]    = useState<string | null>(null);
+  const [wordSuccess,  setWordSuccess]  = useState(false);
 
   const showToast = (label: string) => {
     setToast(label);
     setTimeout(() => setToast(null), 4000);
+  };
+
+  const handleExportWord = async () => {
+    setWordError(null);
+    setWordSuccess(false);
+    setWordLoading(true);
+    try {
+      const safeName = (draft.meta.name || "project")
+        .replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
+      await exportWord(draft, `${safeName}.docx`);
+      setWordSuccess(true);
+      setTimeout(() => setWordSuccess(false), 4000);
+    } catch (e: unknown) {
+      const msg =
+        (e as { response?: { data?: { detail?: string } }; message?: string })
+          ?.response?.data?.detail ??
+        (e as Error)?.message ??
+        "Export failed.";
+      setWordError(msg);
+    } finally {
+      setWordLoading(false);
+    }
   };
 
   const handleExportExcel = async () => {
@@ -155,6 +180,12 @@ export default function StepExports() {
         <SuccessToast
           message="Excel workbook exported successfully!"
           onClose={() => setExcelSuccess(false)}
+        />
+      )}
+      {wordSuccess && (
+        <SuccessToast
+          message="Word design report exported successfully!"
+          onClose={() => setWordSuccess(false)}
         />
       )}
       {toast && <FeatureToast message={toast} onClose={() => setToast(null)} />}
@@ -323,25 +354,29 @@ export default function StepExports() {
             </button>
           </div>
 
-          {/* Word — placeholder */}
-          <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3 opacity-70">
+          {/* Word — live */}
+          <div className="flex items-center justify-between rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3">
             <div>
               <div className="flex items-center gap-2">
-                <p className="text-sm font-semibold text-slate-700">Engineering Memo (.docx)</p>
-                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 uppercase">
-                  Coming soon
+                <p className="text-sm font-semibold text-indigo-800">Engineering Report (.docx)</p>
+                <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 uppercase">
+                  Ready
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Stamped design memorandum with all calculated parameters.
+              <p className="text-xs text-indigo-700 mt-0.5">
+                Stamped design memorandum — hydraulics, pump curves, wet well, surge analysis &amp; figures.
               </p>
+              {wordError && (
+                <p className="text-xs text-red-600 mt-1 font-semibold">⚠ {wordError}</p>
+              )}
             </div>
             <button
               type="button"
-              onClick={() => showToast("Word/PDF export is in progress")}
-              className="shrink-0 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-50 transition-colors"
+              onClick={handleExportWord}
+              disabled={wordLoading}
+              className="shrink-0 rounded-lg bg-indigo-700 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-600 transition-colors disabled:opacity-60 disabled:cursor-wait"
             >
-              Export Word
+              {wordLoading ? "Building…" : "Export Word"}
             </button>
           </div>
 

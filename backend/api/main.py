@@ -12,6 +12,7 @@ from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ValidationError
 
 from backend.api.domain_models import ProjectModel, ValidationResult
@@ -166,6 +167,7 @@ from backend.engine.hydraulics import (
     velocity,
 )
 from backend.engine.units import convert
+from backend.engine.excel_export import build_workbook
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -2508,3 +2510,62 @@ async def surge_device_size(req: _DeviceSizeRequest) -> dict:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         )
+
+
+# ---------------------------------------------------------------------------
+# Excel workbook export
+# ---------------------------------------------------------------------------
+
+@app.post(
+    "/export/excel",
+    summary="Export project as a professional Excel workbook",
+    response_description="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    tags=["Export"],
+)
+async def export_excel(request: Request) -> StreamingResponse:
+    """
+    Accept the full ProjectDraft JSON and return a .xlsx workbook.
+
+    The workbook contains 11 sheets and 6 embedded charts covering all
+    computed results (hydraulics, pump curves, wet well, surge analyses,
+    engineering checks, and protection device comparisons).
+
+    The request body is accepted as raw JSON (any dict) so that no schema
+    drift occurs as the frontend ProjectDraft evolves.
+    """
+    try:
+        draft: dict = await request.json()
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Request body must be valid JSON.",
+        )
+
+    try:
+        xlsx_bytes = build_workbook(draft)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Workbook build failed: {exc}",
+        )
+
+    project_name = ""
+    meta = draft.get("meta")
+    if isinstance(meta, dict):
+        project_name = meta.get("name", "") or ""
+
+    safe_name = (
+        "".join(c if c.isalnum() or c in "._-" else "_" for c in project_name)
+        or "wps_project"
+    )
+    filename = f"{safe_name}.xlsx"
+
+    import io
+    return StreamingResponse(
+        io.BytesIO(xlsx_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(xlsx_bytes)),
+        },
+    )

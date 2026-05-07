@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useProject } from "../../contexts/ProjectContext";
 import { runChecks, checksToText, type CheckResult } from "../../utils/engineeringChecks";
+import { exportExcel } from "../../utils/api";
 
 function FeatureToast({ message, onClose }: { message: string; onClose: () => void }) {
   return (
@@ -54,11 +55,32 @@ function CheckSummaryRow({ check }: { check: CheckResult }) {
 
 export default function StepExports() {
   const { draft } = useProject();
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast]       = useState<string | null>(null);
+  const [excelLoading, setExcelLoading] = useState(false);
+  const [excelError,   setExcelError]   = useState<string | null>(null);
 
   const showToast = (label: string) => {
     setToast(label);
     setTimeout(() => setToast(null), 4000);
+  };
+
+  const handleExportExcel = async () => {
+    setExcelError(null);
+    setExcelLoading(true);
+    try {
+      const safeName = (draft.meta.name || "project")
+        .replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
+      await exportExcel(draft, `${safeName}.xlsx`);
+    } catch (e: unknown) {
+      const msg =
+        (e as { response?: { data?: { detail?: string } }; message?: string })
+          ?.response?.data?.detail ??
+        (e as Error)?.message ??
+        "Export failed.";
+      setExcelError(msg);
+    } finally {
+      setExcelLoading(false);
+    }
   };
 
   // Derive engineering checks — always fresh, no API call needed
@@ -246,25 +268,29 @@ export default function StepExports() {
             </button>
           </div>
 
-          {/* Excel — placeholder */}
-          <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3 opacity-70">
+          {/* Excel — live */}
+          <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
             <div>
               <div className="flex items-center gap-2">
-                <p className="text-sm font-semibold text-slate-700">Calculation Report (.xlsx)</p>
-                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 uppercase">
-                  Coming soon
+                <p className="text-sm font-semibold text-emerald-800">Calculation Report (.xlsx)</p>
+                <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 uppercase">
+                  Ready
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Full hydraulic report with equations, curves, and pump schedule.
+              <p className="text-xs text-emerald-700 mt-0.5">
+                11-sheet workbook — inputs, hydraulics, pump curves, wet well, surge analysis &amp; engineering checks.
               </p>
+              {excelError && (
+                <p className="text-xs text-red-600 mt-1 font-semibold">⚠ {excelError}</p>
+              )}
             </div>
             <button
               type="button"
-              onClick={() => showToast("Excel export is in progress")}
-              className="shrink-0 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-50 transition-colors"
+              onClick={handleExportExcel}
+              disabled={excelLoading}
+              className="shrink-0 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 transition-colors disabled:opacity-60 disabled:cursor-wait"
             >
-              Export Excel
+              {excelLoading ? "Building…" : "Export Excel"}
             </button>
           </div>
 

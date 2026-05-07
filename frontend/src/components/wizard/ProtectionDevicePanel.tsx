@@ -349,6 +349,15 @@ export default function ProtectionDevicePanel({
             <SideToggle value={avSide} onChange={setAvSide} />
             <Hint>A = upstream end · B = downstream end</Hint>
           </div>
+          <SizingPreview
+            segments={segments} Q_0_m3s={Q_0_m3s} wave_speed_ms={wave_speed_ms} H_0_m={H_0_m}
+            device={(() => {
+              const V = parseFloat(avVtot), f = parseFloat(avFrac), P = parseFloat(avP0);
+              if (isNaN(V) || isNaN(f) || isNaN(P) || V <= 0 || P <= 0) return null;
+              return { type: "air_vessel" as const, enabled: true, boundary_side: avSide,
+                V_total_m3: V, V_gas_frac: f, P0_kPa: P, polytropic_n: parseFloat(avN) || 1.4 };
+            })()}
+          />
         </DeviceCard>
 
         {/* Surge Tank */}
@@ -373,6 +382,15 @@ export default function ProtectionDevicePanel({
             <Label>Connect to boundary</Label>
             <SideToggle value={stSide} onChange={setStSide} />
           </div>
+          <SizingPreview
+            segments={segments} Q_0_m3s={Q_0_m3s} wave_speed_ms={wave_speed_ms} H_0_m={H_0_m}
+            device={(() => {
+              const A = parseFloat(stArea), z0 = parseFloat(stZ0), zm = parseFloat(stZmax);
+              if (isNaN(A) || A <= 0 || isNaN(z0) || isNaN(zm)) return null;
+              return { type: "surge_tank" as const, enabled: true, boundary_side: stSide,
+                A_tank_m2: A, z_initial_m: z0, z_max_m: zm };
+            })()}
+          />
         </DeviceCard>
 
         {/* PRV */}
@@ -395,6 +413,16 @@ export default function ProtectionDevicePanel({
           <p className="text-[9px] text-amber-700 bg-amber-100 rounded px-2 py-1 leading-snug">
             Dynamic MOC simulation: boundary head clamped at H_set when valve opens — full MOC re-run per scenario.
           </p>
+          <SizingPreview
+            segments={segments} Q_0_m3s={Q_0_m3s} wave_speed_ms={wave_speed_ms} H_0_m={H_0_m}
+            device={(() => {
+              const H = parseFloat(prvH);
+              if (isNaN(H) || H <= 0) return null;
+              const qr = parseFloat(prvQ);
+              return { type: "prv" as const, enabled: true, boundary_side: prvSide,
+                H_set_m: H, Q_relief_m3s: isNaN(qr) || qr <= 0 ? undefined : qr };
+            })()}
+          />
         </DeviceCard>
 
         {/* Vacuum Relief */}
@@ -413,6 +441,14 @@ export default function ProtectionDevicePanel({
           <p className="text-[9px] text-emerald-700 bg-emerald-100 rounded px-2 py-1 leading-snug">
             Dynamic MOC simulation: boundary head clamped at H_admit when valve opens — full MOC re-run per scenario.
           </p>
+          <SizingPreview
+            segments={segments} Q_0_m3s={Q_0_m3s} wave_speed_ms={wave_speed_ms} H_0_m={H_0_m}
+            device={(() => {
+              const H = parseFloat(vrH);
+              return { type: "vacuum_relief" as const, enabled: true, boundary_side: vrSide,
+                H_admit_m: isNaN(H) ? 0 : H };
+            })()}
+          />
         </DeviceCard>
 
         {/* Slow Check Valve */}
@@ -438,6 +474,15 @@ export default function ProtectionDevicePanel({
             <SideToggle value={scvSide} onChange={setScvSide} />
             <Hint>Must match the boundary with the valve_closure BC</Hint>
           </div>
+          <SizingPreview
+            segments={segments} Q_0_m3s={Q_0_m3s} wave_speed_ms={wave_speed_ms} H_0_m={H_0_m}
+            device={(() => {
+              const t = parseFloat(scvTime);
+              if (isNaN(t) || t <= 0) return null;
+              return { type: "slow_check_valve" as const, enabled: true, boundary_side: scvSide,
+                t_close_s: t, profile: scvProf };
+            })()}
+          />
         </DeviceCard>
 
       </div>

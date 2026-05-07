@@ -2410,8 +2410,10 @@ async def surge_whatif(req: WhatIfRequest) -> WhatIfResponse:
         except (ValueError, ZeroDivisionError) as exc:
             # Do NOT fabricate zero-valued metrics — set run_error so the frontend
             # can identify and exclude this row from numeric comparison tables.
+            # Use already-set label if available, else fall back to device class name.
+            _err_base = locals().get("label") or type(dev).__name__
             device_runs.append(WhatIfRunMetrics(
-                label=label if "label" in dir() else type(dev).__name__,
+                label=f"ERROR — {_err_base}",
                 run_error=str(exc)[:200],
                 global_max_H_m=0.0, global_min_H_m=0.0,
                 global_max_P_kPa=0.0, global_min_P_kPa=0.0,

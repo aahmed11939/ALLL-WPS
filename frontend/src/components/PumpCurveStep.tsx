@@ -14,6 +14,7 @@ import {
   type PumpRecord,
 } from "../utils/api";
 import { useUnitSystem } from "../contexts/UnitSystemContext";
+import TermTip from "./TermTip";
 
 /** 1 kW = 1.34102 hp */
 const KW_TO_HP = 1.34102;
@@ -835,7 +836,7 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
             )}
             <div>
               <label className={labelCls}>
-                NPSHa (m)
+                <TermTip term="NPSHa">NPSHa</TermTip> (m)
                 <span className="text-slate-400 normal-case font-normal ml-1">optional</span>
               </label>
               <input

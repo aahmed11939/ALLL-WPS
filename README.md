@@ -34,7 +34,7 @@ pytest backend/tests/ -v
 
 Work through the 10 wizard steps in order. Each step persists state automatically — you can revisit any step at any time. The sticky **LIVE RESULTS** bar at the bottom of every screen shows live TDH, velocity, duty point, NPSH margin, and surge extremes as you work.
 
-<!-- screenshot: step-1-project-setup.png -->
+<!-- screenshot: step-1.png -->
 ### Step 1 — Project Setup
 - Enter project name, client, job number, engineer, date, and design notes.
 - Select unit system: **SI** (m, kPa) or **US** (ft, psi) with the header toggle. Enable **Both units** to show all values dual-labelled.
@@ -59,18 +59,18 @@ Work through the 10 wizard steps in order. Each step persists state automaticall
 - Enter efficiency (η), power, and NPSHr curves.
 - Click **Compute Pump** to find the duty operating point Q*, H* against the system curve.
 
-<!-- screenshot: step-6-discharge.png -->
+<!-- screenshot: step-6.png -->
 ### Step 6 — Discharge Pipeline
 - Mirror of Step 3 for the discharge side: segments and fittings.
 - Used by hydraulic compute and Mode B MOC (discharge surge).
 
-<!-- screenshot: step-7-hydraulics.png -->
+<!-- screenshot: step-7.png -->
 ### Step 7 — Hydraulic Results
 - Results auto-refresh (300 ms debounce) whenever design-flow or pipeline inputs change.
 - Click **Compute Hydraulics** at any time to force a full recalculation.
 - Outputs: TDH, velocity, Re, Darcy-f, system H-Q curve, minor-loss breakdown.
 
-<!-- screenshot: step-8-curves.png -->
+<!-- screenshot: step-8.png -->
 ### Step 8 — System Curve & Operating Point
 - System curve (from Step 7) overlaid with the pump H-Q curve (from Step 5).
 - Intersection = duty operating point Q*, H*. Hover the chart for engineering cursor readouts.
@@ -106,7 +106,7 @@ This step has three sub-tabs:
 3. Click **Run Suction MOC** — solves NPSHa(t) = H_suction(t) − h_vap(T).
 4. Results: NPSHa time history, min NPSHa, margin vs NPSHr, cavitation risk duration.
 
-<!-- screenshot: step-10-checks.png -->
+<!-- screenshot: step-10.png -->
 ### Step 10 — Engineering Checks & Export
 - Automated compliance checklist (AWWA M11, HI 9.6.1, Ten States Standards, ISO 9906).
 - Severity: Critical (must resolve) / Warning (review) / Info.

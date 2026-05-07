@@ -27,8 +27,8 @@ export default function StepCurves() {
   const r  = draft.hydraulicsResult;
   const pr = draft.pumpResult;
 
-  // Auto-refresh pump overlay when pump config changes (400 ms debounce)
-  const pumpCfgKey = useDebounce(JSON.stringify(draft.pumpCurveConfig), 400);
+  // Auto-refresh pump overlay when pump config changes (300 ms debounce)
+  const pumpCfgKey = useDebounce(JSON.stringify(draft.pumpCurveConfig), 300);
   const mountedRef = useRef(false);
   useEffect(() => {
     if (!mountedRef.current) { mountedRef.current = true; return; }

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   LineChart,
   Line,
@@ -225,7 +225,7 @@ export default function StepSuctionSurgeMOC() {
     dispatch({
       type: "SET_SUCTION_SURGE_CONFIG",
       config: {
-        wave_speed_ms:        a,
+        wave_speed_ms:        parseFloat(waveSpeed) || 1000,
         Q_0_m3s_override:     q0Str,
         H_0_m_override:       h0Str,
         rho_kg_m3:            rhoStr,
@@ -256,14 +256,18 @@ export default function StepSuctionSurgeMOC() {
       },
     });
   }, [
-    a, q0Str, h0Str, rhoStr, tempStr, pressRating, npshrStr, pumpNodeFrac,
+    waveSpeed, q0Str, h0Str, rhoStr, tempStr, pressRating, npshrStr, pumpNodeFrac,
     bcAType, bcA_H_m, bcA_Hsump, bcA_Q, bcA_tTrip,
     bcBType, bcB_H_m, bcB_Hsump, bcB_Q, bcB_tTrip,
     obs0Frac, obs0Label, obs1Frac, obs1Label, obs2Frac, obs2Label,
     nReaches, tTotalStr, dispatch,
   ]);
 
-  useEffect(() => { persistConfig(); }, [persistConfig]);
+  const suctionConfigMountedRef = useRef(false);
+  useEffect(() => {
+    if (!suctionConfigMountedRef.current) { suctionConfigMountedRef.current = true; return; }
+    persistConfig();
+  }, [persistConfig]);
 
   // ── Build boundary condition ─────────────────────────────────────────────
   function buildBC(

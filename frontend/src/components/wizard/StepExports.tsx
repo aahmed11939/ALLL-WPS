@@ -53,6 +53,26 @@ function CheckSummaryRow({ check }: { check: CheckResult }) {
   );
 }
 
+function ErrorToast({ message, onClose }: { message: string; onClose: () => void }) {
+  return (
+    <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 shadow-lg px-4 py-3 max-w-sm animate-in slide-in-from-bottom-2">
+      <div className="h-8 w-8 shrink-0 rounded-full bg-red-100 flex items-center justify-center">
+        <svg className="h-4 w-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-red-800">Export failed</p>
+        <p className="text-xs text-red-600 mt-0.5 truncate">{message}</p>
+      </div>
+      <button type="button" onClick={onClose} className="text-red-400 hover:text-red-600 text-lg leading-none">
+        ×
+      </button>
+    </div>
+  );
+}
+
 function SuccessToast({ message, onClose }: { message: string; onClose: () => void }) {
   return (
     <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 shadow-lg px-4 py-3 max-w-sm animate-in slide-in-from-bottom-2">
@@ -114,13 +134,16 @@ function ExportSpinner({ stages, active }: { stages: string[]; active: boolean }
 
 export default function StepExports() {
   const { draft } = useProject();
-  const [toast, setToast]             = useState<string | null>(null);
+  const [toast, setToast]               = useState<string | null>(null);
   const [excelLoading, setExcelLoading] = useState(false);
   const [excelError,   setExcelError]   = useState<string | null>(null);
   const [excelSuccess, setExcelSuccess] = useState(false);
   const [wordLoading,  setWordLoading]  = useState(false);
   const [wordError,    setWordError]    = useState<string | null>(null);
   const [wordSuccess,  setWordSuccess]  = useState(false);
+
+  const dismissExcelError = () => setExcelError(null);
+  const dismissWordError  = () => setWordError(null);
 
   const handleExportWord = async () => {
     setWordError(null);
@@ -222,6 +245,12 @@ export default function StepExports() {
           message="Word design report exported successfully!"
           onClose={() => setWordSuccess(false)}
         />
+      )}
+      {excelError && (
+        <ErrorToast message={excelError} onClose={dismissExcelError} />
+      )}
+      {wordError && (
+        <ErrorToast message={wordError} onClose={dismissWordError} />
       )}
       {toast && <FeatureToast message={toast} onClose={() => setToast(null)} />}
 
@@ -376,9 +405,6 @@ export default function StepExports() {
                 11-sheet workbook — inputs, hydraulics, pump curves, wet well, surge analysis &amp; engineering checks.
               </p>
               <ExportSpinner stages={EXCEL_STAGES} active={excelLoading} />
-              {excelError && (
-                <p className="text-xs text-red-600 mt-1 font-semibold">⚠ {excelError}</p>
-              )}
             </div>
             <button
               type="button"
@@ -409,9 +435,6 @@ export default function StepExports() {
                 Stamped design memorandum — hydraulics, pump curves, wet well, surge analysis &amp; figures.
               </p>
               <ExportSpinner stages={WORD_STAGES} active={wordLoading} />
-              {wordError && (
-                <p className="text-xs text-red-600 mt-1 font-semibold">⚠ {wordError}</p>
-              )}
             </div>
             <button
               type="button"

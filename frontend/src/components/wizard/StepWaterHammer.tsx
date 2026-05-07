@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import TermTip from "../TermTip";
 import { useProject } from "../../contexts/ProjectContext";
 import { computeSurgeQuick, computeWaveSpeed } from "../../utils/api";
@@ -334,7 +334,11 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
     waveSdr, useSDR, waveRestraint, dispatch,
   ]);
 
-  useEffect(() => { persistConfig(); }, [persistConfig]);
+  const whConfigMountedRef = useRef(false);
+  useEffect(() => {
+    if (!whConfigMountedRef.current) { whConfigMountedRef.current = true; return; }
+    persistConfig();
+  }, [persistConfig]);
 
   async function handleCompute() {
     setError(null);

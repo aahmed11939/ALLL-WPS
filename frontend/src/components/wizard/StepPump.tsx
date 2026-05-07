@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import PumpSelectionStep from "../PumpSelectionStep";
 import PumpCurveStep from "../PumpCurveStep";
 import { useProject } from "../../contexts/ProjectContext";
@@ -8,11 +9,15 @@ import type { PumpSelectionConfig, PumpCurveConfig } from "../../types/project";
 export default function StepPump() {
   const { draft, dispatch } = useProject();
 
-  const systemCurve: CurvePoint[] | undefined = draft.hydraulicsResult?.system_curve
-    ? (draft.hydraulicsResult.system_curve as { Q_m3h: number; H_m: number }[]).map(
-        (pt) => ({ Q_m3h: pt.Q_m3h, value: pt.H_m })
-      )
-    : undefined;
+  const systemCurve: CurvePoint[] | undefined = useMemo(
+    () =>
+      draft.hydraulicsResult?.system_curve
+        ? (draft.hydraulicsResult.system_curve as { Q_m3h: number; H_m: number }[]).map(
+            (pt) => ({ Q_m3h: pt.Q_m3h, value: pt.H_m })
+          )
+        : undefined,
+    [draft.hydraulicsResult]
+  );
 
   const handlePumpResult = (result: PumpComputeResponse | null) => {
     dispatch({ type: "SET_PUMP_RESULT", result });

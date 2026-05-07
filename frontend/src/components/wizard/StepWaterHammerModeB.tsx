@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import ChartErrorBoundary from "../ChartErrorBoundary";
 import {
   ComposedChart,
@@ -536,7 +536,7 @@ export default function StepWaterHammerModeB() {
       type: "SET_MOC_CONFIG",
       config: {
         pipeline,
-        wave_speed_ms:     a,
+        wave_speed_ms:     parseFloat(waveSpeed) || 1000,
         Q_0_m3s_override:  q0Str,
         H_0_m_override:    h0Str,
         rho_kg_m3:         rhoStr,
@@ -564,14 +564,18 @@ export default function StepWaterHammerModeB() {
       },
     });
   }, [
-    pipeline, a, q0Str, h0Str, rhoStr, tempStr, pressRating,
+    pipeline, waveSpeed, q0Str, h0Str, rhoStr, tempStr, pressRating,
     bcAType, bcA_H_m, bcA_Hpump, bcA_Q, bcA_tTrip, bcA_Hres, bcA_tClose, bcA_prof, bcA_Hsump,
     bcBType, bcB_H_m, bcB_Hpump, bcB_Q, bcB_tTrip, bcB_Hres, bcB_tClose, bcB_prof, bcB_Hsump,
     obs0Frac, obs0Label, obs1Frac, obs1Label, obs2Frac, obs2Label,
     nReaches, tTotalStr, dispatch,
   ]);
 
-  useEffect(() => { persistConfig(); }, [persistConfig]);
+  const mocConfigMountedRef = useRef(false);
+  useEffect(() => {
+    if (!mocConfigMountedRef.current) { mocConfigMountedRef.current = true; return; }
+    persistConfig();
+  }, [persistConfig]);
 
   // ── Build boundary condition from state ─────────────────────────────────────
   function buildBC(

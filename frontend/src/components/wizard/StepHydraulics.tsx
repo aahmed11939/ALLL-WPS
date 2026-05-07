@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useDebounce } from "../../hooks/useDebounce";
 import { useProject } from "../../contexts/ProjectContext";
 import { useUnitSystem } from "../../contexts/UnitSystemContext";
+import TermTip from "../TermTip";
 import ResultsPanel from "../ResultsPanel";
 import EquationsPanel from "../EquationsPanel";
 import LossBreakdownPanel from "../LossBreakdownPanel";
@@ -36,11 +37,23 @@ export default function StepHydraulics() {
   const [breakdown, setBreakdown] = useState<LossBreakdownResponse | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ApiFieldError[]>([]);
 
-  // Debounced auto-recompute (300 ms) when key inputs change
-  const debouncedFlow = useDebounce(draft.designFlow_m3h, 300);
-  const debouncedSegCount = useDebounce(
-    draft.suction.segments.length + draft.discharge.segments.length, 300
-  );
+  // Debounced auto-recompute (300 ms) when ANY hydraulic input changes.
+  // Individual primitive values are used to guarantee reference-stable comparison
+  // (avoids JSON.stringify of complex objects which can behave unexpectedly in
+  // Strict Mode or when the reducer returns new array references).
+  const debouncedFlow   = useDebounce(draft.designFlow_m3h,               300);
+  const debouncedUpElev = useDebounce(draft.upstreamNode.elevation_m,      300);
+  const debouncedDsElev = useDebounce(draft.downstreamNode.elevation_m,    300);
+  const debouncedSKSum  = useDebounce(draft.suction.accessories_K_sum,     300);
+  const debouncedDKSum  = useDebounce(draft.discharge.accessories_K_sum,   300);
+  // Segment content (diameter/length/material) encoded as primitive strings
+  const sSegStr = draft.suction.segments
+    .map(s => `${s.length_m}|${s.diameter_mm}|${s.material}`).join(';');
+  const dSegStr = draft.discharge.segments
+    .map(s => `${s.length_m}|${s.diameter_mm}|${s.material}`).join(';');
+  const debouncedSSegs  = useDebounce(sSegStr, 300);
+  const debouncedDSegs  = useDebounce(dSegStr, 300);
+
   const mountedRef = useRef(false);
   const loadingRef  = useRef(loading);
   loadingRef.current = loading;
@@ -51,14 +64,14 @@ export default function StepHydraulics() {
   const results = draft.hydraulicsResult;
   const error   = draft.hydraulicsError;
 
-  // Auto-recompute 300 ms after design-flow or segment count changes (skip initial mount)
+  // Auto-recompute 300 ms after any hydraulic input changes (skip initial mount)
   useEffect(() => {
     if (!mountedRef.current) { mountedRef.current = true; return; }
-    if (!loadingRef.current && (debouncedFlow > 0 || debouncedSegCount > 0)) {
+    if (!loadingRef.current) {
       handleComputeRef.current();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedFlow, debouncedSegCount]);
+  }, [debouncedFlow, debouncedUpElev, debouncedDsElev, debouncedSKSum, debouncedDKSum, debouncedSSegs, debouncedDSegs]);
 
   const handleCompute = async () => {
     setLoading(true);
@@ -240,7 +253,7 @@ export default function StepHydraulics() {
             <span className="font-mono text-slate-700">{draft.suction.segments.length}</span>
           </div>
           <div className="flex justify-between col-span-1">
-            <span className="text-slate-400">Combined ΣK</span>
+            <span className="text-slate-400">Combined <TermTip term="K">ΣK</TermTip></span>
             <span className="font-mono text-slate-700">
               {(draft.suction.accessories_K_sum + draft.discharge.accessories_K_sum).toFixed(3)}
             </span>

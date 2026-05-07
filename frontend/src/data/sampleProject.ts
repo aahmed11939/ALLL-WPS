@@ -96,4 +96,6 @@ export const SAMPLE_PROJECT: ProjectDraft = {
   clearwellResult: null,
   waterHammerConfig: null,
   waterHammerResult: null,
+  mocConfig: null,
+  mocResult: null,
 };

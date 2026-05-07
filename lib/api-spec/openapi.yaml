@@ -37,6 +37,9 @@ paths:
         configurable upstream/downstream boundary conditions, and up to 3 observation
         points. Returns an envelope (H_max / H_min per node), time-histories at each
         observation point, a pressure-rating check, and assumption notes.
+        Upstream boundary (boundary_A) accepts: reservoir, pump_trip.
+        Downstream boundary (boundary_B) accepts: reservoir, valve_closure,
+        suction_pump_trip.
       requestBody:
         required: true
         content:
@@ -78,7 +81,7 @@ components:
           description: Internal diameter [m]
         roughness_m:
           type: number
-          description: Hazen-Williams absolute roughness [m]
+          description: Absolute pipe roughness [m]
         elev_start_m:
           type: number
           default: 0.0
@@ -91,24 +94,28 @@ components:
 
     MOCBCReservoir:
       type: object
+      description: Constant-head reservoir / fixed-HGL boundary.
       properties:
         type:
           type: string
           enum: [reservoir]
         H_m:
           type: number
-          description: Reservoir piezometric head [m]
+          description: Reservoir total piezometric head [m]
       required: [type, H_m]
 
     MOCBCPumpTrip:
       type: object
+      description: >
+        Upstream pump boundary with quadratic head-decay trip model.
+        H_source(t) = H_pump × (1 − t/t_trip)². Q clamped ≥ 0 (check valve).
       properties:
         type:
           type: string
           enum: [pump_trip]
         H_pump_m:
           type: number
-          description: Steady-state pump head [m]
+          description: Steady-state pump total head [m]
         Q_m3s:
           type: number
           description: Steady-state flow rate [m³/s]
@@ -123,6 +130,7 @@ components:
 
     MOCBCValveClosure:
       type: object
+      description: Downstream valve closure — gate-valve model Q = Q₀·τ(t)².
       properties:
         type:
           type: string
@@ -141,13 +149,14 @@ components:
 
     MOCBCSuctionPumpTrip:
       type: object
+      description: Downstream suction boundary — pump demand decays to zero over t_trip.
       properties:
         type:
           type: string
           enum: [suction_pump_trip]
         H_sump_m:
           type: number
-          description: Sump piezometric head [m]
+          description: Sump total piezometric head [m]
         Q_m3s:
           type: number
           description: Steady-state flow rate [m³/s]
@@ -157,7 +166,9 @@ components:
       required: [type, H_sump_m, Q_m3s, t_trip_s]
 
     MOCBoundaryAInput:
-      description: "Upstream boundary (node 0). Valid types: reservoir, pump_trip."
+      description: >
+        Upstream boundary condition (node 0).
+        Valid types: reservoir, pump_trip.
       oneOf:
         - $ref: "#/components/schemas/MOCBCReservoir"
         - $ref: "#/components/schemas/MOCBCPumpTrip"
@@ -165,7 +176,9 @@ components:
         propertyName: type
 
     MOCBoundaryBInput:
-      description: "Downstream boundary (node N). Valid types: reservoir, valve_closure, suction_pump_trip."
+      description: >
+        Downstream boundary condition (node N).
+        Valid types: reservoir, valve_closure, suction_pump_trip.
       oneOf:
         - $ref: "#/components/schemas/MOCBCReservoir"
         - $ref: "#/components/schemas/MOCBCValveClosure"
@@ -207,12 +220,15 @@ components:
         temperature_C:
           type: number
           default: 20.0
+          minimum: -10.0
+          maximum: 100.0
         rho_kg_m3:
           type: number
           default: 1000.0
         pressure_rating_kPa:
           type: number
           nullable: true
+          description: Pipe pressure rating for pass/fail check [kPa]
         segments:
           type: array
           items:
@@ -232,9 +248,11 @@ components:
           minimum: 10
           maximum: 200
           nullable: true
+          description: Number of computational reaches (default: auto from Courant = 1)
         t_total_s:
           type: number
           nullable: true
+          description: Total simulation duration [s] (default: max(10 × T_char, 30 s))
         unit_system:
           type: string
           enum: [SI, US]
@@ -243,25 +261,39 @@ components:
 
     MOCEnvelopePoint:
       type: object
+      description: Per-node pressure envelope across full simulation duration.
       properties:
-        x_m: { type: number }
-        elev_m: { type: number }
-        H_max_m: { type: number }
-        H_min_m: { type: number }
-        P_max_kPa: { type: number }
-        P_min_kPa: { type: number }
+        x_m:
+          type: number
+          description: Distance from upstream end [m]
+        elev_m:
+          type: number
+          description: Pipe centreline elevation [m]
+        H_max_m:
+          type: number
+          description: Maximum piezometric head over all time steps [m]
+        H_min_m:
+          type: number
+          description: Minimum piezometric head over all time steps [m]
+        P_max_kPa:
+          type: number
+          description: Maximum gauge pressure [kPa]
+        P_min_kPa:
+          type: number
+          description: Minimum gauge pressure [kPa]
       required: [x_m, elev_m, H_max_m, H_min_m, P_max_kPa, P_min_kPa]
 
     MOCTimePoint:
       type: object
       properties:
-        t_s: { type: number }
-        H_m: { type: number }
-        P_kPa: { type: number }
+        t_s: { type: number, description: "Simulation time [s]" }
+        H_m: { type: number, description: "Piezometric head at observation node [m]" }
+        P_kPa: { type: number, description: "Gauge pressure [kPa]" }
       required: [t_s, H_m, P_kPa]
 
     MOCObservationResult:
       type: object
+      description: Time-history at one observation point.
       properties:
         label: { type: string }
         frac: { type: number }
@@ -283,32 +315,110 @@ components:
 
     MOCResponse:
       type: object
+      description: >
+        Full MOC simulation result. All head values are total piezometric head [m];
+        pressure values are gauge pressure [kPa].
       properties:
-        status_code:
+        pipeline:
+          type: string
+          description: Echo of requested pipeline side (suction|discharge)
+        N:
           type: integer
-          description: HTTP echo (always 200 on success)
+          description: Number of computational reaches
+        dx_m:
+          type: number
+          description: Spatial step size [m]
+        dt_s:
+          type: number
+          description: Time step [s] (= dx_m / wave_speed_ms, Courant = 1)
+        courant:
+          type: number
+          description: Courant number (always 1.0)
+        t_total_s:
+          type: number
+          description: Total simulation duration [s]
+        n_steps:
+          type: integer
+          description: Number of time steps
+        D_m:
+          type: number
+          description: Effective (flow-weighted mean) pipe diameter [m]
+        f:
+          type: number
+          description: Darcy-Weisbach friction factor (Swamee-Jain)
+        T_char_s:
+          type: number
+          description: Characteristic wave travel time 2L/a [s]
         envelope:
           type: array
           items:
             $ref: "#/components/schemas/MOCEnvelopePoint"
+          description: Pressure envelope (H_max, H_min) at each node
         observations:
           type: array
           items:
             $ref: "#/components/schemas/MOCObservationResult"
-        metadata:
-          type: object
-          description: Simulation metadata (n_nodes, dt_s, T_char_s, courant, etc.)
-        rating_check:
-          $ref: "#/components/schemas/MOCPressureRatingCheck"
-          nullable: true
+          description: Time-history at each requested observation point
+        global_max_H_m:
+          type: number
+          description: System-wide maximum piezometric head [m]
+        global_min_H_m:
+          type: number
+          description: System-wide minimum piezometric head [m]
+        global_max_P_kPa:
+          type: number
+          description: System-wide maximum gauge pressure [kPa]
+        global_min_P_kPa:
+          type: number
+          description: System-wide minimum gauge pressure [kPa]
+        cavitation_x_m:
+          type: array
+          items:
+            type: number
+          description: >
+            x-coordinates [m] of nodes where column separation was detected
+            (head fell to vapour pressure). Empty array if no cavitation.
+        h_vap_m:
+          type: number
+          description: Vapour pressure head at simulation temperature [m gauge]
+        temperature_C:
+          type: number
+          description: Water temperature used for vapour pressure calculation [°C]
         assumption_notes:
           type: array
           items:
             type: string
+          description: Engineering assumption notes for report / audit trail
+        rating_check:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/MOCPressureRatingCheck"
+          description: Pressure rating pass/fail check (null if not requested)
         unit_system:
           type: string
           enum: [SI, US]
-      required: [status_code, envelope, observations, metadata, assumption_notes, unit_system]
+      required:
+        - pipeline
+        - N
+        - dx_m
+        - dt_s
+        - courant
+        - t_total_s
+        - n_steps
+        - D_m
+        - f
+        - T_char_s
+        - envelope
+        - observations
+        - global_max_H_m
+        - global_min_H_m
+        - global_max_P_kPa
+        - global_min_P_kPa
+        - cavitation_x_m
+        - h_vap_m
+        - temperature_C
+        - assumption_notes
+        - unit_system
 
     HTTPValidationError:
       type: object

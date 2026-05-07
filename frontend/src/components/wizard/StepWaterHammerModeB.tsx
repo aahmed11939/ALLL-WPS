@@ -14,7 +14,7 @@ import {
 } from "recharts";
 import { useProject } from "../../contexts/ProjectContext";
 import { computeMOC } from "../../utils/api";
-import type { MOCResponse, MOCBoundaryInput, PressureRatingCheck } from "../../utils/api";
+import type { MOCResponse, MOCBoundaryInput, MOCBoundaryAInput, MOCBoundaryBInput, PressureRatingCheck } from "../../utils/api";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -435,29 +435,29 @@ export default function StepWaterHammerModeB() {
   const [nReaches,    setNReaches]    = useState(cfg?.n_reaches ?? "");
   const [tTotalStr,   setTTotalStr]   = useState(cfg?.t_total_s ?? "");
 
-  // Boundary A
+  // Boundary A — typed as `string` so state setters match BCPanelHandlers.(v: string) => void
   const initA = cfg?.boundary_A;
-  const [bcAType,    setBcAType]    = useState(initA?.type ?? "pump_trip");
-  const [bcA_H_m,    setBcA_H_m]    = useState(initA?.H_m ?? "5");
-  const [bcA_Hpump,  setBcA_Hpump]  = useState(initA?.H_pump_m ?? "");
-  const [bcA_Q,      setBcA_Q]      = useState(initA?.Q_m3s ?? "");
-  const [bcA_tTrip,  setBcA_tTrip]  = useState(initA?.t_trip_s ?? "2");
-  const [bcA_Hres,   setBcA_Hres]   = useState(initA?.H_reservoir_m ?? "5");
-  const [bcA_tClose, setBcA_tClose] = useState(initA?.t_close_s ?? "10");
-  const [bcA_prof,   setBcA_prof]   = useState(initA?.profile ?? "linear");
-  const [bcA_Hsump,  setBcA_Hsump]  = useState(initA?.H_sump_m ?? "5");
+  const [bcAType,    setBcAType]    = useState<string>(initA?.type ?? "pump_trip");
+  const [bcA_H_m,    setBcA_H_m]    = useState<string>(initA?.H_m ?? "5");
+  const [bcA_Hpump,  setBcA_Hpump]  = useState<string>(initA?.H_pump_m ?? "");
+  const [bcA_Q,      setBcA_Q]      = useState<string>(initA?.Q_m3s ?? "");
+  const [bcA_tTrip,  setBcA_tTrip]  = useState<string>(initA?.t_trip_s ?? "2");
+  const [bcA_Hres,   setBcA_Hres]   = useState<string>(initA?.H_reservoir_m ?? "5");
+  const [bcA_tClose, setBcA_tClose] = useState<string>(initA?.t_close_s ?? "10");
+  const [bcA_prof,   setBcA_prof]   = useState<string>(initA?.profile ?? "linear");
+  const [bcA_Hsump,  setBcA_Hsump]  = useState<string>(initA?.H_sump_m ?? "5");
 
-  // Boundary B
+  // Boundary B — typed as `string` so state setters match BCPanelHandlers.(v: string) => void
   const initB = cfg?.boundary_B;
-  const [bcBType,    setBcBType]    = useState(initB?.type ?? "reservoir");
-  const [bcB_H_m,    setBcB_H_m]    = useState(initB?.H_m ?? "35");
-  const [bcB_Hpump,  setBcB_Hpump]  = useState(initB?.H_pump_m ?? "");
-  const [bcB_Q,      setBcB_Q]      = useState(initB?.Q_m3s ?? "");
-  const [bcB_tTrip,  setBcB_tTrip]  = useState(initB?.t_trip_s ?? "2");
-  const [bcB_Hres,   setBcB_Hres]   = useState(initB?.H_reservoir_m ?? "5");
-  const [bcB_tClose, setBcB_tClose] = useState(initB?.t_close_s ?? "10");
-  const [bcB_prof,   setBcB_prof]   = useState(initB?.profile ?? "linear");
-  const [bcB_Hsump,  setBcB_Hsump]  = useState(initB?.H_sump_m ?? "5");
+  const [bcBType,    setBcBType]    = useState<string>(initB?.type ?? "reservoir");
+  const [bcB_H_m,    setBcB_H_m]    = useState<string>(initB?.H_m ?? "35");
+  const [bcB_Hpump,  setBcB_Hpump]  = useState<string>(initB?.H_pump_m ?? "");
+  const [bcB_Q,      setBcB_Q]      = useState<string>(initB?.Q_m3s ?? "");
+  const [bcB_tTrip,  setBcB_tTrip]  = useState<string>(initB?.t_trip_s ?? "2");
+  const [bcB_Hres,   setBcB_Hres]   = useState<string>(initB?.H_reservoir_m ?? "5");
+  const [bcB_tClose, setBcB_tClose] = useState<string>(initB?.t_close_s ?? "10");
+  const [bcB_prof,   setBcB_prof]   = useState<string>(initB?.profile ?? "linear");
+  const [bcB_Hsump,  setBcB_Hsump]  = useState<string>(initB?.H_sump_m ?? "5");
 
   // Observation points
   const [obs0Frac,  setObs0Frac]  = useState(cfg?.obs_points?.[0]?.frac  ?? "0");
@@ -621,8 +621,8 @@ export default function StepWaterHammerModeB() {
         rho_kg_m3: rho,
         pressure_rating_kPa: (!isNaN(ratingV) && ratingV > 0) ? ratingV : null,
         segments: builtSegs,
-        boundary_A: bcA,
-        boundary_B: bcB,
+        boundary_A: bcA as MOCBoundaryAInput,
+        boundary_B: bcB as MOCBoundaryBInput,
         observation_points: [
           { frac: parseFloat(obs0Frac) || 0,   label: obs0Label },
           { frac: parseFloat(obs1Frac) || 0.5, label: obs1Label },
@@ -904,7 +904,7 @@ export default function StepWaterHammerModeB() {
         <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-6 shadow-sm">
 
           {/* Summary strip */}
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
             <SummaryCard label="Max transient head" value={fmtH(result.global_max_H_m)} highlight="red" />
             <SummaryCard
               label="Min transient head"
@@ -916,6 +916,15 @@ export default function StepWaterHammerModeB() {
               label="Min pressure"
               value={fmtP(result.global_min_P_kPa)}
               highlight={result.global_min_P_kPa < 0 ? "amber" : "green"}
+            />
+            <SummaryCard
+              label="First cavitation"
+              value={
+                result.cavitation_x_m.length > 0
+                  ? `x = ${result.cavitation_x_m[0].toFixed(0)} m`
+                  : "None"
+              }
+              highlight={result.cavitation_x_m.length > 0 ? "red" : "green"}
             />
           </div>
 
@@ -975,11 +984,13 @@ export default function StepWaterHammerModeB() {
                   tick={{ fontSize: 10 }}
                 />
                 <Tooltip
-                  formatter={(v: number, name: string) => [
-                    `${v.toFixed(2)} m`,
-                    name === "Hmax" ? "H_max" : name === "Hmin" ? "H_min" : name,
-                  ]}
-                  labelFormatter={(x: number) => `x = ${x} m`}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  formatter={(v: any, name: any) => [
+                    `${Number(v).toFixed(2)} m`,
+                    name === "Hmax" ? "H_max" : name === "Hmin" ? "H_min" : String(name),
+                  ] as any}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  labelFormatter={(x: any) => `x = ${Number(x).toFixed(0)} m`}
                 />
                 <Legend wrapperStyle={{ fontSize: 10 }} />
                 <Area
@@ -1027,8 +1038,10 @@ export default function StepWaterHammerModeB() {
                     tick={{ fontSize: 10 }}
                   />
                   <Tooltip
-                    formatter={(v: number, name: string) => [`${Number(v).toFixed(2)} m`, name]}
-                    labelFormatter={(t: number) => `t = ${Number(t).toFixed(3)} s`}
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    formatter={(v: any, name: any) => [`${Number(v).toFixed(2)} m`, String(name)] as any}
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    labelFormatter={(t: any) => `t = ${Number(t).toFixed(3)} s`}
                   />
                   <Legend wrapperStyle={{ fontSize: 10 }} />
                   {result.observations.map((obs, ki) => (

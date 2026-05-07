@@ -22,8 +22,10 @@ import pytest
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
+from openpyxl import Workbook as OpenpyxlWorkbook
+
 from backend.api.main import app
-from backend.engine.excel_export import build_workbook
+from backend.engine.excel_export import _wb_to_bytes, build_workbook
 
 client = TestClient(app)
 
@@ -300,70 +302,70 @@ EXPECTED_SHEETS = [
 ]
 
 
+def _bwb(draft: dict) -> bytes:
+    """Test helper: build workbook and serialize to bytes."""
+    return _wb_to_bytes(build_workbook(draft))
+
+
+def _cells(ws) -> list[str]:
+    """Flatten all cell values in a worksheet to a list of strings."""
+    return [
+        str(ws.cell(r, c).value if ws.cell(r, c).value is not None else "")
+        for r in range(1, ws.max_row + 1)
+        for c in range(1, ws.max_column + 1)
+    ]
+
+
 class TestBuildWorkbook:
-    def test_returns_bytes(self):
-        data = build_workbook(EMPTY_DRAFT)
-        assert isinstance(data, bytes)
+    def test_returns_workbook(self):
+        """build_workbook() now returns an openpyxl.Workbook, not bytes."""
+        wb = build_workbook(EMPTY_DRAFT)
+        assert isinstance(wb, OpenpyxlWorkbook)
+        data = _wb_to_bytes(wb)
         assert len(data) > 1000  # real xlsx, not empty
 
     def test_is_valid_xlsx(self):
-        data = build_workbook(EMPTY_DRAFT)
+        data = _bwb(EMPTY_DRAFT)
         wb   = load_workbook(io.BytesIO(data))
         assert wb is not None
 
     def test_all_11_sheets_present_empty_draft(self):
-        data = build_workbook(EMPTY_DRAFT)
+        data = _bwb(EMPTY_DRAFT)
         wb   = load_workbook(io.BytesIO(data))
         assert set(EXPECTED_SHEETS).issubset(set(wb.sheetnames))
 
     def test_all_11_sheets_present_full_draft(self):
-        data = build_workbook(full_draft())
+        data = _bwb(full_draft())
         wb   = load_workbook(io.BytesIO(data))
         assert set(EXPECTED_SHEETS).issubset(set(wb.sheetnames))
 
     def test_inputs_sheet_contains_project_name(self):
         d    = dict(EMPTY_DRAFT)
         d["meta"] = dict(EMPTY_DRAFT["meta"], name="My Pump Station")
-        data = build_workbook(d)
+        data = _bwb(d)
         wb   = load_workbook(io.BytesIO(data))
         ws   = wb["Inputs Summary"]
-        cell_values = [
-            str(ws.cell(r, c).value or "")
-            for r in range(1, ws.max_row + 1)
-            for c in range(1, ws.max_column + 1)
-        ]
-        assert any("My Pump Station" in v for v in cell_values)
+        assert any("My Pump Station" in v for v in _cells(ws))
 
     def test_hydraulics_sheet_has_per_segment_data(self):
         """Hydraulics sheet always shows per-segment geometry breakdown."""
-        data = build_workbook(EMPTY_DRAFT)
+        data = _bwb(EMPTY_DRAFT)
         wb   = load_workbook(io.BytesIO(data))
         ws   = wb["Hydraulics Breakdown"]
-        cell_values = [
-            str(ws.cell(r, c).value or "")
-            for r in range(1, ws.max_row + 1)
-            for c in range(1, ws.max_column + 1)
-        ]
-        # Segments from EMPTY_DRAFT (pvc / dicl) should appear
-        assert any("pvc" in v.lower() or "dicl" in v.lower() for v in cell_values)
+        assert any("pvc" in v.lower() or "dicl" in v.lower() for v in _cells(ws))
 
     def test_hydraulics_sheet_has_tdh_when_result_present(self):
         d    = dict(EMPTY_DRAFT)
         d["hydraulicsResult"] = HYDRAULICS_RESULT
-        data = build_workbook(d)
+        data = _bwb(d)
         wb   = load_workbook(io.BytesIO(data))
         ws   = wb["Hydraulics Breakdown"]
-        cell_values = [
-            str(ws.cell(r, c).value or "")
-            for r in range(1, ws.max_row + 1)
-            for c in range(1, ws.max_column + 1)
-        ]
-        assert any("TDH" in v or "38.54" in v for v in cell_values)
+        assert any("TDH" in v or "38.54" in v for v in _cells(ws))
 
     def test_system_curve_sheet_has_data_rows(self):
         d    = dict(EMPTY_DRAFT)
         d["hydraulicsResult"] = HYDRAULICS_RESULT
-        data = build_workbook(d)
+        data = _bwb(d)
         wb   = load_workbook(io.BytesIO(data))
         ws   = wb["System Curve"]
         q_values = [
@@ -374,75 +376,43 @@ class TestBuildWorkbook:
         assert len(q_values) >= 5
 
     def test_pump_curves_sheet_has_hq_data(self):
-        data = build_workbook(full_draft())
+        data = _bwb(full_draft())
         wb   = load_workbook(io.BytesIO(data))
         ws   = wb["Pump Curves"]
-        cell_values = [
-            str(ws.cell(r, c).value if ws.cell(r, c).value is not None else "")
-            for r in range(1, ws.max_row + 1)
-            for c in range(1, ws.max_column + 1)
-        ]
-        # Header "H (m)" and value 38.5 are always present
-        assert any("H (m)" in v or "38.5" in v for v in cell_values)
+        assert any("H (m)" in v or "38.5" in v for v in _cells(ws))
 
     def test_operating_points_sheet_has_operating_point(self):
-        data = build_workbook(full_draft())
+        data = _bwb(full_draft())
         wb   = load_workbook(io.BytesIO(data))
         ws   = wb["Operating Points"]
-        cell_values = [
-            str(ws.cell(r, c).value or "")
-            for r in range(1, ws.max_row + 1)
-            for c in range(1, ws.max_column + 1)
-        ]
-        assert any("36.2" in v or "71.8" in v for v in cell_values)
+        assert any("36.2" in v or "71.8" in v for v in _cells(ws))
 
     def test_wet_well_sheet_has_volume_curve(self):
-        data = build_workbook(full_draft())
+        data = _bwb(full_draft())
         wb   = load_workbook(io.BytesIO(data))
         ws   = wb["Wet Well"]
-        cell_values = [
-            str(ws.cell(r, c).value or "")
-            for r in range(1, ws.max_row + 1)
-            for c in range(1, ws.max_column + 1)
-        ]
-        assert any("19.6" in v or "39.3" in v for v in cell_values)
+        assert any("19.6" in v or "39.3" in v for v in _cells(ws))
 
     def test_engineering_checks_present(self):
-        data = build_workbook(full_draft())
+        data = _bwb(full_draft())
         wb   = load_workbook(io.BytesIO(data))
         ws   = wb["Engineering Checks"]
-        cell_values = [
-            str(ws.cell(r, c).value or "")
-            for r in range(1, ws.max_row + 1)
-            for c in range(1, ws.max_column + 1)
-        ]
-        # Should contain at least a velocity check
-        assert any("velocity" in v.lower() or "reynolds" in v.lower() for v in cell_values)
+        assert any("velocity" in v.lower() or "reynolds" in v.lower() for v in _cells(ws))
 
     def test_surge_quick_sheet_has_wave_speed(self):
-        data = build_workbook(full_draft())
+        data = _bwb(full_draft())
         wb   = load_workbook(io.BytesIO(data))
         ws   = wb["Surge Quick (Mode A)"]
-        cell_values = [
-            str(ws.cell(r, c).value or "")
-            for r in range(1, ws.max_row + 1)
-            for c in range(1, ws.max_column + 1)
-        ]
-        assert any("1000" in v for v in cell_values)
+        assert any("1000" in v for v in _cells(ws))
 
     def test_moc_histories_sheet_observation_labels(self):
-        data = build_workbook(full_draft())
+        data = _bwb(full_draft())
         wb   = load_workbook(io.BytesIO(data))
         ws   = wb["Surge MOC Time Histories"]
-        cell_values = [
-            str(ws.cell(r, c).value or "")
-            for r in range(1, ws.max_row + 1)
-            for c in range(1, ws.max_column + 1)
-        ]
-        assert any("Pump outlet" in v for v in cell_values)
+        assert any("Pump outlet" in v for v in _cells(ws))
 
     def test_surge_envelope_sheet_has_distance_data(self):
-        data = build_workbook(full_draft())
+        data = _bwb(full_draft())
         wb   = load_workbook(io.BytesIO(data))
         ws   = wb["Surge Envelope vs Distance"]
         num_values = [
@@ -453,32 +423,27 @@ class TestBuildWorkbook:
         assert len(num_values) >= 3
 
     def test_protection_comparisons_sheet_has_baseline(self):
-        data = build_workbook(full_draft())
+        data = _bwb(full_draft())
         wb   = load_workbook(io.BytesIO(data))
         ws   = wb["Protection Comparisons"]
-        cell_values = [
-            str(ws.cell(r, c).value or "")
-            for r in range(1, ws.max_row + 1)
-            for c in range(1, ws.max_column + 1)
-        ]
-        assert any("Baseline" in v or "Air Vessel" in v for v in cell_values)
+        assert any("Baseline" in v or "Air Vessel" in v for v in _cells(ws))
 
     def test_empty_draft_no_raise(self):
         """build_workbook must not raise even when all result fields are None."""
-        data = build_workbook({})
+        data = _bwb({})
         wb   = load_workbook(io.BytesIO(data))
         assert len(wb.sheetnames) == 11
 
     def test_system_curve_chart_attached(self):
         d    = dict(EMPTY_DRAFT)
         d["hydraulicsResult"] = HYDRAULICS_RESULT
-        data = build_workbook(d)
+        data = _bwb(d)
         wb   = load_workbook(io.BytesIO(data))
         ws   = wb["System Curve"]
         assert len(ws._charts) >= 1
 
     def test_surge_envelope_chart_attached(self):
-        data = build_workbook(full_draft())
+        data = _bwb(full_draft())
         wb   = load_workbook(io.BytesIO(data))
         ws   = wb["Surge Envelope vs Distance"]
         assert len(ws._charts) >= 1

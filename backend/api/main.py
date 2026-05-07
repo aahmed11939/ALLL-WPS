@@ -168,7 +168,7 @@ from backend.engine.hydraulics import (
     velocity,
 )
 from backend.engine.units import convert
-from backend.engine.excel_export import build_workbook
+from backend.engine.excel_export import _wb_to_bytes, build_workbook
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -2534,7 +2534,7 @@ async def export_excel(body: ExcelExportRequest) -> StreamingResponse:
     draft: dict = body.model_dump()
 
     try:
-        xlsx_bytes = build_workbook(draft)
+        xlsx_bytes = _wb_to_bytes(build_workbook(draft))
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

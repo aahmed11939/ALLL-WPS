@@ -28,8 +28,22 @@ from typing import Any
 
 from openpyxl import Workbook
 from openpyxl.chart import LineChart, Reference
+from openpyxl.chart.series import SeriesLabel
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+
+# ---------------------------------------------------------------------------
+# Number-format policy (per spec: 2 dp heads, 0 dp flows, 1 dp efficiency)
+# ---------------------------------------------------------------------------
+
+FMT_FLOW  = "#,##0"        # m³/h, L/s — 0 decimal places
+FMT_HEAD  = "#,##0.00"     # m      — 2 decimal places
+FMT_EFF   = "#,##0.0"      # %      — 1 decimal place
+FMT_POW   = "#,##0.00"     # kW     — 2 decimal places
+FMT_NPSH  = "#,##0.00"     # m      — 2 decimal places
+FMT_PRES  = "#,##0.0"      # kPa    — 1 decimal place
+FMT_VEL   = "#,##0.000"    # m/s    — 3 decimal places
+FMT_DIST  = "#,##0.0"      # m dist — 1 decimal place
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -213,6 +227,14 @@ def _section_hdr(ws, row: int, label: str, ncols: int = 10) -> None:
 def _col_widths(ws, widths: list[float]) -> None:
     for i, w in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
+
+
+def _nearest(mapping: dict, q: float) -> float | None:
+    """Return value from mapping whose key is nearest to q, or None if empty."""
+    if not mapping:
+        return None
+    key = min(mapping.keys(), key=lambda k: abs(k - q))
+    return mapping[key]
 
 
 def _subsample(rows: list[dict], max_rows: int = 1000) -> list[dict]:
@@ -421,25 +443,27 @@ def _sh_system_curve(wb: Workbook, draft: dict) -> None:
     meta = draft.get("meta", {}) or {}
 
     _title_banner(ws, "System Curve — H vs Q",
-                  "Tabulated system resistance + pump H-Q overlay")
+                  "Tabulated system resistance + pump H-Q overlay (rated speed + VFD speeds)")
     row = 3
     row = _meta_rows(ws, meta, row)
 
     r  = draft.get("hydraulicsResult") or {}
     pr = draft.get("pumpResult")        or {}
-    sys_pts  = r.get("system_curve", [])
-    hq_pts   = pr.get("hq_curve", [])
-    ops      = pr.get("operating_points", [])
+    sys_pts     = r.get("system_curve", [])
+    hq_pts      = pr.get("hq_curve", [])
+    ops         = pr.get("operating_points", [])
+    speed_curves = pr.get("speed_curves", [])
 
     if not sys_pts and not hq_pts:
         _no_data(ws, row)
         return
 
     data_start = row
-    hdrs = ["Q (m³/h)", "H_sys (m)", "H_pump (m)"]
+    hdrs = ["Q (m³/h)", "H_sys (m)", "H_pump 100% (m)"]
     for ci, h in enumerate(hdrs, 1):
         _hdr(ws, row, ci, h, BLUE_MID)
     row += 1
+    ws.freeze_panes = f"A{row}"
 
     # Merge system curve and pump HQ by Q index
     n = max(len(sys_pts), len(hq_pts))
@@ -448,51 +472,98 @@ def _sh_system_curve(wb: Workbook, draft: dict) -> None:
         sys_h = sys_pts[i].get("H_m",   "") if i < len(sys_pts) else ""
         hq_h  = hq_pts[i].get("value",  "") if i < len(hq_pts)  else ""
         alt   = (i % 2 == 1)
-        _dat(ws, row, 1, sys_q if sys_q != "" else (hq_pts[i].get("Q_m3h","") if i < len(hq_pts) else ""),
-             fmt="#,##0.00", align="right", alt=alt)
-        _dat(ws, row, 2, sys_h, fmt="#,##0.00", align="right", alt=alt)
-        _dat(ws, row, 3, hq_h,  fmt="#,##0.00", align="right", alt=alt)
+        _dat(ws, row, 1,
+             sys_q if sys_q != "" else (hq_pts[i].get("Q_m3h", "") if i < len(hq_pts) else ""),
+             fmt=FMT_FLOW, align="right", alt=alt)
+        _dat(ws, row, 2, sys_h, fmt=FMT_HEAD, align="right", alt=alt)
+        _dat(ws, row, 3, hq_h,  fmt=FMT_HEAD, align="right", alt=alt)
         row += 1
 
     data_end = row - 1
 
-    # Operating points
+    # ── write speed-curve auxiliary columns for chart overlays ──────────
+    aux_col = 5          # start after a blank col 4 gap
+    spd_series: list[tuple[int, int, int, int, str]] = []
+    for sc in speed_curves:
+        spd  = sc.get("speed_pct", 100)
+        pts  = sc.get("hq_pts", [])
+        ws.cell(row=data_start, column=aux_col,     value=f"{spd}% speed Q (m³/h)")
+        ws.cell(row=data_start, column=aux_col + 1, value=f"{spd}% speed H (m)")
+        for i, pt in enumerate(pts):
+            ws.cell(row=data_start + 1 + i, column=aux_col,     value=pt.get("Q_m3h", 0))
+            ws.cell(row=data_start + 1 + i, column=aux_col + 1, value=pt.get("value",  0))
+        n_pts = len(pts)
+        spd_series.append((aux_col, aux_col + 1, data_start, data_start + n_pts, f"{spd}%"))
+        aux_col += 3
+
+    # ── write duty-point auxiliary column for marker series ──────────
+    op_col = aux_col
+    ws.cell(row=data_start, column=op_col,     value="OP Q (m³/h)")
+    ws.cell(row=data_start, column=op_col + 1, value="OP H (m) [Duty point]")
+    for i, op in enumerate(ops[:4]):       # max 4 operating points
+        ws.cell(row=data_start + 1 + i, column=op_col,     value=op.get("Q_m3h", 0))
+        ws.cell(row=data_start + 1 + i, column=op_col + 1, value=op.get("H_m",   0))
+
+    # ── Operating points table below data ────────────────────────────────
     if ops:
         row += 1
-        _hdr(ws, row, 1, "Pumps",  TEAL_HDR)
+        _hdr(ws, row, 1, "N pumps",      TEAL_HDR)
         _hdr(ws, row, 2, "Q_op (m³/h)", TEAL_HDR)
         _hdr(ws, row, 3, "H_op (m)",    TEAL_HDR)
         row += 1
         for op in ops:
             _dat(ws, row, 1, op.get("n_pumps", 1), align="center")
-            _dat(ws, row, 2, op.get("Q_m3h",   0), fmt="#,##0.00", align="right")
-            _dat(ws, row, 3, op.get("H_m",     0), fmt="#,##0.00", align="right")
+            _dat(ws, row, 2, op.get("Q_m3h",   0), fmt=FMT_FLOW, align="right")
+            _dat(ws, row, 3, op.get("H_m",     0), fmt=FMT_HEAD, align="right")
             row += 1
 
-    # Chart — HQ + System Curve
+    # ── Chart: system curve + rated H-Q + per-speed overlays + duty marker ─
     chart = LineChart()
-    chart.title  = "Pump H-Q Curve vs System Curve"
+    chart.title  = "Pump H-Q Curves vs System Curve"
     chart.style  = 10
     chart.y_axis.title = "Head (m)"
-    chart.x_axis.title = "Flow (m³/h)"
-    chart.height = 16
-    chart.width  = 26
+    chart.x_axis.title = "Flow Q (m³/h)"
+    chart.height = 18
+    chart.width  = 28
 
+    x_ref   = Reference(ws, min_col=1, min_row=data_start + 1, max_row=data_end)
     sys_ref = Reference(ws, min_col=2, min_row=data_start, max_row=data_end)
     hq_ref  = Reference(ws, min_col=3, min_row=data_start, max_row=data_end)
-    x_ref   = Reference(ws, min_col=1, min_row=data_start + 1, max_row=data_end)
     chart.add_data(sys_ref, titles_from_data=True)
     chart.add_data(hq_ref,  titles_from_data=True)
     chart.set_categories(x_ref)
 
-    colors_c = ["E74C3C", "1F3864"]
-    for idx, clr in enumerate(colors_c):
+    # Style first two series (system curve = red, rated H-Q = navy)
+    _series_colors = ["E74C3C", "1F3864", "27AE60", "8E44AD", "F39C12", "2980B9"]
+    for idx, clr in enumerate(_series_colors[:2]):
         if idx < len(chart.series):
             chart.series[idx].graphicalProperties.line.solidFill = clr
-            chart.series[idx].graphicalProperties.line.width = 20000
+            chart.series[idx].graphicalProperties.line.width = 22000
+
+    # Add per-speed curve series
+    for si, (col_q, col_h, r_s, r_e, lbl) in enumerate(spd_series):
+        spd_ref = Reference(ws, min_col=col_h, min_row=r_s, max_row=r_e)
+        spd_xr  = Reference(ws, min_col=col_q, min_row=r_s + 1, max_row=r_e)
+        chart.add_data(spd_ref, titles_from_data=True)
+        chart.set_categories(spd_xr)
+        clr_idx = 2 + si
+        if clr_idx < len(chart.series):
+            chart.series[clr_idx].graphicalProperties.line.solidFill = _series_colors[clr_idx % len(_series_colors)]
+            chart.series[clr_idx].graphicalProperties.line.width = 14000
+
+    # Add duty-point as a marker-only series
+    if ops:
+        n_op = min(len(ops), 4)
+        op_ref = Reference(ws, min_col=op_col + 1,
+                           min_row=data_start, max_row=data_start + n_op)
+        chart.add_data(op_ref, titles_from_data=True)
+        last_idx = len(chart.series) - 1
+        if last_idx >= 0:
+            chart.series[last_idx].graphicalProperties.line.noFill = True
+            chart.series[last_idx].graphicalProperties.line.width  = 0
 
     ws.add_chart(chart, f"E{data_start}")
-    _col_widths(ws, [14, 14, 14])
+    _col_widths(ws, [14, 14, 16])
 
 
 # ---------------------------------------------------------------------------
@@ -504,7 +575,7 @@ def _sh_pump_curves(wb: Workbook, draft: dict) -> None:
     meta = draft.get("meta", {}) or {}
 
     _title_banner(ws, "Pump Performance Curves",
-                  "H-Q, efficiency, power, NPSHR — rated speed + speed curves")
+                  "Q/H/η/P/NPSHr — rated (duty) speed highlighted; VFD speed sections below")
     row = 3
     row = _meta_rows(ws, meta, row)
 
@@ -519,55 +590,86 @@ def _sh_pump_curves(wb: Workbook, draft: dict) -> None:
     npshr_pts = pr.get("npshr_curve", [])
     spd_curves = pr.get("speed_curves", [])
 
-    # Rated speed table
-    _section_hdr(ws, row, "Rated Speed Curves", 6)
+    # ── Rated (duty) speed — highlighted in gold/NAVY ───────────────────
+    _section_hdr(ws, row, "Rated Speed — 100% (Duty Speed)", 6)
+    # Override section fill to distinguish duty speed
+    ws.cell(row=row, column=1).fill = _fill(NAVY)
+    ws.cell(row=row, column=1).font = Font(bold=True, size=11, color="FFD700")
     row += 1
     data_start = row
-    hdrs = ["Q (m³/h)", "H (m)", "η (%)", "P (kW)", "NPSHr (m)"]
-    for ci, h in enumerate(hdrs, 1):
+    col_hdrs = ["Q (m³/h)", "H (m)", "η (%)", "P (kW)", "NPSHr (m)"]
+    for ci, h in enumerate(col_hdrs, 1):
         _hdr(ws, row, ci, h, BLUE_MID)
     row += 1
+    ws.freeze_panes = f"A{row}"
 
     n = max(len(hq_pts), len(eta_pts), len(p_pts), len(npshr_pts))
     for i in range(n):
-        Q_v  = hq_pts[i].get("Q_m3h",  "") if i < len(hq_pts)    else ""
-        H_v  = hq_pts[i].get("value",  "") if i < len(hq_pts)    else ""
-        e_v  = eta_pts[i].get("value", "") if i < len(eta_pts)   else ""
-        p_v  = p_pts[i].get("value",   "") if i < len(p_pts)     else ""
-        n_v  = npshr_pts[i].get("value","") if i < len(npshr_pts) else ""
-        alt  = (i % 2 == 1)
-        for ci, v in enumerate([Q_v, H_v, e_v, p_v, n_v], 1):
+        Q_v = hq_pts[i].get("Q_m3h",   "") if i < len(hq_pts)    else ""
+        H_v = hq_pts[i].get("value",   "") if i < len(hq_pts)    else ""
+        e_v = eta_pts[i].get("value",  "") if i < len(eta_pts)   else ""
+        p_v = p_pts[i].get("value",    "") if i < len(p_pts)     else ""
+        n_v = npshr_pts[i].get("value","") if i < len(npshr_pts) else ""
+        alt = (i % 2 == 1)
+        fmts = [FMT_FLOW, FMT_HEAD, FMT_EFF, FMT_POW, FMT_NPSH]
+        for ci, (v, fmt) in enumerate(zip([Q_v, H_v, e_v, p_v, n_v], fmts), 1):
             _dat(ws, row, ci, v,
-                 fmt="#,##0.00" if isinstance(v, float) else None,
-                 align="right" if isinstance(v, float) else "left",
+                 fmt=fmt if isinstance(v, float) else None,
+                 align="right" if isinstance(v, (int, float)) else "left",
                  alt=alt)
         row += 1
 
     data_end = row - 1
 
-    # Speed curves (if any)
+    # ── Variable speed sections ──────────────────────────────────────────
     if spd_curves:
         row += 1
-        _section_hdr(ws, row, "Variable Speed Curves (affinity laws)", 6)
+        _section_hdr(ws, row, "Variable Speed Curves — Affinity-law scaled", 6)
         row += 1
         for sc in spd_curves:
-            spd = sc.get("speed_pct", 100)
-            _hdr(ws, row, 1, f"{spd}% speed — Q (m³/h)", BLUE_LITE, NAVY, 9)
-            _hdr(ws, row, 2, f"{spd}% speed — H (m)",    BLUE_LITE, NAVY, 9)
-            pts = sc.get("hq_pts", [])
-            for i, pt in enumerate(pts):
-                alt = (i % 2 == 1)
-                _dat(ws, row + 1 + i, 1, pt.get("Q_m3h", 0), fmt="#,##0.00", align="right", alt=alt)
-                _dat(ws, row + 1 + i, 2, pt.get("value",  0), fmt="#,##0.00", align="right", alt=alt)
-            row += len(pts) + 2
+            spd   = sc.get("speed_pct", 100)
+            ratio = spd / 100.0
+            pts   = sc.get("hq_pts", [])
+            # Section header per speed
+            _section_hdr(ws, row, f"  {spd}% Speed", 6)
+            row += 1
+            for ci, h in enumerate(col_hdrs, 1):
+                _hdr(ws, row, ci, h, BLUE_LITE, NAVY, 9)
+            row += 1
+            # Build lookup maps from rated curves (for affinity-law scaling)
+            eta_map   = {pt.get("Q_m3h", 0): pt.get("value") for pt in eta_pts}
+            p_map     = {pt.get("Q_m3h", 0): pt.get("value") for pt in p_pts}
+            npshr_map = {pt.get("Q_m3h", 0): pt.get("value") for pt in npshr_pts}
 
-    # Chart: η vs Q
+            for i, pt in enumerate(pts):
+                alt  = (i % 2 == 1)
+                Q_sc = pt.get("Q_m3h", 0)
+                H_sc = pt.get("value",  0)
+                # Inverse-map Q to rated Q (Q_rated = Q_sc / ratio)
+                Q_0  = Q_sc / ratio if ratio > 0 else Q_sc
+                # η ≈ constant (affinity law); interpolate nearest rated point
+                eta_v    = _nearest(eta_map,   Q_0)
+                p_rated  = _nearest(p_map,     Q_0)
+                np_rated = _nearest(npshr_map, Q_0)
+                P_sc  = p_rated  * ratio ** 3 if p_rated  is not None else None
+                N_sc  = np_rated * ratio ** 2 if np_rated is not None else None
+                fmts2 = [FMT_FLOW, FMT_HEAD, FMT_EFF, FMT_POW, FMT_NPSH]
+                for ci, (v, fmt) in enumerate(
+                        zip([Q_sc, H_sc, eta_v, P_sc, N_sc], fmts2), 1):
+                    _dat(ws, row, ci, v,
+                         fmt=fmt if isinstance(v, float) else None,
+                         align="right" if isinstance(v, (int, float)) else "left",
+                         alt=alt)
+                row += 1
+            row += 1   # blank row between speeds
+
+    # ── Chart: η vs Q (rated speed) ─────────────────────────────────────
     if eta_pts:
         chart = LineChart()
-        chart.title  = "Pump Efficiency vs Flow"
+        chart.title  = "Pump Efficiency vs Flow — Rated Speed"
         chart.style  = 10
-        chart.y_axis.title = "Efficiency (%)"
-        chart.x_axis.title = "Flow (m³/h)"
+        chart.y_axis.title = "Efficiency η (%)"
+        chart.x_axis.title = "Flow Q (m³/h)"
         chart.height = 14
         chart.width  = 22
 
@@ -576,7 +678,7 @@ def _sh_pump_curves(wb: Workbook, draft: dict) -> None:
         chart.add_data(eta_ref, titles_from_data=True)
         chart.set_categories(x_ref)
         chart.series[0].graphicalProperties.line.solidFill = "27AE60"
-        chart.series[0].graphicalProperties.line.width = 20000
+        chart.series[0].graphicalProperties.line.width = 22000
 
         ws.add_chart(chart, f"G{data_start}")
 
@@ -1166,11 +1268,12 @@ def _sh_surge_envelope(wb: Workbook, draft: dict) -> None:
             chart.series[1].graphicalProperties.line.solidFill = "2980B9"
             chart.series[1].graphicalProperties.line.width = 20000
 
-        anchor_col = "H" if charts_added == 0 else "H"
+        # Suction chart anchored at col H; discharge chart anchored at col P
+        anchor_col = "H" if charts_added == 0 else "P"
         anchor_row = ds
         ws.add_chart(chart, f"{anchor_col}{anchor_row}")
         charts_added += 1
-        break  # one chart (first available pipeline)
+        # Do NOT break — plot both suction AND discharge pipelines
 
     _col_widths(ws, [12, 12, 14, 14, 16, 16])
 
@@ -1249,11 +1352,20 @@ def _sh_protection(wb: Workbook, draft: dict) -> None:
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def build_workbook(draft: dict) -> bytes:
+def _wb_to_bytes(wb: Workbook) -> bytes:
+    """Serialise an openpyxl Workbook to raw .xlsx bytes."""
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.read()
+
+
+def build_workbook(draft: dict) -> Workbook:
     """
     Build a professional .xlsx workbook from a serialised ProjectDraft dict.
 
-    Returns raw .xlsx bytes for a StreamingResponse.
+    Returns an openpyxl.Workbook object.  Callers that need raw bytes should
+    call ``_wb_to_bytes(build_workbook(draft))``.
     """
     wb = Workbook()
     # Remove default sheet
@@ -1281,7 +1393,4 @@ def build_workbook(draft: dict) -> bytes:
     _sh_surge_envelope(wb, draft)
     _sh_protection(wb, draft)
 
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    return buf.read()
+    return wb

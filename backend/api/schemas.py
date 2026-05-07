@@ -1513,9 +1513,44 @@ class SurgeQuickRequest(BaseModel):
         default=0.0,
         description="Steady-state operating head at point of interest [m gauge]",
     )
+    temperature_C: float = Field(
+        default=20.0,
+        ge=-10.0,
+        le=100.0,
+        description="Water temperature [°C] — used to compute vapour pressure threshold",
+    )
+    pressure_rating_kPa: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="Pipe pressure class [kPa] — if supplied, a rating check is returned",
+    )
     unit_system: Literal["SI", "US"] = Field(
         default="SI",
         description="Display unit system (controls display fields only; all inputs in SI)",
+    )
+
+
+class PressureRatingCheck(BaseModel):
+    """Pipe pressure rating check sub-object returned inside SurgeQuickResponse."""
+    model_config = ConfigDict(frozen=True)
+
+    steady_state_pressure_kPa: float = Field(
+        description="Steady-state pressure at event origin H₀·ρg [kPa gauge]"
+    )
+    max_transient_kPa: float = Field(
+        description="Maximum transient pressure from envelope [kPa gauge]"
+    )
+    min_transient_kPa: float = Field(
+        description="Minimum transient pressure from envelope [kPa gauge]"
+    )
+    pressure_rating_kPa: float = Field(
+        description="Pipe pressure class supplied [kPa]"
+    )
+    factor_of_safety: float = Field(
+        description="FoS = pressure_rating / max_transient"
+    )
+    rating_status: Literal["pass", "caution", "fail"] = Field(
+        description="pass ≥ 1.25 | caution 1.0–1.25 | fail < 1.0"
     )
 
 
@@ -1550,9 +1585,78 @@ class SurgeQuickResponse(BaseModel):
     min_pressure_kPa: float
     max_pressure_kPa: float
 
-    cavitation_risk: bool = Field(description="True if min head < vapour pressure head at 20 °C")
+    cavitation_risk: bool = Field(description="True if min head < vapour pressure head at water temperature")
     vacuum_risk: bool = Field(description="True if min head < 0 m gauge (sub-atmospheric)")
     vapor_pressure_head_m: float = Field(
-        description="Vapour pressure head at 20 °C [m gauge] ≈ −10.1 m"
+        description="Vapour pressure head at the specified water temperature [m gauge]"
+    )
+    temperature_C: float = Field(description="Water temperature used for vapour pressure [°C]")
+    rating_check: Optional[PressureRatingCheck] = Field(
+        default=None,
+        description="Pressure rating check — present when pressure_rating_kPa was supplied",
     )
     unit_system: str
+
+
+class WaveSpeedRequest(BaseModel):
+    """Request to compute acoustic wave speed in a pipe."""
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    material: str = Field(
+        description=(
+            "Pipe material key: dicl | grey_cast_iron | steel | pvc_upvc | "
+            "hdpe_pe100 | grp_frp | asbestos_cement | concrete_rccp"
+        )
+    )
+    D_o_mm: Annotated[float, Field(gt=0, description="Outer diameter [mm]")]
+    wall_thickness_mm: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="Wall thickness e [mm] — provide this or sdr",
+    )
+    sdr: Optional[float] = Field(
+        default=None,
+        gt=2,
+        description="Standard Dimension Ratio (e = D_o/SDR) — provide this or wall_thickness_mm",
+    )
+    restraint: Literal["free", "anchored_upstream", "restrained"] = Field(
+        default="restrained",
+        description=(
+            "Pipe restraint condition: "
+            "free (C=1.0) | anchored_upstream (C=1−ν/2) | restrained (C=1−ν²)"
+        ),
+    )
+    K_f_GPa: float = Field(
+        default=2.1,
+        gt=0,
+        description="Bulk modulus of fluid [GPa] — default 2.1 GPa for water at 20 °C",
+    )
+    rho_kg_m3: float = Field(
+        default=1000.0,
+        gt=0,
+        description="Fluid density [kg/m³]",
+    )
+
+
+class WaveSpeedResponse(BaseModel):
+    """Computed acoustic wave speed and full equation trace."""
+    model_config = ConfigDict(frozen=True)
+
+    wave_speed_ms: float = Field(description="Computed wave speed a [m/s]")
+    D_i_mm: float = Field(description="Inner diameter Dᵢ = D_o − 2e [mm]")
+    D_o_mm: float
+    wall_mm: float = Field(description="Wall thickness used [mm]")
+    sdr_used: float = Field(description="SDR equivalent (D_o/e)")
+    material: str
+    material_name: str = Field(description="Human-readable material name")
+    E_p_MPa: float = Field(description="Pipe elastic modulus Eₚ [MPa]")
+    nu: float = Field(description="Poisson's ratio ν")
+    restraint: str
+    C: float = Field(description="Restraint factor C")
+    K_f_Pa: float = Field(description="Bulk modulus of fluid [Pa]")
+    rho_kg_m3: float
+    term_acoustic_ms: float = Field(description="Acoustic term √(K_f/ρ) [m/s]")
+    flexibility: float = Field(description="Flexibility term K_f·Dᵢ/(Eₚ·e)")
+    denominator: float = Field(description="Denominator √(1 + flexibility·C)")
+    equation_trace: str = Field(description="Step-by-step equation trace")
+

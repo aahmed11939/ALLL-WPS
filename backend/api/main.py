@@ -56,9 +56,12 @@ from backend.api.schemas import (
     SegmentResult,
     SpeedCurve,
     SubmersibleExtras,
+    PressureRatingCheck,
     SurgeEnvelopePoint,
     SurgeQuickRequest,
     SurgeQuickResponse,
+    WaveSpeedRequest,
+    WaveSpeedResponse,
     SystemCurvePoint,
     TypeSpecificField,
     VerticalTurbineExtras,
@@ -93,7 +96,7 @@ from backend.engine.pump_curves import (
     pump_q_max,
     series_hq_fn,
 )
-from backend.engine.surge import surge_quick
+from backend.engine.surge import surge_quick, wave_speed as compute_wave_speed
 from backend.engine.clearwell import (
     clearwell_volume_curve,
     cycle_analysis,
@@ -1845,6 +1848,8 @@ def surge_quick_check(req: SurgeQuickRequest) -> SurgeQuickResponse:
             closure_time_s=req.closure_time_s,
             rho_kg_m3=req.rho_kg_m3,
             H_operating_m=req.H_operating_m,
+            temperature_C=req.temperature_C,
+            pressure_rating_kPa=req.pressure_rating_kPa,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -1853,6 +1858,8 @@ def surge_quick_check(req: SurgeQuickRequest) -> SurgeQuickResponse:
         )
 
     envelope_points = [SurgeEnvelopePoint(**pt) for pt in result.pop("envelope")]
+    rating_check_data = result.pop("rating_check", None)
+    rating_check = PressureRatingCheck(**rating_check_data) if rating_check_data else None
 
     return SurgeQuickResponse(
         pipeline=req.pipeline,
@@ -1865,5 +1872,47 @@ def surge_quick_check(req: SurgeQuickRequest) -> SurgeQuickResponse:
         closure_time_s=req.closure_time_s,
         unit_system=req.unit_system,
         envelope=envelope_points,
+        rating_check=rating_check,
         **result,
     )
+
+
+@app.post(
+    "/surge/wavespeed",
+    response_model=WaveSpeedResponse,
+    tags=["surge"],
+    summary="Acoustic wave speed calculator (Halliwell thin-wall formula)",
+    status_code=status.HTTP_200_OK,
+)
+def surge_wave_speed(req: WaveSpeedRequest) -> WaveSpeedResponse:
+    """
+    Compute acoustic wave speed *a* in a pressurised pipe using the
+    Halliwell/Joukowsky thin-wall formula:
+
+    **a = √(K_f/ρ) / √(1 + K_f·Dᵢ/(Eₚ·e)·C)**
+
+    Supports eight pipe materials (DICL, grey cast iron, steel, PVC/uPVC,
+    HDPE PE100, GRP/FRP, asbestos cement, concrete/RCCP) and three pipe
+    restraint conditions.  Wall thickness may be specified directly or derived
+    from SDR.
+
+    Returns the computed wave speed, all intermediate values, and a
+    step-by-step equation trace string suitable for display in design reports.
+    """
+    try:
+        result = compute_wave_speed(
+            material=req.material,
+            D_o_m=req.D_o_mm / 1000.0,
+            e_m=req.wall_thickness_mm / 1000.0 if req.wall_thickness_mm is not None else None,
+            sdr=req.sdr,
+            restraint=req.restraint,
+            K_f_Pa=req.K_f_GPa * 1.0e9,
+            rho_kg_m3=req.rho_kg_m3,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
+
+    return WaveSpeedResponse(**result)

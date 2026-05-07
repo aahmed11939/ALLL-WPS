@@ -87,6 +87,14 @@ export interface WaterHammerConfig {
   closure_time_s: string;
   H_operating_override: string;
   rho_kg_m3: number;
+  temperature_C: string;
+  pressure_rating_kPa: string;
+  pipe_material: string;
+  D_o_mm: string;
+  wall_thickness_mm: string;
+  sdr: string;
+  use_sdr: boolean;
+  restraint: string;
 }
 
 // ---------------------------------------------------------------------------

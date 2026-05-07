@@ -534,7 +534,18 @@ export interface SurgeQuickRequest {
   pipe_length_m: number;
   rho_kg_m3: number;
   H_operating_m: number;
+  temperature_C?: number;
+  pressure_rating_kPa?: number | null;
   unit_system: "SI" | "US";
+}
+
+export interface PressureRatingCheck {
+  steady_state_pressure_kPa: number;
+  max_transient_kPa: number;
+  min_transient_kPa: number;
+  pressure_rating_kPa: number;
+  factor_of_safety: number;
+  rating_status: "pass" | "caution" | "fail";
 }
 
 export interface SurgeQuickResponse {
@@ -562,12 +573,51 @@ export interface SurgeQuickResponse {
   cavitation_risk: boolean;
   vacuum_risk: boolean;
   vapor_pressure_head_m: number;
+  temperature_C: number;
+  rating_check?: PressureRatingCheck | null;
   unit_system: string;
+}
+
+export interface WaveSpeedRequest {
+  material: string;
+  D_o_mm: number;
+  wall_thickness_mm?: number | null;
+  sdr?: number | null;
+  restraint: "free" | "anchored_upstream" | "restrained";
+  K_f_GPa?: number;
+  rho_kg_m3?: number;
+}
+
+export interface WaveSpeedResponse {
+  wave_speed_ms: number;
+  D_i_mm: number;
+  D_o_mm: number;
+  wall_mm: number;
+  sdr_used: number;
+  material: string;
+  material_name: string;
+  E_p_MPa: number;
+  nu: number;
+  restraint: string;
+  C: number;
+  K_f_Pa: number;
+  rho_kg_m3: number;
+  term_acoustic_ms: number;
+  flexibility: number;
+  denominator: number;
+  equation_trace: string;
 }
 
 export async function computeSurgeQuick(
   req: SurgeQuickRequest
 ): Promise<SurgeQuickResponse> {
   const res = await axios.post<SurgeQuickResponse>("/surge/quick", req);
+  return res.data;
+}
+
+export async function computeWaveSpeed(
+  req: WaveSpeedRequest
+): Promise<WaveSpeedResponse> {
+  const res = await axios.post<WaveSpeedResponse>("/surge/wavespeed", req);
   return res.data;
 }

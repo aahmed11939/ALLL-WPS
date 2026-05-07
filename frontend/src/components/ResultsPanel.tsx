@@ -25,7 +25,6 @@ interface MetricCardProps {
 }
 
 function MetricCard({ label, primary, highlight, note, showBoth }: MetricCardProps) {
-  const hasSiAlt = showBoth && primary.unit !== primary.unit;
   return (
     <div
       className={`rounded-lg border p-4 ${

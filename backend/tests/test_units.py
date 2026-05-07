@@ -252,7 +252,7 @@ class TestConvertUS:
     def test_flow_m3h_to_gpm(self):
         uv = convert(1.0, "flow_m3h", "US")
         assert uv.si_value == pytest.approx(1.0)
-        assert uv.display_value == pytest.approx(gpm_to_m3h.__module__ and m3h_to_gpm(1.0), rel=1e-10)
+        assert uv.display_value == pytest.approx(m3h_to_gpm(1.0), rel=1e-10)
         assert uv.unit == "gpm"
 
     def test_flow_m3s_to_gpm(self):

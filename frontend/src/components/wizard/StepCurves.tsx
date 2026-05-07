@@ -99,13 +99,29 @@ export default function StepCurves() {
                 tick={{ fontSize: 10 }}
               />
               <Tooltip
-                formatter={(val, name) => [
-                  typeof val === "number" ? `${val.toFixed(2)} m` : String(val),
-                  name === "sys" ? "System curve" : "Pump H-Q",
-                ]}
-                labelFormatter={(v) =>
-                  typeof v === "number" ? `Q = ${v.toFixed(2)} m³/h` : String(v)
-                }
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null;
+                  return (
+                    <div className="rounded-xl border border-slate-200 bg-white shadow-lg px-3 py-2.5 text-xs space-y-1.5 min-w-[160px]">
+                      <p className="font-semibold text-slate-500 border-b border-slate-100 pb-1.5 mb-1">
+                        Q = {typeof label === "number" ? label.toFixed(2) : label} m³/h
+                      </p>
+                      {payload.map((p) => (
+                        <div key={p.dataKey as string} className="flex justify-between items-center gap-4">
+                          <span className="flex items-center gap-1.5">
+                            <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: p.color }} />
+                            <span className="text-slate-600">
+                              {p.dataKey === "sys" ? "System" : "Pump H-Q"}
+                            </span>
+                          </span>
+                          <span className="font-bold font-mono text-slate-800">
+                            {typeof p.value === "number" ? `${p.value.toFixed(2)} m` : "—"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }}
               />
               <Legend
                 formatter={(val: string) =>

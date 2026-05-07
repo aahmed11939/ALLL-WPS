@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import wpsLogo from "../assets/WPS_Logo_1778184724504.png";
 import { useProject } from "../contexts/ProjectContext";
 import { useUnitSystem } from "../contexts/UnitSystemContext";
+import ResultsStrip from "../components/ResultsStrip";
 import { hadStoredSession } from "../contexts/ProjectContext";
 import { SAMPLE_PROJECT } from "../data/sampleProject";
 import { SAMPLE_PROJECT_VT } from "../data/sampleProjectVT";
@@ -377,9 +378,27 @@ export default function WizardPage() {
             <span className="text-xs font-semibold text-slate-700 truncate max-w-[200px]">
               {draft.meta.name || "Untitled"}
             </span>
-            <span className="text-[10px] font-mono text-slate-400 shrink-0">
-              [{draft.unitSystem}]
-            </span>
+          </div>
+
+          {/* Interactive unit-system toggle */}
+          <div className="flex items-center rounded-md border border-slate-200 bg-slate-50 overflow-hidden shrink-0">
+            {(["SI", "US"] as const).map((sys) => (
+              <button
+                key={sys}
+                type="button"
+                onClick={() => {
+                  setUnitSystem(sys);
+                  dispatch({ type: "SET_UNIT_SYSTEM", unitSystem: sys });
+                }}
+                className={`px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                  draft.unitSystem === sys
+                    ? "bg-teal-700 text-white"
+                    : "text-slate-500 hover:bg-slate-100"
+                }`}
+              >
+                {sys}
+              </button>
+            ))}
           </div>
 
           <div className="ml-auto flex items-center gap-2">
@@ -518,13 +537,16 @@ export default function WizardPage() {
           {/* Scrollable step content — all steps stay mounted to preserve internal
               state of ClearWellStep / PumpSelectionStep / PumpCurveStep when
               navigating between wizard steps. Only the active step is visible. */}
-          <div ref={contentRef} className="flex-1 overflow-y-auto px-6 py-6">
+          <div ref={contentRef} className="flex-1 overflow-y-auto px-6 py-6 pb-14">
             {STEPS.map((_, idx) => (
               <div key={`${idx}-${projectVersion}`} className={currentStep === idx ? "block" : "hidden"}>
                 <StepContent index={idx} />
               </div>
             ))}
           </div>
+
+          {/* Sticky live-results strip */}
+          <ResultsStrip />
 
           {/* Navigation footer */}
           <div className="shrink-0 border-t border-slate-200 bg-white px-6 py-3 space-y-2">

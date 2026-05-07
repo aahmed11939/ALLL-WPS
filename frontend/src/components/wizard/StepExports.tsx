@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useProject } from "../../contexts/ProjectContext";
 import { runChecks, checksToText, type CheckResult } from "../../utils/engineeringChecks";
 import { exportExcel, exportWord } from "../../utils/api";
@@ -68,6 +68,46 @@ function SuccessToast({ message, onClose }: { message: string; onClose: () => vo
       <button type="button" onClick={onClose} className="text-emerald-400 hover:text-emerald-600 text-lg leading-none">
         ×
       </button>
+    </div>
+  );
+}
+
+const EXCEL_STAGES = [
+  "Collecting hydraulic data…",
+  "Building system-curve sheet…",
+  "Writing pump & curve data…",
+  "Adding wet-well analysis…",
+  "Writing surge results…",
+  "Generating engineering checks…",
+  "Formatting workbook…",
+  "Finalising download…",
+];
+
+const WORD_STAGES = [
+  "Preparing design memorandum…",
+  "Inserting hydraulic results…",
+  "Adding pump tables…",
+  "Embedding surge charts…",
+  "Writing engineering checks…",
+  "Applying professional template…",
+  "Finalising report…",
+];
+
+function ExportSpinner({ stages, active }: { stages: string[]; active: boolean }) {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    if (!active) { setIdx(0); return; }
+    const id = setInterval(() => setIdx(i => (i + 1) % stages.length), 1400);
+    return () => clearInterval(id);
+  }, [active, stages.length]);
+  if (!active) return null;
+  return (
+    <div className="flex items-center gap-2 mt-1.5">
+      <svg className="animate-spin h-3 w-3 text-current shrink-0" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+      </svg>
+      <span className="text-[11px] font-medium animate-pulse">{stages[idx]}</span>
     </div>
   );
 }
@@ -335,6 +375,7 @@ export default function StepExports() {
               <p className="text-xs text-emerald-700 mt-0.5">
                 11-sheet workbook — inputs, hydraulics, pump curves, wet well, surge analysis &amp; engineering checks.
               </p>
+              <ExportSpinner stages={EXCEL_STAGES} active={excelLoading} />
               {excelError && (
                 <p className="text-xs text-red-600 mt-1 font-semibold">⚠ {excelError}</p>
               )}
@@ -343,8 +384,14 @@ export default function StepExports() {
               type="button"
               onClick={handleExportExcel}
               disabled={excelLoading}
-              className="shrink-0 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 transition-colors disabled:opacity-60 disabled:cursor-wait"
+              className="shrink-0 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 transition-colors disabled:opacity-60 disabled:cursor-wait flex items-center gap-2"
             >
+              {excelLoading && (
+                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+              )}
               {excelLoading ? "Building…" : "Export Excel"}
             </button>
           </div>
@@ -361,6 +408,7 @@ export default function StepExports() {
               <p className="text-xs text-indigo-700 mt-0.5">
                 Stamped design memorandum — hydraulics, pump curves, wet well, surge analysis &amp; figures.
               </p>
+              <ExportSpinner stages={WORD_STAGES} active={wordLoading} />
               {wordError && (
                 <p className="text-xs text-red-600 mt-1 font-semibold">⚠ {wordError}</p>
               )}
@@ -369,8 +417,14 @@ export default function StepExports() {
               type="button"
               onClick={handleExportWord}
               disabled={wordLoading}
-              className="shrink-0 rounded-lg bg-indigo-700 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-600 transition-colors disabled:opacity-60 disabled:cursor-wait"
+              className="shrink-0 rounded-lg bg-indigo-700 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-600 transition-colors disabled:opacity-60 disabled:cursor-wait flex items-center gap-2"
             >
+              {wordLoading && (
+                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+              )}
               {wordLoading ? "Building…" : "Download Word Report"}
             </button>
           </div>

@@ -18,6 +18,7 @@ import { computeMOC } from "../../utils/api";
 import type { MOCResponse, MOCBoundaryInput, MOCBoundaryAInput, MOCBoundaryBInput, MOCSegmentInput, PressureRatingCheck, WhatIfResponse } from "../../utils/api";
 import ProtectionDevicePanel from "./ProtectionDevicePanel";
 import WhatIfComparisonPanel from "./WhatIfComparisonPanel";
+import TermTip from "../TermTip";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -764,7 +765,7 @@ export default function StepWaterHammerModeB() {
         <Section title="Flow &amp; Operating Conditions">
           <Grid3>
             <div>
-              <Label>Wave speed a [m/s]</Label>
+              <Label>Wave speed a <TermTip term="a" /> [m/s]</Label>
               <input
                 type="number" min={10} max={2000} step={10}
                 value={waveSpeed}
@@ -972,6 +973,19 @@ export default function StepWaterHammerModeB() {
             </div>
           )}
 
+          {/* Dynamic assumption notes from solver */}
+          {result.assumption_notes.length > 0 && (
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 space-y-1">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-1.5">Solver Assumption Notes</p>
+              {result.assumption_notes.map((note, i) => (
+                <p key={i} className="text-[10px] text-indigo-700 leading-snug flex gap-1.5">
+                  <span className="text-indigo-300 mt-0.5 shrink-0">▸</span>
+                  <span>{note}</span>
+                </p>
+              ))}
+            </div>
+          )}
+
           {/* Grid info strip */}
           <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 grid grid-cols-5 gap-3 text-xs font-mono text-slate-700">
             <div>
@@ -1016,11 +1030,33 @@ export default function StepWaterHammerModeB() {
                   tick={{ fontSize: 10 }}
                 />
                 <Tooltip
-                  formatter={(value, name) => [
-                    `${Number(value).toFixed(2)} m`,
-                    name === "Hmax" ? "H_max" : name === "Hmin" ? "H_min" : String(name),
-                  ]}
-                  labelFormatter={(label) => `x = ${Number(label).toFixed(0)} m`}
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    return (
+                      <div className="rounded-xl border border-slate-200 bg-white shadow-lg px-3 py-2.5 text-xs space-y-1.5 min-w-[190px]">
+                        <p className="font-semibold text-slate-500 border-b border-slate-100 pb-1.5 mb-1">
+                          x = {Number(label).toFixed(0)} m
+                        </p>
+                        {payload.map((p) => {
+                          const nameMap: Record<string, string> = { Hmax: "H_max transient", Hmin: "H_min transient", elev: "Elevation" };
+                          return (
+                            <div key={p.dataKey as string} className="flex justify-between items-center gap-4">
+                              <span className="flex items-center gap-1.5">
+                                <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: p.color }} />
+                                <span className="text-slate-600">{nameMap[p.dataKey as string] ?? String(p.dataKey)}</span>
+                              </span>
+                              <span className="font-bold font-mono text-slate-800">
+                                {typeof p.value === "number" ? `${p.value.toFixed(2)} m` : "—"}
+                              </span>
+                            </div>
+                          );
+                        })}
+                        <div className="border-t border-slate-100 pt-1.5 text-[10px] text-amber-600 font-mono">
+                          h_vap = {result.h_vap_m.toFixed(2)} m
+                        </div>
+                      </div>
+                    );
+                  }}
                 />
                 <Legend wrapperStyle={{ fontSize: 10 }} />
                 <Area
@@ -1070,8 +1106,30 @@ export default function StepWaterHammerModeB() {
                     tick={{ fontSize: 10 }}
                   />
                   <Tooltip
-                    formatter={(value, name) => [`${Number(value).toFixed(2)} m`, String(name)]}
-                    labelFormatter={(label) => `t = ${Number(label).toFixed(3)} s`}
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload?.length) return null;
+                      return (
+                        <div className="rounded-xl border border-slate-200 bg-white shadow-lg px-3 py-2.5 text-xs space-y-1.5 min-w-[190px]">
+                          <p className="font-semibold text-slate-500 border-b border-slate-100 pb-1.5 mb-1">
+                            t = {Number(label).toFixed(3)} s
+                          </p>
+                          {payload.map((p) => (
+                            <div key={p.dataKey as string} className="flex justify-between items-center gap-4">
+                              <span className="flex items-center gap-1.5">
+                                <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: p.color }} />
+                                <span className="text-slate-600">{String(p.name)}</span>
+                              </span>
+                              <span className="font-bold font-mono text-slate-800">
+                                {typeof p.value === "number" ? fmtH(p.value) : "—"}
+                              </span>
+                            </div>
+                          ))}
+                          <div className="border-t border-slate-100 pt-1.5 text-[10px] text-amber-600 font-mono">
+                            h_vap = {fmtH(result.h_vap_m)}
+                          </div>
+                        </div>
+                      );
+                    }}
                   />
                   <Legend wrapperStyle={{ fontSize: 10 }} />
                   {result.observations.map((obs, ki) => (

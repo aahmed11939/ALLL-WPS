@@ -26,6 +26,7 @@ import type {
 import ProtectionDevicePanel from "./ProtectionDevicePanel";
 import WhatIfComparisonPanel from "./WhatIfComparisonPanel";
 import ChartErrorBoundary from "../ChartErrorBoundary";
+import TermTip from "../TermTip";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -145,6 +146,14 @@ export default function StepSuctionSurgeMOC() {
   const [bcB_tTrip, setBcB_tTrip] = useState(cfg?.boundary_B?.t_trip_s ?? "2");
   const [bcB_H_m,   setBcB_H_m]   = useState(cfg?.boundary_B?.H_m ?? String(wetWellLWL));
 
+  // Observation points
+  const [obs0Frac,  setObs0Frac]  = useState(cfg?.obs_points?.[0]?.frac  ?? "0");
+  const [obs0Label, setObs0Label] = useState(cfg?.obs_points?.[0]?.label ?? "Source (wet well)");
+  const [obs1Frac,  setObs1Frac]  = useState(cfg?.obs_points?.[1]?.frac  ?? "0.5");
+  const [obs1Label, setObs1Label] = useState(cfg?.obs_points?.[1]?.label ?? "Midpoint");
+  const [obs2Frac,  setObs2Frac]  = useState(cfg?.obs_points?.[2]?.frac  ?? "1");
+  const [obs2Label, setObs2Label] = useState(cfg?.obs_points?.[2]?.label ?? "Pump suction flange");
+
   // Compute state
   const [computing, setComputing] = useState(false);
   const [error,     setError]     = useState<string | null>(null);
@@ -204,7 +213,11 @@ export default function StepSuctionSurgeMOC() {
           H_pump_m: "", H_reservoir_m: bcB_H_m, t_close_s: "", profile: "linear" as const,
         },
         atm_pressure_kPa: "101.325",
-        obs_points: [],
+        obs_points: [
+          { frac: obs0Frac, label: obs0Label },
+          { frac: obs1Frac, label: obs1Label },
+          { frac: obs2Frac, label: obs2Label },
+        ],
         n_reaches: nReaches,
         t_total_s: tTotalStr,
       },
@@ -213,6 +226,7 @@ export default function StepSuctionSurgeMOC() {
     a, q0Str, h0Str, rhoStr, tempStr, pressRating, npshrStr, pumpNodeFrac,
     bcAType, bcA_H_m, bcA_Hsump, bcA_Q, bcA_tTrip,
     bcBType, bcB_H_m, bcB_Hsump, bcB_Q, bcB_tTrip,
+    obs0Frac, obs0Label, obs1Frac, obs1Label, obs2Frac, obs2Label,
     nReaches, tTotalStr, dispatch,
   ]);
 
@@ -295,9 +309,9 @@ export default function StepSuctionSurgeMOC() {
       boundary_A:          bcA as MOCBoundaryAInput,
       boundary_B:          bcB as MOCBoundaryBInput,
       observation_points: [
-        { frac: 0,                         label: "Source (wet well)" },
-        { frac: 0.5,                       label: "Midpoint" },
-        { frac: isNaN(pnf) ? 1.0 : pnf,   label: "Pump suction flange" },
+        { frac: parseFloat(obs0Frac) || 0,   label: obs0Label },
+        { frac: parseFloat(obs1Frac) || 0.5, label: obs1Label },
+        { frac: parseFloat(obs2Frac) || 1,   label: obs2Label },
       ],
       n_reaches:     nR ?? null,
       t_total_s:     tT ?? null,
@@ -400,7 +414,7 @@ export default function StepSuctionSurgeMOC() {
         <Section title="Flow & Operating Conditions">
           <Grid3>
             <div>
-              <Label>Wave speed a [m/s]</Label>
+              <Label>Wave speed a <TermTip term="a" /> [m/s]</Label>
               <input
                 type="number" min={10} max={2000} step={10}
                 value={waveSpeed}
@@ -459,7 +473,7 @@ export default function StepSuctionSurgeMOC() {
             </div>
             <div>
               <Label>
-                NPSHr [m]{" "}
+                NPSHr <TermTip term="NPSHr" /> [m]{" "}
                 <span className="font-normal text-slate-400">(optional)</span>
               </Label>
               <input type="number" min={0} step={0.1}
@@ -602,6 +616,48 @@ export default function StepSuctionSurgeMOC() {
           </div>
         </details>
 
+        {/* Observation points */}
+        <Section title="Observation Points — Time Histories">
+          <p className="text-[10px] text-slate-400 -mt-1">
+            Drag sliders to set fractional positions along the suction pipe (0 = wet well, 1 = pump flange).
+          </p>
+          <div className="space-y-3">
+            {[
+              { frac: obs0Frac, label: obs0Label, setFrac: setObs0Frac, setLabel: setObs0Label },
+              { frac: obs1Frac, label: obs1Label, setFrac: setObs1Frac, setLabel: setObs1Label },
+              { frac: obs2Frac, label: obs2Label, setFrac: setObs2Frac, setLabel: setObs2Label },
+            ].map((obs, i) => {
+              const f = parseFloat(obs.frac as string);
+              const x = isNaN(f) ? 0 : f * pipeLen;
+              return (
+                <div key={i} className="grid grid-cols-[1fr_56px_1fr] gap-3 items-center">
+                  <div>
+                    <input
+                      type="text"
+                      value={obs.label}
+                      onChange={e => obs.setLabel(e.target.value)}
+                      placeholder={`Point ${i + 1}`}
+                      className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                    />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[10px] font-mono font-semibold text-slate-700">{(isNaN(f) ? 0 : f).toFixed(2)}</p>
+                    <p className="text-[9px] text-slate-400">{x.toFixed(0)} m</p>
+                  </div>
+                  <div>
+                    <input
+                      type="range" min={0} max={1} step={0.01}
+                      value={isNaN(f) ? 0 : f}
+                      onChange={e => obs.setFrac(e.target.value)}
+                      className="w-full accent-violet-600"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Section>
+
         {error && (
           <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
             {error}
@@ -737,8 +793,35 @@ export default function StepSuctionSurgeMOC() {
                     tick={{ fontSize: 10 }}
                   />
                   <Tooltip
-                    formatter={(value, name) => [`${Number(value).toFixed(3)} m`, String(name)]}
-                    labelFormatter={(label) => `t = ${Number(label).toFixed(3)} s`}
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload?.length) return null;
+                      return (
+                        <div className="rounded-xl border border-slate-200 bg-white shadow-lg px-3 py-2.5 text-xs space-y-1.5 min-w-[190px]">
+                          <p className="font-semibold text-slate-500 border-b border-slate-100 pb-1.5 mb-1">
+                            t = {Number(label).toFixed(3)} s
+                          </p>
+                          {payload.map((p) => (
+                            <div key={p.dataKey as string} className="flex justify-between items-center gap-4">
+                              <span className="flex items-center gap-1.5">
+                                <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: p.color }} />
+                                <span className="text-slate-600">{String(p.name)}</span>
+                              </span>
+                              <span className={`font-bold font-mono ${
+                                typeof p.value === "number" && result?.h_vap_m !== undefined && p.value < result.h_vap_m
+                                  ? "text-red-700" : "text-slate-800"
+                              }`}>
+                                {typeof p.value === "number" ? `${p.value.toFixed(3)} m` : "—"}
+                              </span>
+                            </div>
+                          ))}
+                          {result?.h_vap_m !== undefined && (
+                            <div className="border-t border-slate-100 pt-1.5 text-[10px] text-amber-600 font-mono">
+                              h_vap = {result.h_vap_m.toFixed(3)} m (cavitation limit)
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }}
                   />
                   <Legend wrapperStyle={{ fontSize: 10 }} />
                   <Line
@@ -790,9 +873,35 @@ export default function StepSuctionSurgeMOC() {
                     tick={{ fontSize: 10 }}
                   />
                   <Tooltip
-                    formatter={(value, name) => [`${Number(value).toFixed(2)} m`,
-                      name === "Hmax" ? "H_max" : name === "Hmin" ? "H_min" : String(name)]}
-                    labelFormatter={(label) => `x = ${Number(label).toFixed(0)} m`}
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload?.length) return null;
+                      return (
+                        <div className="rounded-xl border border-slate-200 bg-white shadow-lg px-3 py-2.5 text-xs space-y-1.5 min-w-[190px]">
+                          <p className="font-semibold text-slate-500 border-b border-slate-100 pb-1.5 mb-1">
+                            x = {Number(label).toFixed(0)} m
+                          </p>
+                          {payload.map((p) => {
+                            const nameMap: Record<string, string> = { Hmax: "H_max transient", Hmin: "H_min transient", elev: "Elevation" };
+                            return (
+                              <div key={p.dataKey as string} className="flex justify-between items-center gap-4">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: p.color }} />
+                                  <span className="text-slate-600">{nameMap[p.dataKey as string] ?? String(p.dataKey)}</span>
+                                </span>
+                                <span className="font-bold font-mono text-slate-800">
+                                  {typeof p.value === "number" ? `${p.value.toFixed(2)} m` : "—"}
+                                </span>
+                              </div>
+                            );
+                          })}
+                          {result?.h_vap_m !== undefined && (
+                            <div className="border-t border-slate-100 pt-1.5 text-[10px] text-amber-600 font-mono">
+                              h_vap = {result.h_vap_m.toFixed(2)} m
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }}
                   />
                   <Legend wrapperStyle={{ fontSize: 10 }} />
                   <Area
@@ -829,8 +938,30 @@ export default function StepSuctionSurgeMOC() {
                   <XAxis dataKey="t" label={{ value: "Time (s)", position: "insideBottomRight", offset: -4, fontSize: 10 }} tick={{ fontSize: 10 }} />
                   <YAxis label={{ value: "Head (m)", angle: -90, position: "insideLeft", fontSize: 10 }} tick={{ fontSize: 10 }} />
                   <Tooltip
-                    formatter={(value, name) => [`${Number(value).toFixed(2)} m`, String(name)]}
-                    labelFormatter={(label) => `t = ${Number(label).toFixed(3)} s`}
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload?.length) return null;
+                      return (
+                        <div className="rounded-xl border border-slate-200 bg-white shadow-lg px-3 py-2.5 text-xs space-y-1.5 min-w-[190px]">
+                          <p className="font-semibold text-slate-500 border-b border-slate-100 pb-1.5 mb-1">
+                            t = {Number(label).toFixed(3)} s
+                          </p>
+                          {payload.map((p) => (
+                            <div key={p.dataKey as string} className="flex justify-between items-center gap-4">
+                              <span className="flex items-center gap-1.5">
+                                <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: p.color }} />
+                                <span className="text-slate-600">{String(p.name)}</span>
+                              </span>
+                              <span className="font-bold font-mono text-slate-800">
+                                {typeof p.value === "number" ? `${p.value.toFixed(2)} m` : "—"}
+                              </span>
+                            </div>
+                          ))}
+                          <div className="border-t border-slate-100 pt-1.5 text-[10px] text-amber-600 font-mono">
+                            h_vap = {result.h_vap_m.toFixed(2)} m
+                          </div>
+                        </div>
+                      );
+                    }}
                   />
                   <Legend wrapperStyle={{ fontSize: 10 }} />
                   {result.observations.map((obs, ki) => (

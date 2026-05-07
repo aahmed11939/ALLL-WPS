@@ -8,10 +8,13 @@ Run with:
 from __future__ import annotations
 
 import math
+from typing import Any
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import ValidationError
 
+from backend.api.domain_models import ProjectModel, ValidationResult
 from backend.api.schemas import (
     CalculationRequest,
     CalculationResponse,
@@ -168,3 +171,76 @@ def calculate(req: CalculationRequest) -> CalculationResponse:
         design_Q_m3h=req.Q_m3h,
         K_sum=K_sum,
     )
+
+
+# ---------------------------------------------------------------------------
+# Project domain-model endpoints
+# ---------------------------------------------------------------------------
+
+
+def _fmt_validation_error(exc: ValidationError) -> list[str]:
+    """Convert a Pydantic ValidationError into human-readable strings."""
+    messages: list[str] = []
+    for err in exc.errors():
+        loc = " → ".join(str(p) for p in err["loc"]) if err["loc"] else "body"
+        messages.append(f"{loc}: {err['msg']}")
+    return messages
+
+
+@app.post(
+    "/project/validate",
+    response_model=ValidationResult,
+    tags=["project"],
+    summary="Validate a complete project model",
+    status_code=status.HTTP_200_OK,
+)
+async def validate_project(request: Request) -> ValidationResult:
+    """
+    Parse and validate a ``ProjectModel`` JSON body.
+
+    Always returns HTTP 200 with a structured result:
+    - ``valid``: False if Pydantic raised hard validation errors.
+    - ``errors``: Human-readable list of hard errors (empty when valid).
+    - ``warnings``: Non-blocking advisory messages (potable-service guidelines).
+
+    Use this endpoint to drive client-side form feedback without relying on
+    FastAPI's default 422 response shape.
+    """
+    try:
+        body: Any = await request.json()
+    except Exception:
+        return ValidationResult(
+            valid=False,
+            errors=["Request body is not valid JSON."],
+            warnings=[],
+        )
+
+    try:
+        project = ProjectModel.model_validate(body)
+        return ValidationResult(
+            valid=True,
+            errors=[],
+            warnings=project.warnings,
+        )
+    except ValidationError as exc:
+        return ValidationResult(
+            valid=False,
+            errors=_fmt_validation_error(exc),
+            warnings=[],
+        )
+
+
+@app.get(
+    "/project/validate/schema",
+    tags=["project"],
+    summary="Return the JSON Schema for ProjectModel",
+    status_code=status.HTTP_200_OK,
+)
+def project_schema() -> dict:
+    """
+    Return the JSON Schema for ``ProjectModel``.
+
+    Useful for client-side form generation, validation libraries, and
+    API documentation tooling.
+    """
+    return ProjectModel.model_json_schema()

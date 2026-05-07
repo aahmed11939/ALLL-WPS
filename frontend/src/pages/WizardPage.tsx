@@ -14,6 +14,7 @@ import StepPump        from "../components/wizard/StepPump";
 import StepHydraulics  from "../components/wizard/StepHydraulics";
 import StepCurves      from "../components/wizard/StepCurves";
 import StepWaterHammer from "../components/wizard/StepWaterHammer";
+import StepChecks      from "../components/wizard/StepChecks";
 import StepExports     from "../components/wizard/StepExports";
 
 // ---------------------------------------------------------------------------
@@ -36,6 +37,7 @@ const STEPS: StepDef[] = [
   { label: "Hydraulic Results",          shortLabel: "Hydraulics", badge: "TDH"   },
   { label: "System Curve & Op. Point",   shortLabel: "Sys Curve",  badge: "Q*H*"  },
   { label: "Water Hammer",               shortLabel: "WH Surge",   badge: "Surge" },
+  { label: "Engineering Checks",         shortLabel: "Checks",     badge: "✓ Eng" },
   { label: "Summary & Export",           shortLabel: "Export",     badge: "JSON"  },
 ];
 
@@ -76,16 +78,17 @@ function validateStep(step: number, draft: ProjectDraft): string | null {
 
 function StepContent({ index }: { index: number }) {
   switch (index) {
-    case 0: return <StepMeta />;
-    case 1: return <StepNodes />;
-    case 2: return <StepPipeline label="suction" />;
-    case 3: return <StepWetWell />;
-    case 4: return <StepPump />;
-    case 5: return <StepPipeline label="discharge" />;
-    case 6: return <StepHydraulics />;
-    case 7: return <StepCurves />;
-    case 8: return <StepWaterHammer />;
-    case 9: return <StepExports />;
+    case 0:  return <StepMeta />;
+    case 1:  return <StepNodes />;
+    case 2:  return <StepPipeline label="suction" />;
+    case 3:  return <StepWetWell />;
+    case 4:  return <StepPump />;
+    case 5:  return <StepPipeline label="discharge" />;
+    case 6:  return <StepHydraulics />;
+    case 7:  return <StepCurves />;
+    case 8:  return <StepWaterHammer />;
+    case 9:  return <StepChecks />;
+    case 10: return <StepExports />;
     default: return null;
   }
 }

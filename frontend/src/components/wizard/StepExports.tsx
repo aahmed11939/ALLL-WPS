@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useProject } from "../../contexts/ProjectContext";
+import { runChecks, type CheckResult } from "../../utils/engineeringChecks";
 
 function FeatureToast({ message, onClose }: { message: string; onClose: () => void }) {
   return (
@@ -21,6 +22,36 @@ function FeatureToast({ message, onClose }: { message: string; onClose: () => vo
   );
 }
 
+/** Tiny inline badge for check severity counts in the summary card. */
+function SevBadge({ count, label, color }: { count: number; label: string; color: string }) {
+  if (count === 0) return null;
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${color}`}>
+      {count} {label}
+    </span>
+  );
+}
+
+/** Compact row for one check result in the export summary. */
+function CheckSummaryRow({ check }: { check: CheckResult }) {
+  const colors: Record<string, string> = {
+    critical: "text-rose-700 bg-rose-50 border-rose-200",
+    warning:  "text-amber-700 bg-amber-50 border-amber-200",
+    info:     "text-teal-700 bg-teal-50 border-teal-200",
+  };
+  return (
+    <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 ${colors[check.severity]}`}>
+      <span className="text-[10px] font-bold uppercase shrink-0 mt-0.5 w-14">{check.severity}</span>
+      <div className="min-w-0">
+        <p className="text-xs font-semibold leading-snug">{check.title}</p>
+        {check.metric && (
+          <p className="text-[10px] font-mono text-slate-500 mt-0.5">{check.metric}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function StepExports() {
   const { draft } = useProject();
   const [toast, setToast] = useState<string | null>(null);
@@ -30,10 +61,20 @@ export default function StepExports() {
     setTimeout(() => setToast(null), 4000);
   };
 
+  // Derive engineering checks — always fresh, no API call needed
+  const checks = runChecks(draft);
+  const criticals = checks.filter((c) => c.severity === "critical" && !c.skipped).length;
+  const warnings  = checks.filter((c) => c.severity === "warning"  && !c.skipped).length;
+  const actionable = checks.filter((c) => !c.skipped && c.severity !== "info");
+
   const handleDownloadJson = () => {
-    // Export full project state (including computed results so the file is
-    // a complete record of the design session and can be reloaded with results)
-    const blob = new Blob([JSON.stringify(draft, null, 2)], { type: "application/json" });
+    // Export full project state + derived engineering checks so the file is
+    // a complete record of the design session and can be reloaded with results.
+    const payload = {
+      ...draft,
+      engineeringChecks: checks,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     const safeName = (draft.meta.name || "project")
@@ -93,6 +134,37 @@ export default function StepExports() {
           kSum={draft.discharge.accessories_K_sum}
           accessoryCount={draft.discharge.accessories.reduce((a, i) => a + i.count, 0)}
         />
+      </div>
+
+      {/* Engineering checks summary */}
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex items-center justify-between">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Engineering Checks Summary
+          </p>
+          <div className="flex gap-1.5">
+            <SevBadge count={criticals} label="Critical" color="bg-rose-100 text-rose-700" />
+            <SevBadge count={warnings}  label={warnings === 1 ? "Warning" : "Warnings"} color="bg-amber-100 text-amber-700" />
+            {criticals === 0 && warnings === 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-bold text-teal-700">
+                All clear
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="p-4 space-y-2">
+          {actionable.length === 0 ? (
+            <p className="text-xs text-slate-400 text-center py-2">
+              No critical issues or warnings. Visit Step 10 for the full checklist.
+            </p>
+          ) : (
+            actionable.map((c) => <CheckSummaryRow key={c.id} check={c} />)
+          )}
+          <p className="text-[10px] text-slate-400 pt-1">
+            Full detail, standards references, and recommendations are on Step 10 (Engineering Checks).
+            Checks are included in the JSON export under <span className="font-mono">engineeringChecks</span>.
+          </p>
+        </div>
       </div>
 
       {/* Hydraulic results summary */}

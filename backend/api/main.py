@@ -12,7 +12,7 @@ from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from backend.api.domain_models import ProjectModel, ValidationResult
 from backend.api.schemas import (
@@ -75,6 +75,8 @@ from backend.api.schemas import (
     NPSHaPoint,
     SuctionTransientRequest,
     SuctionTransientResponse,
+    MOCSegmentInput,
+    ProtectionDeviceConfig,
     AirVesselDeviceConfig,
     SurgeTankDeviceConfig,
     PRVDeviceConfig,
@@ -132,6 +134,8 @@ from backend.engine.surge_moc import (
 from backend.engine.surge_sizing import (
     AirVesselBC,
     SurgeTankBC,
+    PRVBC,
+    VacuumReliefBC,
     apply_prv_postprocess,
     apply_vacuum_relief_postprocess,
     extract_whatif_metrics,
@@ -2316,8 +2320,16 @@ async def surge_whatif(req: WhatIfRequest) -> WhatIfResponse:
                 label  = f"Surge Tank {dev.A_tank_m2:.2g} m² (side {dev.boundary_side})"
 
             elif isinstance(dev, PRVDeviceConfig):
-                raw_d  = copy.deepcopy(raw_base)
-                apply_prv_postprocess(raw_d, dev.H_set_m, req.rho_kg_m3)
+                # Dynamic MOC: PRVBC wraps the base BC at selected boundary.
+                # When H > H_set_m at that boundary node, PRV opens and fixes
+                # H = H_set_m, recomputing Q from the MOC characteristic.
+                base_bc_prv = _build_moc_bc(
+                    req.boundary_A if dev.boundary_side == "A" else req.boundary_B
+                )
+                prv    = PRVBC(H_set_m=dev.H_set_m, base_bc=base_bc_prv)
+                bc_a_d = prv if dev.boundary_side == "A" else _build_moc_bc(req.boundary_A)
+                bc_b_d = prv if dev.boundary_side == "B" else _build_moc_bc(req.boundary_B)
+                raw_d  = run_moc(boundary_A=bc_a_d, boundary_B=bc_b_d, **base_kwargs)
                 q_rel  = dev.Q_relief_m3s or req.Q_0_m3s
                 G_loc  = 9.81
                 P_up   = max(
@@ -2326,13 +2338,20 @@ async def surge_whatif(req: WhatIfRequest) -> WhatIfResponse:
                 )
                 P_set  = dev.H_set_m * req.rho_kg_m3 * G_loc / 1_000.0
                 sizing = size_prv(q_rel, P_up, P_set)
-                label  = f"PRV @ {dev.H_set_m:.1f} m"
+                label  = f"PRV @ {dev.H_set_m:.1f} m (side {dev.boundary_side})"
 
             elif isinstance(dev, VacuumReliefDeviceConfig):
-                raw_d  = copy.deepcopy(raw_base)
-                apply_vacuum_relief_postprocess(raw_d, dev.H_admit_m, req.rho_kg_m3)
+                # Dynamic MOC: VacuumReliefBC wraps the base BC at selected boundary.
+                # When H < H_admit_m at that node, valve opens and fixes H = H_admit_m.
+                base_bc_var = _build_moc_bc(
+                    req.boundary_A if dev.boundary_side == "A" else req.boundary_B
+                )
+                var    = VacuumReliefBC(H_admit_m=dev.H_admit_m, base_bc=base_bc_var)
+                bc_a_d = var if dev.boundary_side == "A" else _build_moc_bc(req.boundary_A)
+                bc_b_d = var if dev.boundary_side == "B" else _build_moc_bc(req.boundary_B)
+                raw_d  = run_moc(boundary_A=bc_a_d, boundary_B=bc_b_d, **base_kwargs)
                 sizing = size_vacuum_relief(D_m)
-                label  = f"Vacuum Relief (H_admit = {dev.H_admit_m:.1f} m)"
+                label  = f"Vacuum Relief H_admit={dev.H_admit_m:.1f} m (side {dev.boundary_side})"
 
             elif isinstance(dev, SlowCheckValveDeviceConfig):
                 # Resolve the BC at the selected boundary side
@@ -2404,3 +2423,83 @@ async def surge_whatif(req: WhatIfRequest) -> WhatIfResponse:
         T_char_s=T_char_s,
         pipeline=req.pipeline,
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /surge/device-size  — lightweight pre-run sizing preview (no MOC)
+# ---------------------------------------------------------------------------
+
+class _DeviceSizeRequest(BaseModel):
+    """Inline sizing preview — pipe geometry + one device config.  No MOC run."""
+    Q_0_m3s:              float
+    wave_speed_ms:        float
+    H_0_m:                float
+    segments:             list[MOCSegmentInput]
+    rho_kg_m3:            float = 1000.0
+    pressure_rating_kPa:  float | None = None
+    device:               ProtectionDeviceConfig
+
+
+@app.post("/surge/device-size", tags=["Surge — What-If"])
+async def surge_device_size(req: _DeviceSizeRequest) -> dict:
+    """
+    Return a preliminary device sizing estimate WITHOUT running MOC.
+
+    Useful for inline UI previews while the user is configuring devices.
+    All results are screening-level (±30–50 %). Returns a flat dict with
+    the same keys as `sizing_summary` in the whatif response.
+    """
+    from backend.engine.surge_sizing import (
+        size_air_vessel, size_surge_tank, size_prv,
+        size_vacuum_relief, size_slow_check_valve,
+    )
+
+    # ── Derive pipe geometry from first segment ──────────────────────────────
+    if not req.segments:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="At least one segment is required for device sizing.",
+        )
+    import math as _math
+    seg0 = req.segments[0]
+    D_m  = seg0.D_m or 0.2
+    L_m  = sum(s.L_m for s in req.segments) or 500.0
+    A_pipe = _math.pi / 4.0 * D_m ** 2
+
+    G_loc     = 9.81
+    H_target  = req.H_0_m * 1.30
+    dev       = req.device
+
+    try:
+        if isinstance(dev, AirVesselDeviceConfig):
+            return size_air_vessel(
+                Q_0_m3s=req.Q_0_m3s, a_ms=req.wave_speed_ms,
+                A_pipe_m2=A_pipe, H_0_m=req.H_0_m, H_max_target_m=H_target,
+            )
+        elif isinstance(dev, SurgeTankDeviceConfig):
+            return size_surge_tank(
+                Q_0_m3s=req.Q_0_m3s, a_ms=req.wave_speed_ms,
+                L_m=L_m, D_m=D_m, H_0_m=req.H_0_m, H_max_target_m=H_target,
+            )
+        elif isinstance(dev, PRVDeviceConfig):
+            q_rel = dev.Q_relief_m3s or req.Q_0_m3s
+            P_up  = max(H_target * req.rho_kg_m3 * G_loc / 1_000.0, 1.0)
+            P_set = dev.H_set_m * req.rho_kg_m3 * G_loc / 1_000.0
+            return size_prv(q_rel, P_up, P_set)
+        elif isinstance(dev, VacuumReliefDeviceConfig):
+            return size_vacuum_relief(D_m)
+        elif isinstance(dev, SlowCheckValveDeviceConfig):
+            return size_slow_check_valve(
+                Q_0_m3s=req.Q_0_m3s, a_ms=req.wave_speed_ms,
+                L_m=L_m, D_m=D_m, H_0_m=req.H_0_m, H_max_target_m=H_target,
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Unknown device type.",
+            )
+    except (ValueError, ZeroDivisionError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )

@@ -141,12 +141,14 @@ export default function ProtectionDevicePanel({
   const [stZmax,  setStZmax]  = useState(String(Math.round(H_0_m * 1.5)));
 
   // ── PRV ────────────────────────────────────────────────────────────────
-  const [prvEn,  setPrvEn]  = useState(false);
-  const [prvH,   setPrvH]   = useState(String(Math.round(H_0_m * 1.3)));
-  const [prvQ,   setPrvQ]   = useState("");
+  const [prvEn,   setPrvEn]   = useState(false);
+  const [prvSide, setPrvSide] = useState<"A" | "B">("A");
+  const [prvH,    setPrvH]    = useState(String(Math.round(H_0_m * 1.3)));
+  const [prvQ,    setPrvQ]    = useState("");
 
   // ── Vacuum Relief ──────────────────────────────────────────────────────
   const [vrEn,   setVrEn]   = useState(false);
+  const [vrSide, setVrSide] = useState<"A" | "B">("A");
   const [vrH,    setVrH]    = useState("0");
 
   // ── Slow Check Valve ───────────────────────────────────────────────────
@@ -192,13 +194,13 @@ export default function ProtectionDevicePanel({
       const H = parseFloat(prvH);
       if (!isNaN(H) && H > 0) {
         const qr = parseFloat(prvQ);
-        devices.push({ type: "prv", enabled: true, H_set_m: H,
+        devices.push({ type: "prv", enabled: true, boundary_side: prvSide, H_set_m: H,
           Q_relief_m3s: isNaN(qr) || qr <= 0 ? undefined : qr });
       }
     }
     if (vrEn) {
       const H = parseFloat(vrH);
-      devices.push({ type: "vacuum_relief", enabled: true, H_admit_m: isNaN(H) ? 0 : H });
+      devices.push({ type: "vacuum_relief", enabled: true, boundary_side: vrSide, H_admit_m: isNaN(H) ? 0 : H });
     }
     if (scvEn) {
       const t = parseFloat(scvTime);
@@ -314,14 +316,19 @@ export default function ProtectionDevicePanel({
           <div>
             <Label>Set-point head H_set [m]</Label>
             <Inp value={prvH} onChange={setPrvH} step={1} min={1} placeholder={String(Math.round(H_0_m * 1.3))} />
-            <Hint>Peak head capped at this value (conservative model)</Hint>
+            <Hint>When H exceeds this at the selected boundary the PRV opens — MOC re-runs with clamped head</Hint>
           </div>
           <div>
             <Label>Relief flow Q_relief [m³/s] <span className="font-normal text-slate-400">(sizing only)</span></Label>
             <Inp value={prvQ} onChange={setPrvQ} step={0.001} min={0} placeholder={`auto (${Q_0_m3s.toFixed(4)})`} />
           </div>
+          <div>
+            <Label>Connect to boundary</Label>
+            <SideToggle value={prvSide} onChange={setPrvSide} />
+            <Hint>A = upstream/pump · B = downstream/reservoir</Hint>
+          </div>
           <p className="text-[9px] text-amber-700 bg-amber-100 rounded px-2 py-1 leading-snug">
-            Post-processing model: max head envelope capped at H_set — does not re-run MOC.
+            Dynamic MOC simulation: boundary head clamped at H_set when valve opens — full MOC re-run per scenario.
           </p>
         </DeviceCard>
 
@@ -331,10 +338,15 @@ export default function ProtectionDevicePanel({
           <div>
             <Label>Admission head H_admit [m]</Label>
             <Inp value={vrH} onChange={setVrH} step={0.5} placeholder="0.0" />
-            <Hint>0 m gauge = atmospheric (valve opens when head drops below this)</Hint>
+            <Hint>0 m gauge = atmospheric — valve opens when head drops below this value</Hint>
+          </div>
+          <div>
+            <Label>Connect to boundary</Label>
+            <SideToggle value={vrSide} onChange={setVrSide} />
+            <Hint>A = upstream/pump · B = downstream/reservoir</Hint>
           </div>
           <p className="text-[9px] text-emerald-700 bg-emerald-100 rounded px-2 py-1 leading-snug">
-            Post-processing model: min head envelope clamped at H_admit — does not re-run MOC.
+            Dynamic MOC simulation: boundary head clamped at H_admit when valve opens — full MOC re-run per scenario.
           </p>
         </DeviceCard>
 

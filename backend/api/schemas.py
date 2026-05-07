@@ -1995,13 +1995,20 @@ class SurgeTankDeviceConfig(BaseModel):
 
 
 class PRVDeviceConfig(BaseModel):
-    """Pressure relief valve — conservative envelope post-processing model."""
+    """Pressure relief valve — dynamic MOC boundary condition (PRVBC wrapping)."""
 
     type: Literal["prv"] = "prv"
     enabled: bool = True
+    boundary_side: Literal["A", "B"] = Field(
+        default="A",
+        description=(
+            "Which pipeline boundary the PRV is connected to. "
+            "Side A (upstream/pump) is typical for discharge pump-trip scenarios."
+        ),
+    )
     H_set_m: float = Field(
         gt=0,
-        description="PRV set-point head [m] — peak head capped to this value",
+        description="PRV set-point head [m] — head is clamped to this value when PRV opens",
     )
     Q_relief_m3s: Optional[float] = Field(
         default=None,
@@ -2011,10 +2018,17 @@ class PRVDeviceConfig(BaseModel):
 
 
 class VacuumReliefDeviceConfig(BaseModel):
-    """Vacuum (air-inlet) relief valve — envelope post-processing model."""
+    """Vacuum (air-inlet) relief valve — dynamic MOC boundary condition (VacuumReliefBC)."""
 
     type: Literal["vacuum_relief"] = "vacuum_relief"
     enabled: bool = True
+    boundary_side: Literal["A", "B"] = Field(
+        default="A",
+        description=(
+            "Which pipeline boundary the vacuum relief valve is connected to. "
+            "Side A (upstream/pump) is typical for pump-trip low-pressure scenarios."
+        ),
+    )
     H_admit_m: float = Field(
         default=0.0,
         description="Head at which valve opens (gauge) [m]; 0 m = atmospheric",

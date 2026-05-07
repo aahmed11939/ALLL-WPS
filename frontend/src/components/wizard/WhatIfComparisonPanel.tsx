@@ -62,6 +62,13 @@ function PctBadge({ val }: { val: number | null }) {
   );
 }
 
+function RiskDeltaBadge({ baseRisk, devRisk }: { baseRisk: boolean; devRisk: boolean }) {
+  if (!baseRisk && !devRisk) return <span className="text-slate-400 text-[9px]">—</span>;
+  if (baseRisk && !devRisk)  return <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold bg-emerald-100 text-emerald-700">✓ Resolved</span>;
+  if (!baseRisk && devRisk)  return <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold bg-red-100 text-red-700">⚠ Introduced</span>;
+  return <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold bg-amber-100 text-amber-700">~ Persists</span>;
+}
+
 // ---------------------------------------------------------------------------
 // Sizing summary drawer
 // ---------------------------------------------------------------------------
@@ -187,14 +194,18 @@ export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIf
               <th className="px-3 py-2 font-semibold text-slate-600 text-right">Surge Reduction</th>
               <th className="px-3 py-2 font-semibold text-slate-600 text-right">Envelope Δ%</th>
               <th className="px-3 py-2 font-semibold text-slate-600 text-center">Cavitation</th>
+              <th className="px-3 py-2 font-semibold text-slate-600 text-right">Min P (kPa)</th>
               <th className="px-3 py-2 font-semibold text-slate-600 text-right">Risk Duration</th>
+              <th className="px-3 py-2 font-semibold text-slate-600 text-center">Risk Δ</th>
               <th className="px-3 py-2 font-semibold text-slate-600">Sizing</th>
             </tr>
           </thead>
           <tbody>
             {all.map((run, ri) => {
-              const isBase = ri === 0;
-              const color  = PALETTE[ri] ?? "#64748b";
+              const isBase  = ri === 0;
+              const color   = PALETTE[ri] ?? "#64748b";
+              const baseRisk = result.baseline.cavitation_risk ?? false;
+              const devRisk  = run.cavitation_risk ?? false;
               return (
                 <tr key={ri} className={`border-b border-slate-100 ${isBase ? "bg-slate-50/80" : "bg-white hover:bg-slate-50/40"}`}>
                   <td className="px-3 py-2 font-semibold" style={{ color }}>
@@ -219,12 +230,22 @@ export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIf
                       : <PctBadge val={run.envelope_reduction_pct} />}
                   </td>
                   <td className="px-3 py-2 text-center">
-                    <Badge ok={!run.cavitation_risk} />
+                    <Badge ok={!devRisk} />
                   </td>
                   <td className="px-3 py-2 text-right font-mono text-[9px]">
-                    {run.cavitation_risk
+                    <span className={run.global_min_P_kPa < 0 ? "text-red-600 font-semibold" : "text-slate-600"}>
+                      {fmtP(run.global_min_P_kPa)}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-[9px]">
+                    {devRisk
                       ? <span className="text-red-600 font-semibold">~{run.risk_duration_s.toFixed(2)} s</span>
                       : <span className="text-slate-400">—</span>}
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    {isBase
+                      ? <span className="text-slate-400 text-[9px]">base</span>
+                      : <RiskDeltaBadge baseRisk={baseRisk} devRisk={devRisk} />}
                   </td>
                   <td className="px-3 py-2">
                     {!isBase && <SizingDrawer sizing={run.sizing_summary} label={run.label} />}

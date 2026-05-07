@@ -885,3 +885,18 @@ export async function computeWhatIf(req: WhatIfRequest): Promise<WhatIfResponse>
   const res = await axios.post<WhatIfResponse>("/surge/whatif", req);
   return res.data;
 }
+
+export interface DeviceSizeRequest {
+  Q_0_m3s: number;
+  wave_speed_ms: number;
+  H_0_m: number;
+  segments: MOCSegmentInput[];
+  rho_kg_m3?: number;
+  pressure_rating_kPa?: number | null;
+  device: ProtectionDeviceInput;
+}
+
+export async function computeDeviceSize(req: DeviceSizeRequest): Promise<Record<string, unknown>> {
+  const res = await axios.post<Record<string, unknown>>("/surge/device-size", req);
+  return res.data;
+}

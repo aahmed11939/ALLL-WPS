@@ -4,8 +4,8 @@ Surge protection device boundary conditions and preliminary sizing helpers.
 Five protection device types:
   1. Air vessel (hydropneumatic tank)  — AirVesselBC (stateful BC)
   2. Surge tank (open standpipe)       — SurgeTankBC (stateful BC)
-  3. Pressure relief valve (PRV)       — apply_prv_postprocess()
-  4. Vacuum relief valve               — apply_vacuum_relief_postprocess()
+  3. Pressure relief valve (PRV)       — PRVBC (dynamic wrapping BC) + sizing helper
+  4. Vacuum relief valve               — VacuumReliefBC (dynamic wrapping BC) + sizing helper
   5. Slow-closing check valve          — uses existing ValveClosureBC with new t_close
 
 Engineering accuracy: all sizing formulas are screening-level (±30–50 %).
@@ -177,7 +177,54 @@ class SurgeTankBC(BoundaryCondition):
 
 
 # ---------------------------------------------------------------------------
-# 3. PRV post-processing helper
+# 3a. PRV — dynamic MOC boundary condition (wrapping)
+# ---------------------------------------------------------------------------
+
+class PRVBC(BoundaryCondition):
+    """
+    Pressure Relief Valve — dynamic MOC boundary condition.
+
+    Wraps an existing base BC.  At each time step:
+    - Computes (H, Q) from the inner base BC using the MOC characteristic.
+    - If H > H_set_m, the PRV opens: fixes H_P = H_set_m and recomputes
+      Q_P from the corresponding characteristic equation (C+ or C-),
+      representing flow bypassed through the PRV to limit head.
+
+    This is the standard MOC constant-head-when-open PRV model.
+    Instantaneous opening is assumed — conservative for screening.
+
+    References
+    ----------
+    Wylie & Streeter (1993) §7.5;  Chaudhry (2014) §10.3.
+    """
+
+    def __init__(self, H_set_m: float, base_bc: BoundaryCondition) -> None:
+        self.H_set_m = float(H_set_m)
+        self.base_bc = base_bc
+
+    def apply(
+        self,
+        t: float,
+        cp_or_cm: float,
+        B: float,
+        is_upstream: bool,
+    ) -> tuple[float, float]:
+        H_raw, Q_raw = self.base_bc.apply(t, cp_or_cm, B, is_upstream)
+        if H_raw <= self.H_set_m:
+            return H_raw, Q_raw
+        # PRV open: fix H = H_set, re-derive Q from characteristic
+        H_P = self.H_set_m
+        if is_upstream:
+            # C- equation: H_P − B·Q_P = CM  →  Q_P = (H_P − CM) / B
+            Q_P = (H_P - cp_or_cm) / B
+        else:
+            # C+ equation: H_P + B·Q_P = CP  →  Q_P = (CP − H_P) / B
+            Q_P = (cp_or_cm - H_P) / B
+        return H_P, Q_P
+
+
+# ---------------------------------------------------------------------------
+# 3b. PRV post-processing helper (kept for compatibility / utility use)
 # ---------------------------------------------------------------------------
 
 def apply_prv_postprocess(
@@ -205,7 +252,55 @@ def apply_prv_postprocess(
 
 
 # ---------------------------------------------------------------------------
-# 4. Vacuum relief valve post-processing helper
+# 4a. Vacuum Relief Valve — dynamic MOC boundary condition (wrapping)
+# ---------------------------------------------------------------------------
+
+class VacuumReliefBC(BoundaryCondition):
+    """
+    Vacuum Relief (Air-Inlet) Valve — dynamic MOC boundary condition.
+
+    Wraps an existing base BC.  At each time step:
+    - Computes (H, Q) from the inner base BC using the MOC characteristic.
+    - If H < H_admit_m, the valve opens: fixes H_P = H_admit_m (atmospheric
+      equivalent for the admitted air cushion) and recomputes Q_P from the
+      corresponding MOC characteristic equation.
+
+    This is the standard MOC constant-head-when-open vacuum relief model.
+    Air absorption into the liquid is not tracked — conservative for
+    preliminary assessment.
+
+    References
+    ----------
+    Wylie & Streeter (1993) §7.6;  AWWA Manual M51 §4.
+    """
+
+    def __init__(self, H_admit_m: float, base_bc: BoundaryCondition) -> None:
+        self.H_admit_m = float(H_admit_m)
+        self.base_bc   = base_bc
+
+    def apply(
+        self,
+        t: float,
+        cp_or_cm: float,
+        B: float,
+        is_upstream: bool,
+    ) -> tuple[float, float]:
+        H_raw, Q_raw = self.base_bc.apply(t, cp_or_cm, B, is_upstream)
+        if H_raw >= self.H_admit_m:
+            return H_raw, Q_raw
+        # Valve opens: fix H = H_admit, re-derive Q from characteristic
+        H_P = self.H_admit_m
+        if is_upstream:
+            # C- equation: H_P − B·Q_P = CM  →  Q_P = (H_P − CM) / B
+            Q_P = (H_P - cp_or_cm) / B
+        else:
+            # C+ equation: H_P + B·Q_P = CP  →  Q_P = (CP − H_P) / B
+            Q_P = (cp_or_cm - H_P) / B
+        return H_P, Q_P
+
+
+# ---------------------------------------------------------------------------
+# 4b. Vacuum relief valve post-processing helper (kept for utility use)
 # ---------------------------------------------------------------------------
 
 def apply_vacuum_relief_postprocess(

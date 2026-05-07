@@ -381,25 +381,38 @@ class TestWhatIfEndpoint:
         assert data["baseline"]["global_max_H_m"] > 0
 
     def test_prv_device(self):
+        # PRVBC wraps boundary_A (pump_trip) — MOC re-run with head clamped at A.
+        # PRV boundary-local: global_max may exceed H_set at interior nodes,
+        # but the run must succeed and head at boundary A is capped.
         req = self._req(devices=[
-            {"type": "prv", "enabled": True, "H_set_m": 55.0}
+            {"type": "prv", "enabled": True, "boundary_side": "A", "H_set_m": 55.0}
         ])
         r = client.post("/surge/whatif", json=req)
         assert r.status_code == 200
         data = r.json()
         assert len(data["device_runs"]) == 1
         run = data["device_runs"][0]
-        assert run["global_max_H_m"] <= 55.0 + 0.1   # capped at set-point
+        assert "ERROR" not in run["label"]
+        assert run["global_max_H_m"] > 0
+        # Envelope node 0 (boundary A) must not exceed H_set_m + small tolerance
+        env = run["envelope"]
+        assert env[0]["H_max_m"] <= 55.0 + 1.0, "PRV should cap boundary-A head"
 
-    def test_vacuum_relief_clears_cavitation(self):
+    def test_vacuum_relief_reduces_vacuum(self):
+        # VacuumReliefBC wraps boundary_A (pump_trip) — MOC re-run with H >= H_admit at A.
+        # Boundary-local: global_min may still be at interior nodes,
+        # but head at boundary A must be >= H_admit_m.
         req = self._req(devices=[
-            {"type": "vacuum_relief", "enabled": True, "H_admit_m": 0.0}
+            {"type": "vacuum_relief", "enabled": True, "boundary_side": "A", "H_admit_m": 0.0}
         ])
         r = client.post("/surge/whatif", json=req)
         assert r.status_code == 200
         data = r.json()
         run = data["device_runs"][0]
-        assert run["global_min_H_m"] >= 0.0 - 0.01
+        assert "ERROR" not in run["label"]
+        # Envelope node 0 (boundary A) must not drop below H_admit_m
+        env = run["envelope"]
+        assert env[0]["H_min_m"] >= 0.0 - 0.1, "VacuumRelief should prevent vacuum at boundary A"
 
     def test_air_vessel_device(self):
         req = self._req(devices=[
@@ -539,6 +552,63 @@ class TestWhatIfEndpoint:
         # PRV reduces peak head → should be non-None and >= 0
         assert run["envelope_reduction_pct"] is not None
         assert run["envelope_reduction_pct"] >= 0.0
+
+    def test_prv_sizing_summary_has_kv(self):
+        req = self._req(devices=[
+            {"type": "prv", "enabled": True, "boundary_side": "A", "H_set_m": 55.0}
+        ])
+        r = client.post("/surge/whatif", json=req)
+        assert r.status_code == 200
+        run = r.json()["device_runs"][0]
+        s = run["sizing_summary"]
+        assert s is not None
+        assert "Kv_m3h_bar05" in s
+
+    def test_vacuum_relief_sizing_summary_has_dn(self):
+        req = self._req(devices=[
+            {"type": "vacuum_relief", "enabled": True, "boundary_side": "A", "H_admit_m": 0.0}
+        ])
+        r = client.post("/surge/whatif", json=req)
+        assert r.status_code == 200
+        run = r.json()["device_runs"][0]
+        s = run["sizing_summary"]
+        assert s is not None
+        assert "DN_rec_mm" in s
+
+    def test_device_size_endpoint_prv(self):
+        req = {
+            "Q_0_m3s": 0.05, "wave_speed_ms": 1200.0, "H_0_m": 50.0,
+            "segments": [{"L_m": 500.0, "D_m": 0.2, "roughness_m": 0.0001}],
+            "device": {"type": "prv", "enabled": True, "boundary_side": "A", "H_set_m": 65.0},
+        }
+        r = client.post("/surge/device-size", json=req)
+        assert r.status_code == 200
+        data = r.json()
+        assert "Kv_m3h_bar05" in data
+        assert "notes" in data
+
+    def test_device_size_endpoint_air_vessel(self):
+        req = {
+            "Q_0_m3s": 0.05, "wave_speed_ms": 1200.0, "H_0_m": 50.0,
+            "segments": [{"L_m": 500.0, "D_m": 0.2, "roughness_m": 0.0001}],
+            "device": {
+                "type": "air_vessel", "enabled": True, "boundary_side": "A",
+                "V_total_m3": 2.0, "V_gas_frac": 0.5, "P0_kPa": 400.0,
+            },
+        }
+        r = client.post("/surge/device-size", json=req)
+        assert r.status_code == 200
+        data = r.json()
+        assert "V_total_m3" in data
+
+    def test_device_size_endpoint_no_segments_returns_422(self):
+        req = {
+            "Q_0_m3s": 0.05, "wave_speed_ms": 1200.0, "H_0_m": 50.0,
+            "segments": [],
+            "device": {"type": "prv", "enabled": True, "boundary_side": "A", "H_set_m": 65.0},
+        }
+        r = client.post("/surge/device-size", json=req)
+        assert r.status_code == 422
 
     def test_slow_check_valve_reservoir_boundary_rejected(self):
         # boundary_side="B" is reservoir — should be caught as error row (not 422)

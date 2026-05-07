@@ -854,9 +854,13 @@ class PumpSelectionRequest(BaseModel):
         default=None,
         description="Catalogue key identifying the chosen pump type. Required when active=True.",
     )
-    control_mode: Literal["constant_speed", "vfd"] = Field(
+    control_mode: Literal["constant_speed", "vfd", "cascade"] = Field(
         default="constant_speed",
-        description="Speed control: 'constant_speed' (DOL/soft-start) or 'vfd' (variable-frequency drive)",
+        description=(
+            "Speed control: 'constant_speed' (DOL/soft-start), "
+            "'vfd' (variable-frequency drive), or "
+            "'cascade' (duty pumps start sequentially on demand)"
+        ),
     )
     n_duty: Annotated[int, Field(ge=1, description="Number of duty pumps")] = 1
     n_standby: Annotated[int, Field(ge=0, description="Number of standby pumps")] = 1

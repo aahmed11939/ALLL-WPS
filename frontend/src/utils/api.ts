@@ -261,7 +261,7 @@ export type PumpExtras =
 export interface PumpSelectionRequest {
   active: boolean;
   pump_type_key?: string;
-  control_mode?: "constant_speed" | "vfd";
+  control_mode?: "constant_speed" | "vfd" | "cascade";
   n_duty?: number;
   n_standby?: number;
   extras?: PumpExtras | null;

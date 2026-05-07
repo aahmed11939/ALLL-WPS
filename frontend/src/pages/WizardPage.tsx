@@ -437,9 +437,15 @@ export default function WizardPage() {
             </div>
           </div>
 
-          {/* Scrollable step content */}
+          {/* Scrollable step content — all steps stay mounted to preserve internal
+              state of ClearWellStep / PumpSelectionStep / PumpCurveStep when
+              navigating between wizard steps. Only the active step is visible. */}
           <div ref={contentRef} className="flex-1 overflow-y-auto px-6 py-6">
-            <StepContent index={currentStep} />
+            {STEPS.map((_, idx) => (
+              <div key={idx} className={currentStep === idx ? "block" : "hidden"}>
+                <StepContent index={idx} />
+              </div>
+            ))}
           </div>
 
           {/* Navigation footer */}

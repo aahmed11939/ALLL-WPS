@@ -809,6 +809,12 @@ def _generate_selection_warnings(
             "a pressure relief valve (PRV) on the discharge is mandatory."
         )
 
+    if control_mode == "cascade" and n_duty < 2:
+        warns.append(
+            "Cascade staging is most effective with ≥2 duty pumps. "
+            "With a single duty pump, cascade behaves identically to constant-speed on/off."
+        )
+
     if (
         entry["extras_schema"] == "submersible"
         and parsed_extras is not None
@@ -869,7 +875,11 @@ def compute_pump_selection(req: PumpSelectionRequest) -> PumpSelectionResponse:
     type_info = _build_pump_type_info(entry)
 
     # Configuration summary
-    control_label = "VFD" if req.control_mode == "vfd" else "Constant speed"
+    control_label = (
+        "VFD" if req.control_mode == "vfd"
+        else "Cascade" if req.control_mode == "cascade"
+        else "Constant speed"
+    )
     config_summary = (
         f"{req.n_duty}+{req.n_standby} ({req.n_duty} duty, {req.n_standby} standby) "
         f"| {control_label} | {entry['display_name']}"

@@ -1,5 +1,21 @@
+import {
+  ComposedChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ReferenceLine,
+  ResponsiveContainer,
+} from "recharts";
 import { useProject } from "../../contexts/ProjectContext";
-import SystemCurveChart from "../SystemCurveChart";
+
+interface ChartPt {
+  Q: number;
+  sys?: number;
+  pump?: number;
+}
 
 export default function StepCurves() {
   const { draft } = useProject();
@@ -8,60 +24,154 @@ export default function StepCurves() {
 
   const op = pr?.operating_points?.[0] ?? null;
 
+  // Build merged chart data
+  const chartData: ChartPt[] = (() => {
+    const map = new Map<number, ChartPt>();
+
+    // System curve
+    if (r?.system_curve) {
+      for (const pt of r.system_curve) {
+        const key = Math.round(pt.Q_m3h * 100) / 100;
+        map.set(key, { Q: key, sys: Math.round(pt.H_m * 100) / 100 });
+      }
+    }
+
+    // Pump H-Q curve
+    if (pr?.hq_curve) {
+      for (const pt of pr.hq_curve) {
+        const key = Math.round(pt.Q_m3h * 100) / 100;
+        const existing = map.get(key) ?? { Q: key };
+        map.set(key, { ...existing, pump: Math.round(pt.value * 100) / 100 });
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => a.Q - b.Q);
+  })();
+
+  const hasSys  = chartData.some((p) => p.sys  !== undefined);
+  const hasPump = chartData.some((p) => p.pump !== undefined);
+
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-base font-bold text-slate-800 mb-1">System Curve &amp; Operating Point</h2>
+        <h2 className="text-base font-bold text-slate-800 mb-1">
+          System Curve &amp; Operating Point
+        </h2>
         <p className="text-xs text-slate-500">
-          Review the system curve and pump operating point. Run hydraulic compute on Step 7
-          and pump curves on Step 5 to populate this view.
+          Review the system curve (Step 7) overlaid with the pump H-Q curve (Step 5).
+          The intersection is the duty operating point Q*, H*.
         </p>
       </div>
 
-      {!r && (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-          <p className="text-sm font-semibold text-slate-600 mb-1">No hydraulic results</p>
+      {/* Overlay chart */}
+      {!hasSys && !hasPump ? (
+        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center space-y-2">
+          <p className="text-sm font-semibold text-slate-600">No curve data yet</p>
           <p className="text-xs text-slate-400">
-            Complete Step 7 (Hydraulic Results) to generate the system curve.
+            Complete Step 7 (Hydraulic Results → Compute) to generate the system curve,
+            and Step 5 (Pump &amp; Curves) to enter H-Q data.
           </p>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-4">
+            H-Q Overlay
+          </p>
+          <ResponsiveContainer width="100%" height={320}>
+            <ComposedChart data={chartData} margin={{ top: 4, right: 20, left: 10, bottom: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis
+                dataKey="Q"
+                type="number"
+                domain={["auto", "auto"]}
+                tickCount={8}
+                tickFormatter={(v: number) => v.toFixed(1)}
+                label={{ value: "Q (m³/h)", position: "insideBottom", offset: -12, fontSize: 11 }}
+                tick={{ fontSize: 10 }}
+              />
+              <YAxis
+                type="number"
+                domain={["auto", "auto"]}
+                tickFormatter={(v: number) => v.toFixed(1)}
+                label={{ value: "H (m)", angle: -90, position: "insideLeft", offset: 10, fontSize: 11 }}
+                tick={{ fontSize: 10 }}
+              />
+              <Tooltip
+                formatter={(val: number, name: string) => [
+                  `${val.toFixed(2)} m`,
+                  name === "sys" ? "System curve" : "Pump H-Q",
+                ]}
+                labelFormatter={(v: number) => `Q = ${v.toFixed(2)} m³/h`}
+              />
+              <Legend
+                formatter={(val: string) =>
+                  val === "sys" ? "System curve" : "Pump H-Q"
+                }
+              />
+              {hasSys && (
+                <Line
+                  type="monotone"
+                  dataKey="sys"
+                  stroke="#0d9488"
+                  strokeWidth={2.5}
+                  dot={false}
+                  name="sys"
+                  connectNulls
+                />
+              )}
+              {hasPump && (
+                <Line
+                  type="monotone"
+                  dataKey="pump"
+                  stroke="#2563eb"
+                  strokeWidth={2.5}
+                  dot={false}
+                  name="pump"
+                  connectNulls
+                />
+              )}
+              {op && (
+                <>
+                  <ReferenceLine
+                    x={op.Q_m3h}
+                    stroke="#f59e0b"
+                    strokeDasharray="4 3"
+                    strokeWidth={1.5}
+                    label={{ value: `Q*=${op.Q_m3h.toFixed(1)}`, position: "top", fontSize: 10, fill: "#b45309" }}
+                  />
+                  <ReferenceLine
+                    y={op.H_m}
+                    stroke="#f59e0b"
+                    strokeDasharray="4 3"
+                    strokeWidth={1.5}
+                    label={{ value: `H*=${op.H_m.toFixed(1)}`, position: "right", fontSize: 10, fill: "#b45309" }}
+                  />
+                </>
+              )}
+            </ComposedChart>
+          </ResponsiveContainer>
+          {!hasSys && hasPump && (
+            <p className="mt-2 text-xs text-slate-400 text-center">
+              Run Compute on Step 7 to add the system curve.
+            </p>
+          )}
+          {hasSys && !hasPump && (
+            <p className="mt-2 text-xs text-slate-400 text-center">
+              Enter pump H-Q data on Step 5 to overlay the pump curve.
+            </p>
+          )}
         </div>
       )}
 
-      {r && (
-        <>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">
-              System Curve
-            </p>
-            <SystemCurveChart results={r} />
-          </div>
-
-          {/* Key hydraulic summary */}
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">
-              Hydraulic Summary
-            </p>
-            <div className="grid grid-cols-3 gap-4 text-sm">
-              <Metric label="TDH"          value={`${r.tdh_m.toFixed(2)} m`}                     highlight />
-              <Metric label="Static head"  value={`${r.static_head_m.toFixed(2)} m`}             />
-              <Metric label="Friction hf"  value={`${r.friction_head_m.toFixed(2)} m`}           />
-              <Metric label="Minor hm"     value={`${r.minor_head_m.toFixed(2)} m`}              />
-              <Metric label="Velocity"     value={`${r.velocity_ms.toFixed(3)} m/s`}             />
-              <Metric label="Reynolds No." value={Math.round(r.reynolds_number).toLocaleString()} />
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Pump operating point */}
+      {/* Operating point summary */}
       {pr && op ? (
         <div className="rounded-xl border border-teal-200 bg-teal-50 p-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-teal-600 mb-3">
             Pump Operating Point
           </p>
           <div className="grid grid-cols-3 gap-4 text-sm">
-            <Metric label="Q*"            value={`${op.Q_m3h.toFixed(2)} m³/h`}       highlight />
-            <Metric label="H*"            value={`${op.H_m.toFixed(2)} m`}            highlight />
+            <Metric label="Q*"           value={`${op.Q_m3h.toFixed(2)} m³/h`}       highlight />
+            <Metric label="H*"           value={`${op.H_m.toFixed(2)} m`}            highlight />
             <Metric label="η"
               value={op.eta_pct != null ? `${op.eta_pct.toFixed(1)} %` : "—"}
             />
@@ -84,11 +194,30 @@ export default function StepCurves() {
           )}
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-          <p className="text-sm font-semibold text-slate-600 mb-1">No pump operating point</p>
-          <p className="text-xs text-slate-400">
-            Enter pump curves and run compute on Step 5 to see the operating point.
+        hasSys && (
+          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+            <p className="text-sm font-semibold text-slate-600 mb-1">No pump operating point</p>
+            <p className="text-xs text-slate-400">
+              Enter pump H-Q curves and run compute on Step 5 to find the operating point.
+            </p>
+          </div>
+        )
+      )}
+
+      {/* Hydraulic summary if available */}
+      {r && (
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">
+            Hydraulic Summary
           </p>
+          <div className="grid grid-cols-3 gap-4 text-sm">
+            <Metric label="TDH"          value={`${r.tdh_m.toFixed(2)} m`}                       highlight />
+            <Metric label="Static head"  value={`${r.static_head_m.toFixed(2)} m`}               />
+            <Metric label="Friction hf"  value={`${r.friction_head_m.toFixed(2)} m`}             />
+            <Metric label="Minor hm"     value={`${r.minor_head_m.toFixed(2)} m`}                />
+            <Metric label="Velocity"     value={`${r.velocity_ms.toFixed(3)} m/s`}               />
+            <Metric label="Reynolds No." value={Math.round(r.reynolds_number).toLocaleString()}   />
+          </div>
         </div>
       )}
     </div>

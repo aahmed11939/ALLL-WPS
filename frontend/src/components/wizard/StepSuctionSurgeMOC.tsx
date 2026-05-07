@@ -922,6 +922,11 @@ export default function StepSuctionSurgeMOC() {
                     stroke="#f59e0b" strokeDasharray="5 3"
                     label={{ value: `h_vap = ${result.h_vap_m.toFixed(1)} m`, fontSize: 9, fill: "#d97706", position: "insideTopLeft" }}
                   />
+                  <ReferenceLine
+                    y={0}
+                    stroke="#94a3b8" strokeDasharray="2 2"
+                    label={{ value: "0 m (atm)", fontSize: 9, fill: "#94a3b8", position: "insideBottomRight" }}
+                  />
                 </ComposedChart>
               </ResponsiveContainer>
               </ChartErrorBoundary>
@@ -980,6 +985,11 @@ export default function StepSuctionSurgeMOC() {
                     y={result.h_vap_m}
                     stroke="#f59e0b" strokeDasharray="4 3"
                     label={{ value: "h_vap", fontSize: 9, fill: "#d97706" }}
+                  />
+                  <ReferenceLine
+                    y={0}
+                    stroke="#94a3b8" strokeDasharray="2 2"
+                    label={{ value: "0 m", fontSize: 9, fill: "#94a3b8", position: "insideBottomRight" }}
                   />
                 </LineChart>
               </ResponsiveContainer>

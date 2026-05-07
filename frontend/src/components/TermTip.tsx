@@ -60,7 +60,7 @@ const GLOSSARY: Record<string, { title: string; body: string; ref?: string }> = 
 
 interface TermTipProps {
   term: keyof typeof GLOSSARY | string;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 export default function TermTip({ term, children }: TermTipProps) {
@@ -77,7 +77,11 @@ export default function TermTip({ term, children }: TermTipProps) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open]);
 
-  if (!entry) return <>{children}</>;
+  if (!entry) return children ? <>{children}</> : null;
+
+  const trigger = children ?? (
+    <span className="text-slate-400 hover:text-blue-500 text-[10px] align-middle leading-none ml-0.5 select-none">ⓘ</span>
+  );
 
   return (
     <span ref={ref} className="relative inline-block">
@@ -89,7 +93,7 @@ export default function TermTip({ term, children }: TermTipProps) {
         className="cursor-help border-b border-dashed border-slate-400 hover:border-blue-500 hover:text-blue-700 transition-colors outline-none"
         aria-label={`Definition of ${term}`}
       >
-        {children}
+        {trigger}
       </span>
       {open && (
         <span

@@ -21,6 +21,39 @@ import WhatIfComparisonPanel from "./WhatIfComparisonPanel";
 import TermTip from "../TermTip";
 
 // ---------------------------------------------------------------------------
+// Collapsible solver notes banner
+// ---------------------------------------------------------------------------
+
+function SolverNotesBanner({ notes }: { notes: string[] }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-amber-100/60 transition-colors"
+      >
+        <span className="text-[11px] font-bold text-amber-800 flex items-center gap-2">
+          <span>⚠</span>
+          Solver assumption notes ({notes.length})
+        </span>
+        <span className={`text-amber-500 text-xs transition-transform ${open ? "rotate-180" : ""}`}>▼</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-3 space-y-1 border-t border-amber-200">
+          {notes.map((note, i) => (
+            <p key={i} className="text-[10px] text-amber-700 leading-snug flex gap-1.5 mt-1">
+              <span className="text-amber-400 shrink-0 mt-0.5">▸</span>
+              <span>{note}</span>
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
@@ -927,6 +960,11 @@ export default function StepWaterHammerModeB() {
         </button>
       </div>
 
+      {/* Dynamic assumption notes from last solver run — collapsible amber banner */}
+      {result && result.assumption_notes.length > 0 && (
+        <SolverNotesBanner notes={result.assumption_notes} />
+      )}
+
       {/* ── Results ─────────────────────────────────────────────────────────── */}
       {result && (
         <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-6 shadow-sm">
@@ -973,18 +1011,6 @@ export default function StepWaterHammerModeB() {
             </div>
           )}
 
-          {/* Dynamic assumption notes from solver */}
-          {result.assumption_notes.length > 0 && (
-            <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 space-y-1">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-1.5">Solver Assumption Notes</p>
-              {result.assumption_notes.map((note, i) => (
-                <p key={i} className="text-[10px] text-indigo-700 leading-snug flex gap-1.5">
-                  <span className="text-indigo-300 mt-0.5 shrink-0">▸</span>
-                  <span>{note}</span>
-                </p>
-              ))}
-            </div>
-          )}
 
           {/* Grid info strip */}
           <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 grid grid-cols-5 gap-3 text-xs font-mono text-slate-700">
@@ -1077,6 +1103,11 @@ export default function StepWaterHammerModeB() {
                   stroke="#f59e0b" strokeDasharray="5 3"
                   label={{ value: `h_vap = ${result.h_vap_m.toFixed(1)} m`, fontSize: 9, fill: "#d97706", position: "insideTopLeft" }}
                 />
+                <ReferenceLine
+                  y={0}
+                  stroke="#94a3b8" strokeDasharray="2 2"
+                  label={{ value: "0 m (atm)", fontSize: 9, fill: "#94a3b8", position: "insideBottomRight" }}
+                />
                 {ratingH !== null && (
                   <ReferenceLine
                     y={ratingH}
@@ -1148,6 +1179,11 @@ export default function StepWaterHammerModeB() {
                     y={result.h_vap_m}
                     stroke="#f59e0b" strokeDasharray="4 3"
                     label={{ value: "h_vap", fontSize: 9, fill: "#d97706" }}
+                  />
+                  <ReferenceLine
+                    y={0}
+                    stroke="#94a3b8" strokeDasharray="2 2"
+                    label={{ value: "0 m", fontSize: 9, fill: "#94a3b8", position: "insideBottomRight" }}
                   />
                 </LineChart>
               </ResponsiveContainer>

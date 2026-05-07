@@ -401,6 +401,20 @@ export default function WizardPage() {
             ))}
           </div>
 
+          {/* Show both units checkbox */}
+          <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer select-none shrink-0">
+            <input
+              type="checkbox"
+              checked={draft.showBoth}
+              onChange={e => {
+                setShowBoth(e.target.checked);
+                dispatch({ type: "SET_SHOW_BOTH", showBoth: e.target.checked });
+              }}
+              className="accent-teal-700"
+            />
+            <span className="hidden sm:inline">Both units</span>
+          </label>
+
           <div className="ml-auto flex items-center gap-2">
             {loadError && (
               <span className="text-xs text-rose-600 font-medium">{loadError}</span>

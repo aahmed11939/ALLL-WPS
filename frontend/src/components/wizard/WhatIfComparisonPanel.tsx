@@ -329,12 +329,33 @@ export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIf
             <YAxis tick={{ fontSize: 9 }} tickFormatter={v => `${v.toFixed(0)}`}
               label={{ value: "Head (m)", angle: -90, position: "insideLeft", offset: 10, fontSize: 9 }} />
             <Tooltip
-              formatter={(val, name) => {
-                const idx = parseInt(String(name).split("_")[1]);
-                const label = all[idx]?.label ?? String(name);
-                return [`${(Number(val) || 0).toFixed(2)} m`, label];
+              content={({ active, payload, label }) => {
+                if (!active || !payload?.length) return null;
+                return (
+                  <div className="rounded-xl border border-slate-200 bg-white shadow-lg px-3 py-2.5 text-xs space-y-1.5 min-w-[200px]">
+                    <p className="font-semibold text-slate-500 border-b border-slate-100 pb-1.5 mb-1">
+                      x = {Number(label).toFixed(0)} m
+                    </p>
+                    {payload
+                      .filter(p => p.dataKey !== "elev_m")
+                      .map((p) => {
+                        const idx = parseInt(String(p.dataKey).split("_")[1]);
+                        const scenLabel = all[idx]?.label ?? String(p.dataKey);
+                        return (
+                          <div key={p.dataKey as string} className="flex justify-between items-center gap-4">
+                            <span className="flex items-center gap-1.5">
+                              <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: p.color }} />
+                              <span className="text-slate-600 truncate max-w-[120px]">{scenLabel}</span>
+                            </span>
+                            <span className="font-bold font-mono text-slate-800">
+                              {typeof p.value === "number" ? `${p.value.toFixed(2)} m` : "—"}
+                            </span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                );
               }}
-              contentStyle={{ fontSize: 10 }}
             />
             <Legend formatter={(value: string) => {
               const idx = parseInt(value.split("_")[1]);

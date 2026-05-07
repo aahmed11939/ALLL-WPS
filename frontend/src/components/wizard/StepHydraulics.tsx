@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useDebounce } from "../../hooks/useDebounce";
 import { useProject } from "../../contexts/ProjectContext";
 import { useUnitSystem } from "../../contexts/UnitSystemContext";
 import type { PumpCurveConfig } from "../../types/project";
@@ -89,8 +90,29 @@ export default function StepHydraulics() {
   const [breakdown, setBreakdown] = useState<LossBreakdownResponse | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ApiFieldError[]>([]);
 
+  // Debounced auto-recompute (300 ms) when key inputs change
+  const debouncedFlow = useDebounce(draft.designFlow_m3h, 300);
+  const debouncedSegCount = useDebounce(
+    draft.suction.segments.length + draft.discharge.segments.length, 300
+  );
+  const mountedRef = useRef(false);
+  const loadingRef  = useRef(loading);
+  loadingRef.current = loading;
+  // Stable ref so the debounce effect can always call the latest handleCompute
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleComputeRef = useRef<() => void>(() => {});
+
   const results = draft.hydraulicsResult;
   const error   = draft.hydraulicsError;
+
+  // Auto-recompute 300 ms after design-flow or segment count changes (skip initial mount)
+  useEffect(() => {
+    if (!mountedRef.current) { mountedRef.current = true; return; }
+    if (!loadingRef.current && (debouncedFlow > 0 || debouncedSegCount > 0)) {
+      handleComputeRef.current();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedFlow, debouncedSegCount]);
 
   const handleCompute = async () => {
     setLoading(true);
@@ -196,6 +218,9 @@ export default function StepHydraulics() {
       setLoading(false);
     }
   };
+
+  // Keep the ref up-to-date so the debounce effect always calls the current version
+  handleComputeRef.current = handleCompute;
 
   return (
     <div className="space-y-6">

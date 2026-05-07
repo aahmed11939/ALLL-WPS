@@ -32,22 +32,24 @@ pytest backend/tests/ -v
 
 ## Typical Potable Station Workflow
 
-Work through the 11 wizard steps in order. Each step persists state automatically — you can revisit any step at any time.
+Work through the 10 wizard steps in order. Each step persists state automatically — you can revisit any step at any time. The sticky **LIVE RESULTS** bar at the bottom of every screen shows live TDH, velocity, duty point, NPSH margin, and surge extremes as you work.
 
+<!-- screenshot: step-1-project-setup.png -->
 ### Step 1 — Project Setup
 - Enter project name, client, job number, engineer, date, and design notes.
-- Select unit system: **SI** (m, kPa) or **US** (ft, psi). The toggle in the header switches display units globally.
+- Select unit system: **SI** (m, kPa) or **US** (ft, psi) with the header toggle. Enable **Both units** to show all values dual-labelled.
 - Set the **design flow Q** (m³/h) — this drives all downstream auto-fill.
 
+<!-- screenshot: step-2-system-nodes.png -->
 ### Step 2 — System Nodes
 - Define upstream (source) and downstream (delivery) node elevations in metres above datum.
 - Set fluid properties (water temperature, density). These propagate to surge analysis.
 - The static head = downstream elevation − upstream elevation.
 
 ### Step 3 — Suction Pipeline
-- Add one or more pipe segments (L, D, material/roughness, PN class).
+- Add one or more pipe segments (L, D, material/roughness ε, PN class).
 - Add fittings as minor losses (select from library or enter K directly).
-- The suction pipe feeds directly into Step 8 (Suction MOC) and Step 10 (Engineering Checks).
+- The suction pipe feeds directly into Step 9 (Suction MOC) and Step 10 (Engineering Checks).
 
 ### Step 4 — Wet Well Sizing
 - Enter sump geometry, inflow hydrograph, and pump cycling criteria.
@@ -62,15 +64,17 @@ Work through the 11 wizard steps in order. Each step persists state automaticall
 - Mirror of Step 3 for the discharge side: segments and fittings.
 - Used by hydraulic compute and Mode B MOC (discharge surge).
 
-### Step 7 — Hydraulic Compute
-- Click **Compute** to run Darcy-Weisbach / Colebrook-White friction analysis.
-- Outputs: TDH, velocity, Re, f, system H-Q curve.
-- Results feed the sticky **LIVE RESULTS** bar at the bottom of every screen.
+<!-- screenshot: step-7-hydraulics.png -->
+### Step 7 — Hydraulic Results
+- Results auto-refresh (300 ms debounce) whenever design-flow or pipeline inputs change.
+- Click **Compute Hydraulics** at any time to force a full recalculation.
+- Outputs: TDH, velocity, Re, Darcy-f, system H-Q curve, minor-loss breakdown.
 
-### Step 8 — Curves Overlay
+### Step 8 — System Curve & Operating Point
 - System curve (from Step 7) overlaid with the pump H-Q curve (from Step 5).
-- Intersection = duty operating point. Hover the chart for engineering cursor readouts.
+- Intersection = duty operating point Q*, H*. Hover the chart for engineering cursor readouts.
 
+<!-- screenshot: step-9-surge.png -->
 ### Step 9 — Water Hammer & Surge
 
 This step has three sub-tabs:
@@ -92,27 +96,25 @@ This step has three sub-tabs:
 3. Drag the **Observation Point** sliders to place time-history monitors at key locations.
 4. Click **Run Mode B MOC** — computes N-reach finite-difference MOC, Courant = 1.
 5. Results: pressure envelope (H_max, H_min vs x), time histories at obs points, pipe rating check (FoS = PN/P_max).
-6. Vapour-pressure reference line (amber dashed) marks cavitation/column-separation threshold.
-7. Use **What-If Surge Protection** to compare air vessel, surge tank, PRV, or vacuum relief against baseline.
+6. Vapour-pressure reference line (amber dashed) and 0 m atmospheric line (grey dashed) mark cavitation and vacuum thresholds.
+7. Collapsible **Solver assumption notes** banner appears after each run with per-run advisories.
+8. Use **What-If Surge Protection** to compare air vessel, surge tank, PRV, or vacuum relief against baseline.
 
 **Suction MOC — NPSHa Transient**
 1. Set wave speed, boundary conditions (wet well → pump trip).
-2. Place obs points along the suction pipe.
+2. Place obs points along the suction pipe using the sliders.
 3. Click **Run Suction MOC** — solves NPSHa(t) = H_suction(t) − h_vap(T).
 4. Results: NPSHa time history, min NPSHa, margin vs NPSHr, cavitation risk duration.
 
-### Step 10 — Engineering Checks
+<!-- screenshot: step-10-checks.png -->
+### Step 10 — Engineering Checks & Export
 - Automated compliance checklist (AWWA M11, HI 9.6.1, Ten States Standards, ISO 9906).
 - Severity: Critical (must resolve) / Warning (review) / Info.
-- Each check shows metric, standard reference, and recommended action.
-
-### Step 11 — Summary & Export
-- Review project summary, hydraulic KPIs, and checks rollup.
 - Export options:
   - **JSON** (.wps.json) — full project state, reloadable
   - **Text** (.txt) — engineering checks report, plain text
-  - **Excel** (.xlsx) — 11-sheet calculation workbook
-  - **Word** (.docx) — stamped engineering design memorandum
+  - **Excel** (.xlsx) — 11-sheet calculation workbook (animated progress indicator)
+  - **Word** (.docx) — stamped engineering design memorandum (animated progress indicator)
 
 ---
 

@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useReducer,
   useEffect,
@@ -11,18 +12,22 @@ import { DEFAULT_DRAFT } from "../types/project";
 import type { UnitSystem } from "../utils/units";
 import type { CalculationResponse, PumpComputeResponse } from "../utils/api";
 
+// ---------------------------------------------------------------------------
+// Actions
+// ---------------------------------------------------------------------------
+
 type Action =
-  | { type: "SET_META"; meta: ProjectMeta }
-  | { type: "SET_UNIT_SYSTEM"; unitSystem: UnitSystem }
-  | { type: "SET_SHOW_BOTH"; showBoth: boolean }
-  | { type: "SET_DESIGN_FLOW"; flow: number }
-  | { type: "SET_UPSTREAM_NODE"; node: NodeDraft }
+  | { type: "SET_META";            meta: ProjectMeta }
+  | { type: "SET_UNIT_SYSTEM";     unitSystem: UnitSystem }
+  | { type: "SET_SHOW_BOTH";       showBoth: boolean }
+  | { type: "SET_DESIGN_FLOW";     flow: number }
+  | { type: "SET_UPSTREAM_NODE";   node: NodeDraft }
   | { type: "SET_DOWNSTREAM_NODE"; node: NodeDraft }
-  | { type: "SET_SUCTION"; suction: PipelineDraft }
-  | { type: "SET_DISCHARGE"; discharge: PipelineDraft }
-  | { type: "SET_HYDRAULICS"; result: CalculationResponse | null; error: string | null }
-  | { type: "SET_PUMP_RESULT"; result: PumpComputeResponse | null }
-  | { type: "LOAD"; draft: ProjectDraft };
+  | { type: "SET_SUCTION";         suction: PipelineDraft }
+  | { type: "SET_DISCHARGE";       discharge: PipelineDraft }
+  | { type: "SET_HYDRAULICS";      result: CalculationResponse | null; error: string | null }
+  | { type: "SET_PUMP_RESULT";     result: PumpComputeResponse | null }
+  | { type: "LOAD";                draft: ProjectDraft };
 
 function reducer(state: ProjectDraft, action: Action): ProjectDraft {
   switch (action.type) {
@@ -34,12 +39,17 @@ function reducer(state: ProjectDraft, action: Action): ProjectDraft {
     case "SET_DOWNSTREAM_NODE":return { ...state, downstreamNode: action.node };
     case "SET_SUCTION":        return { ...state, suction: action.suction };
     case "SET_DISCHARGE":      return { ...state, discharge: action.discharge };
-    case "SET_HYDRAULICS":     return { ...state, hydraulicsResult: action.result, hydraulicsError: action.error };
+    case "SET_HYDRAULICS":
+      return { ...state, hydraulicsResult: action.result, hydraulicsError: action.error };
     case "SET_PUMP_RESULT":    return { ...state, pumpResult: action.result };
     case "LOAD":               return { ...action.draft };
     default:                   return state;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 /** Returns true if localStorage contained a saved project (used for the restore banner). */
 export function hadStoredSession(): boolean {
@@ -50,37 +60,79 @@ export function hadStoredSession(): boolean {
   }
 }
 
+function parseDraft(raw: string): ProjectDraft {
+  const parsed = JSON.parse(raw) as Partial<ProjectDraft>;
+  return {
+    ...DEFAULT_DRAFT,
+    ...parsed,
+    suction:        { ...DEFAULT_DRAFT.suction,        ...(parsed.suction        ?? {}) },
+    discharge:      { ...DEFAULT_DRAFT.discharge,       ...(parsed.discharge      ?? {}) },
+    meta:           { ...DEFAULT_DRAFT.meta,            ...(parsed.meta           ?? {}) },
+    upstreamNode:   { ...DEFAULT_DRAFT.upstreamNode,   ...(parsed.upstreamNode   ?? {}) },
+    downstreamNode: { ...DEFAULT_DRAFT.downstreamNode, ...(parsed.downstreamNode ?? {}) },
+    hydraulicsResult: parsed.hydraulicsResult ?? null,
+    hydraulicsError:  parsed.hydraulicsError  ?? null,
+    pumpResult:       parsed.pumpResult       ?? null,
+  };
+}
+
 function loadFromStorage(): ProjectDraft {
   try {
     const raw = localStorage.getItem("wps-project-draft");
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<ProjectDraft>;
-      return {
-        ...DEFAULT_DRAFT,
-        ...parsed,
-        suction:        { ...DEFAULT_DRAFT.suction,        ...(parsed.suction        ?? {}) },
-        discharge:      { ...DEFAULT_DRAFT.discharge,       ...(parsed.discharge      ?? {}) },
-        meta:           { ...DEFAULT_DRAFT.meta,            ...(parsed.meta           ?? {}) },
-        upstreamNode:   { ...DEFAULT_DRAFT.upstreamNode,   ...(parsed.upstreamNode   ?? {}) },
-        downstreamNode: { ...DEFAULT_DRAFT.downstreamNode, ...(parsed.downstreamNode ?? {}) },
-        // Preserve computed results if they exist in storage
-        hydraulicsResult: parsed.hydraulicsResult ?? null,
-        hydraulicsError:  parsed.hydraulicsError  ?? null,
-        pumpResult:       parsed.pumpResult       ?? null,
-      };
-    }
+    if (raw) return parseDraft(raw);
   } catch { /* ignore */ }
   return DEFAULT_DRAFT;
 }
 
+// ---------------------------------------------------------------------------
+// Context type
+// ---------------------------------------------------------------------------
+
 interface ProjectContextType {
   draft: ProjectDraft;
   dispatch: React.Dispatch<Action>;
+  /**
+   * Dot-path deep-set helper: update(path, value) dispatches a LOAD action
+   * with the path mutated in place.  Useful for one-line field updates.
+   * Example: update("meta.name", "New Name")
+   */
+  update: (path: string, value: unknown) => void;
+  /** Reset the draft to factory defaults (clears localStorage entry). */
+  reset: () => void;
+  /**
+   * Parse a JSON string into a ProjectDraft and load it.
+   * Returns { ok: true } on success or { ok: false, error } on failure.
+   */
+  loadJSON: (json: string) => { ok: boolean; error?: string };
 }
 
+// ---------------------------------------------------------------------------
+// Dot-path deep-set utility
+// ---------------------------------------------------------------------------
+
+function deepSet<T extends object>(obj: T, path: string, value: unknown): T {
+  const keys = path.split(".");
+  const clone = { ...obj } as Record<string, unknown>;
+  let cursor = clone;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const k = keys[i];
+    cursor[k] = { ...(cursor[k] as Record<string, unknown>) };
+    cursor = cursor[k] as Record<string, unknown>;
+  }
+  cursor[keys[keys.length - 1]] = value;
+  return clone as T;
+}
+
+// ---------------------------------------------------------------------------
+// Provider
+// ---------------------------------------------------------------------------
+
 const ProjectContext = createContext<ProjectContextType>({
-  draft: DEFAULT_DRAFT,
+  draft:    DEFAULT_DRAFT,
   dispatch: () => {},
+  update:   () => {},
+  reset:    () => {},
+  loadJSON: () => ({ ok: false, error: "Context not mounted" }),
 });
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
@@ -100,8 +152,34 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     };
   }, [draft]);
 
+  const update = useCallback((path: string, value: unknown) => {
+    dispatch({
+      type: "LOAD",
+      draft: deepSet(draft, path, value),
+    });
+  }, [draft]);
+
+  const reset = useCallback(() => {
+    const blank: ProjectDraft = {
+      ...DEFAULT_DRAFT,
+      meta: { ...DEFAULT_DRAFT.meta, date: new Date().toISOString().slice(0, 10) },
+    };
+    try { localStorage.removeItem("wps-project-draft"); } catch { /* ignore */ }
+    dispatch({ type: "LOAD", draft: blank });
+  }, []);
+
+  const loadJSON = useCallback((json: string): { ok: boolean; error?: string } => {
+    try {
+      const loaded = parseDraft(json);
+      dispatch({ type: "LOAD", draft: loaded });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message ?? "Parse error" };
+    }
+  }, []);
+
   return (
-    <ProjectContext.Provider value={{ draft, dispatch }}>
+    <ProjectContext.Provider value={{ draft, dispatch, update, reset, loadJSON }}>
       {children}
     </ProjectContext.Provider>
   );

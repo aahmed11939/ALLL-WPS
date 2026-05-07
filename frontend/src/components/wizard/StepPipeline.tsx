@@ -240,7 +240,11 @@ export default function StepPipeline({ label }: Props) {
           </span>
         </div>
         <div className="p-4">
-          <AccessoriesPicker segment={label} onChange={handleAccessoriesChange} />
+          <AccessoriesPicker
+            segment={label}
+            onChange={handleAccessoriesChange}
+            initialItems={pipeline.accessories}
+          />
         </div>
       </div>
     </div>

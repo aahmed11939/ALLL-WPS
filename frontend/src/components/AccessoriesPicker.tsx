@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   fetchAccessoriesLibrary,
   type AccessoryRecord,
@@ -40,14 +40,17 @@ interface PickerItem extends AccessoryRecord {
 export interface Props {
   segment: "suction" | "discharge";
   onChange: (items: AccessoryItem[], K_sum: number) => void;
+  /** Pre-select items from a saved/loaded project so state is restored faithfully. */
+  initialItems?: AccessoryItem[];
 }
 
-export default function AccessoriesPicker({ segment, onChange }: Props) {
+export default function AccessoriesPicker({ segment, onChange, initialItems }: Props) {
   const [library, setLibrary]               = useState<AccessoryRecord[]>([]);
   const [loadError, setLoadError]           = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>("check_valve");
   const [selected, setSelected]             = useState<Record<string, PickerItem>>({});
   const [searchQuery, setSearchQuery]       = useState<string>("");
+  const initializedRef                      = useRef(false);
 
   useEffect(() => {
     fetchAccessoriesLibrary()
@@ -60,6 +63,48 @@ export default function AccessoriesPicker({ segment, onChange }: Props) {
       })
       .catch(() => setLoadError("Failed to load accessories library."));
   }, []);
+
+  // Once library is available, seed `selected` from initialItems (once only)
+  useEffect(() => {
+    if (library.length === 0) return;
+    if (initializedRef.current) return;
+    if (!initialItems || initialItems.length === 0) {
+      initializedRef.current = true;
+      return;
+    }
+    initializedRef.current = true;
+    const init: Record<string, PickerItem> = {};
+    for (const item of initialItems) {
+      if (item.count <= 0) continue;
+      const record = library.find((r) => r.id === item.accessory_id);
+      if (!record) continue;
+      init[item.accessory_id] = {
+        ...record,
+        count: item.count,
+        K_override: item.K_override,
+        expanded: false,
+      };
+    }
+    if (Object.keys(init).length > 0) {
+      setSelected(init);
+      // Notify parent so draft stays in sync
+      const items: AccessoryItem[] = [];
+      let K_sum = 0;
+      for (const pi of Object.values(init)) {
+        const K = pi.K_override !== null ? pi.K_override : pi.default_K;
+        items.push({
+          accessory_id: pi.id,
+          count: pi.count,
+          K_override: pi.K_override,
+          segment,
+          default_K: pi.default_K,
+        });
+        K_sum += K * pi.count;
+      }
+      onChange(items, K_sum);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [library]);
 
   const notify = useCallback(
     (sel: Record<string, PickerItem>) => {

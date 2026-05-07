@@ -31,13 +31,9 @@ export default function StepExports() {
   };
 
   const handleDownloadJson = () => {
-    const toExport = {
-      ...draft,
-      hydraulicsResult: null,
-      hydraulicsError:  null,
-      pumpResult:       null,
-    };
-    const blob = new Blob([JSON.stringify(toExport, null, 2)], { type: "application/json" });
+    // Export full project state (including computed results so the file is
+    // a complete record of the design session and can be reloaded with results)
+    const blob = new Blob([JSON.stringify(draft, null, 2)], { type: "application/json" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     const safeName = (draft.meta.name || "project")

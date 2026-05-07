@@ -13,7 +13,7 @@ import {
 // ---------------------------------------------------------------------------
 
 type StepState = "active" | "bypassed" | "disabled";
-type ControlMode = "constant_speed" | "vfd";
+type ControlMode = "constant_speed" | "vfd" | "cascade";
 
 // ---------------------------------------------------------------------------
 // Styling constants
@@ -544,24 +544,26 @@ export default function PumpSelectionStep() {
               <SectionHeader>Configuration</SectionHeader>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className={labelCls}>Duty Pumps</label>
+                  <label className={labelCls}>Duty Pumps (1–4)</label>
                   <input
                     type="number"
                     step="1"
                     min="1"
+                    max="4"
                     value={nDuty}
-                    onChange={(e) => setNDuty(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    onChange={(e) => setNDuty(Math.min(4, Math.max(1, parseInt(e.target.value, 10) || 1)))}
                     className={inputCls}
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Standby Pumps</label>
+                  <label className={labelCls}>Standby Pumps (0–4)</label>
                   <input
                     type="number"
                     step="1"
                     min="0"
+                    max="4"
                     value={nStandby}
-                    onChange={(e) => setNStandby(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                    onChange={(e) => setNStandby(Math.min(4, Math.max(0, parseInt(e.target.value, 10) || 0)))}
                     className={inputCls}
                   />
                 </div>
@@ -572,14 +574,20 @@ export default function PumpSelectionStep() {
                     onChange={(e) => setControlMode(e.target.value as ControlMode)}
                     className={inputCls}
                   >
-                    <option value="constant_speed">Constant speed (DOL/soft-start)</option>
+                    <option value="constant_speed">Constant speed (DOL / soft-start)</option>
                     <option value="vfd">Variable frequency drive (VFD)</option>
+                    <option value="cascade">Cascade staging (duty pumps sequence)</option>
                   </select>
                 </div>
               </div>
               {controlMode === "constant_speed" && (
                 <p className="mt-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5">
-                  Constant-speed pumps cycle between on/off — verify operating volume in the Clear Well step to limit starts per hour.
+                  Constant-speed pumps cycle on/off — verify operating volume in the Wet Well step to limit starts per hour.
+                </p>
+              )}
+              {controlMode === "cascade" && (
+                <p className="mt-1.5 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-2.5 py-1.5">
+                  Cascade staging: duty pumps start sequentially as demand increases. Requires pressure transmitter feedback and PLC sequencing logic. Typically used with ≥2 duty pumps.
                 </p>
               )}
             </div>

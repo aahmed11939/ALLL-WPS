@@ -16,6 +16,7 @@ from backend.engine.hydraulics import (
     NU_WATER,
     friction_factor_colebrook,
     friction_head_loss,
+    hazen_williams_head_loss,
     minor_head_loss,
     reynolds_number,
     static_head,
@@ -259,3 +260,70 @@ class TestSystemCurve:
     def test_invalid_n_points(self):
         with pytest.raises(ValueError, match="n_points"):
             system_curve(0.01, 0.15, 200.0, 0.00012, 2.0, 20.0, n_points=1)
+
+
+# ---------------------------------------------------------------------------
+# hazen_williams_head_loss()
+# ---------------------------------------------------------------------------
+
+
+class TestHazenWilliams:
+    """
+    Unit tests for hazen_williams_head_loss() using the SI form:
+        h_f = 10.67 · L · Q^1.852 / (C^1.852 · D^4.87)
+
+    Reference value computed with:
+        Q = 0.01 m³/s, D = 0.15 m, L = 100 m, C = 150 (PVC)
+        h_f = 10.67 × 100 × 0.01^1.852 / (150^1.852 × 0.15^4.87)
+            = 10.67 × 100 × 6.397e-4 / (7584 × 4.213e-4)
+            ≈ 0.213 m
+    """
+
+    def test_known_value_pvc(self):
+        """Regression check against hand-computed value for PVC pipe (C=150)."""
+        h_f = hazen_williams_head_loss(
+            Q_m3s=0.01,
+            D_m=0.15,
+            L_m=100.0,
+            C=150.0,
+        )
+        assert abs(h_f - 0.213) < 0.020
+
+    def test_zero_flow_gives_zero(self):
+        h_f = hazen_williams_head_loss(Q_m3s=0.0, D_m=0.15, L_m=100.0, C=130.0)
+        assert h_f == pytest.approx(0.0)
+
+    def test_proportional_to_length(self):
+        """h_f scales linearly with pipe length."""
+        h_100 = hazen_williams_head_loss(0.01, 0.15, 100.0, 130.0)
+        h_200 = hazen_williams_head_loss(0.01, 0.15, 200.0, 130.0)
+        assert h_200 == pytest.approx(2.0 * h_100, rel=1e-6)
+
+    def test_invalid_c_zero_raises(self):
+        with pytest.raises(ValueError, match="C must be"):
+            hazen_williams_head_loss(0.01, 0.15, 100.0, C=0.0)
+
+    def test_invalid_c_negative_raises(self):
+        with pytest.raises(ValueError, match="C must be"):
+            hazen_williams_head_loss(0.01, 0.15, 100.0, C=-10.0)
+
+    def test_invalid_diameter_zero_raises(self):
+        with pytest.raises(ValueError, match="diameter"):
+            hazen_williams_head_loss(0.01, D_m=0.0, L_m=100.0, C=130.0)
+
+    def test_invalid_length_zero_raises(self):
+        with pytest.raises(ValueError, match="length"):
+            hazen_williams_head_loss(0.01, D_m=0.15, L_m=0.0, C=130.0)
+
+    def test_higher_c_gives_lower_head_loss(self):
+        """Smoother pipe (higher C) must produce a lower head loss."""
+        h_rough = hazen_williams_head_loss(0.01, 0.15, 100.0, C=100.0)
+        h_smooth = hazen_williams_head_loss(0.01, 0.15, 100.0, C=150.0)
+        assert h_smooth < h_rough
+
+    def test_concrete_vs_pvc(self):
+        """Concrete (C≈120) should have ~1.6× more friction than PVC (C=150)."""
+        h_pvc      = hazen_williams_head_loss(0.01, 0.15, 100.0, C=150.0)
+        h_concrete = hazen_williams_head_loss(0.01, 0.15, 100.0, C=120.0)
+        ratio = h_concrete / h_pvc
+        assert 1.4 <= ratio <= 2.0

@@ -4,6 +4,8 @@ import { useProject } from "../contexts/ProjectContext";
 import { useUnitSystem } from "../contexts/UnitSystemContext";
 import { hadStoredSession } from "../contexts/ProjectContext";
 import { SAMPLE_PROJECT } from "../data/sampleProject";
+import { SAMPLE_PROJECT_VT } from "../data/sampleProjectVT";
+import { SAMPLE_PROJECT_BOOSTER } from "../data/sampleProjectBooster";
 import type { ProjectDraft } from "../types/project";
 import { DEFAULT_DRAFT } from "../types/project";
 
@@ -197,9 +199,11 @@ export default function WizardPage() {
    * rehydrate from the freshly-loaded ProjectDraft (initialConfig props).
    */
   const [projectVersion, setProjectVersion] = useState(0);
+  const [showSampleMenu, setShowSampleMenu] = useState(false);
 
-  const loadFileRef = useRef<HTMLInputElement>(null);
-  const contentRef  = useRef<HTMLDivElement>(null);
+  const loadFileRef  = useRef<HTMLInputElement>(null);
+  const contentRef   = useRef<HTMLDivElement>(null);
+  const sampleBtnRef = useRef<HTMLDivElement>(null);
 
   // Sync unit system from project draft → UnitSystemContext on mount
   useEffect(() => {
@@ -279,16 +283,35 @@ export default function WizardPage() {
   };
 
   // ---------- Load sample ----------
-  const handleSample = () => {
-    dispatch({ type: "LOAD", draft: SAMPLE_PROJECT });
-    setUnitSystem(SAMPLE_PROJECT.unitSystem);
-    setShowBoth(SAMPLE_PROJECT.showBoth);
+  const SAMPLES: { label: string; desc: string; draft: ProjectDraft }[] = [
+    {
+      label: "Split-case VFD",
+      desc:  "DN150 PVC · 2 duty + 1 standby · 36 m³/h",
+      draft: SAMPLE_PROJECT,
+    },
+    {
+      label: "Vertical turbine",
+      desc:  "DN200 · deep wet well · 50 m³/h",
+      draft: SAMPLE_PROJECT_VT,
+    },
+    {
+      label: "Pressure booster set",
+      desc:  "DN100 inline · lead-lag · 550 kPa setpoint",
+      draft: SAMPLE_PROJECT_BOOSTER,
+    },
+  ];
+
+  const loadSample = (sample: ProjectDraft) => {
+    dispatch({ type: "LOAD", draft: sample });
+    setUnitSystem(sample.unitSystem);
+    setShowBoth(sample.showBoth);
     setVisitedSteps(new Set([0]));
     setCurrentStep(0);
     setStepErrors({});
     setNavError(null);
     setShowRestoreBanner(false);
     setProjectVersion((v) => v + 1);
+    setShowSampleMenu(false);
   };
 
   // ---------- New project ----------
@@ -368,13 +391,42 @@ export default function WizardPage() {
             >
               Load JSON
             </button>
-            <button
-              type="button"
-              onClick={handleSample}
-              className="rounded border border-teal-300 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-700 hover:bg-teal-100 transition-colors"
-            >
-              Load Sample
-            </button>
+            <div ref={sampleBtnRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setShowSampleMenu((v) => !v)}
+                className="rounded border border-teal-300 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-700 hover:bg-teal-100 transition-colors flex items-center gap-1"
+              >
+                Load Sample
+                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showSampleMenu && (
+                <>
+                  <div
+                    className="fixed inset-0 z-20"
+                    onClick={() => setShowSampleMenu(false)}
+                  />
+                  <div className="absolute right-0 top-full mt-1 z-30 w-64 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
+                    <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      Choose a sample project
+                    </p>
+                    {SAMPLES.map((s) => (
+                      <button
+                        key={s.label}
+                        type="button"
+                        onClick={() => loadSample(s.draft)}
+                        className="w-full text-left px-3 py-2 hover:bg-teal-50 transition-colors"
+                      >
+                        <p className="text-xs font-semibold text-slate-800">{s.label}</p>
+                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">{s.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 

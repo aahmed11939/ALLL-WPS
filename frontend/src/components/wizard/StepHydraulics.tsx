@@ -6,6 +6,9 @@ import ResultsPanel from "../ResultsPanel";
 import EquationsPanel from "../EquationsPanel";
 import LossBreakdownPanel from "../LossBreakdownPanel";
 import SystemCurveChart from "../SystemCurveChart";
+import ChartErrorBoundary from "../ChartErrorBoundary";
+import { parseApiErrors } from "../FieldErrorHint";
+import type { FieldError as ApiFieldError } from "../FieldErrorHint";
 import {
   calculate,
   computeLossBreakdown,
@@ -84,6 +87,7 @@ export default function StepHydraulics() {
   const [loading, setLoading] = useState(false);
   const [lastReq, setLastReq] = useState<CalculationRequest | null>(null);
   const [breakdown, setBreakdown] = useState<LossBreakdownResponse | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<ApiFieldError[]>([]);
 
   const results = draft.hydraulicsResult;
   const error   = draft.hydraulicsError;
@@ -175,10 +179,16 @@ export default function StepHydraulics() {
         }
       }
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
-        "Unexpected error — check console.";
-      dispatch({ type: "SET_HYDRAULICS", result: null, error: typeof msg === "string" ? msg : JSON.stringify(msg) });
+      const responseData = (err as { response?: { data?: unknown } })?.response?.data;
+      const parsedFieldErrors = parseApiErrors(responseData);
+      setFieldErrors(parsedFieldErrors);
+      const rawDetail = (responseData as Record<string, unknown> | undefined)?.detail;
+      const msg = typeof rawDetail === "string"
+        ? rawDetail
+        : parsedFieldErrors.length > 0
+          ? `${parsedFieldErrors.length} input error(s) — check highlighted fields.`
+          : "Unexpected error — check console.";
+      dispatch({ type: "SET_HYDRAULICS", result: null, error: msg });
     } finally {
       setLoading(false);
     }
@@ -244,8 +254,21 @@ export default function StepHydraulics() {
 
       <ResultsPanel results={results} loading={loading} error={error} />
 
+      {fieldErrors.length > 0 && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 space-y-1">
+          <p className="text-xs font-semibold text-rose-700">Input errors</p>
+          {fieldErrors.map((fe, i) => (
+            <p key={i} className="text-xs text-rose-600 font-mono">
+              {fe.loc.filter((p) => p !== "body").join(" › ")}: {fe.msg}
+            </p>
+          ))}
+        </div>
+      )}
+
       {results && lastReq && (
-        <EquationsPanel results={results} lastReq={lastReq} />
+        <ChartErrorBoundary label="Equations">
+          <EquationsPanel results={results} lastReq={lastReq} />
+        </ChartErrorBoundary>
       )}
 
       {results && (
@@ -253,7 +276,9 @@ export default function StepHydraulics() {
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">
             System Curve
           </p>
-          <SystemCurveChart results={results} />
+          <ChartErrorBoundary label="System Curve">
+            <SystemCurveChart results={results} />
+          </ChartErrorBoundary>
         </div>
       )}
 
@@ -266,7 +291,9 @@ export default function StepHydraulics() {
             </span>
           </p>
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
-            <LossBreakdownPanel data={breakdown} />
+            <ChartErrorBoundary label="Loss Breakdown">
+              <LossBreakdownPanel data={breakdown} />
+            </ChartErrorBoundary>
           </div>
         </div>
       )}

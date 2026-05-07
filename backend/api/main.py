@@ -11,8 +11,9 @@ import copy
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ValidationError
 
 from backend.api.domain_models import ProjectModel, ValidationResult
@@ -194,6 +195,38 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ---------------------------------------------------------------------------
+# Global validation-error handler — structured {loc, msg, type} list
+# ---------------------------------------------------------------------------
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """
+    Convert FastAPI/Pydantic request-validation failures into a structured
+    JSON body that the frontend can use for field-level highlights:
+
+        {
+          "detail": "Request validation failed",
+          "errors": [{"loc": ["body", "Q_m3h"], "msg": "...", "type": "..."}]
+        }
+    """
+    errors = [
+        {
+            "loc": list(err["loc"]),
+            "msg": err["msg"],
+            "type": err["type"],
+        }
+        for err in exc.errors()
+    ]
+    return JSONResponse(
+        status_code=422,
+        content={"detail": "Request validation failed", "errors": errors},
+    )
 
 
 # ---------------------------------------------------------------------------

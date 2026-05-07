@@ -146,7 +146,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       try { localStorage.setItem("wps-project-draft", JSON.stringify(draft)); } catch { /* ignore */ }
-    }, 1000);
+    }, 800);
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [draft]);
 

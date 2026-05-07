@@ -92,7 +92,7 @@ export default function AccessoriesPicker({ segment, onChange, initialItems }: P
       init[item.accessory_id] = {
         ...record,
         count: item.count,
-        K_override: item.K_override,
+        K_override: item.K_override ?? null,
         expanded: false,
       };
     }

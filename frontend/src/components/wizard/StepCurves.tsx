@@ -97,11 +97,13 @@ export default function StepCurves() {
                 tick={{ fontSize: 10 }}
               />
               <Tooltip
-                formatter={(val: number, name: string) => [
-                  `${val.toFixed(2)} m`,
+                formatter={(val, name) => [
+                  typeof val === "number" ? `${val.toFixed(2)} m` : String(val),
                   name === "sys" ? "System curve" : "Pump H-Q",
                 ]}
-                labelFormatter={(v: number) => `Q = ${v.toFixed(2)} m³/h`}
+                labelFormatter={(v) =>
+                  typeof v === "number" ? `Q = ${v.toFixed(2)} m³/h` : String(v)
+                }
               />
               <Legend
                 formatter={(val: string) =>

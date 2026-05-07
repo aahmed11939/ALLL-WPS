@@ -217,7 +217,6 @@ export default function EquationsPanel({ results, lastReq, pumpResult }: Props) 
   const tdh_d  = isUS ? tdh_m * FT_PER_M : tdh_m;
   const hU     = isUS ? "\\text{ft}" : "\\text{m}";
   const headUnit = isUS ? "ft" : "m";
-  const velUnit  = isUS ? "fps" : "m/s";
 
   const regime = Re < 2300 ? "Laminar" : Re < 4000 ? "Transitional" : "Turbulent";
 

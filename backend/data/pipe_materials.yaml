@@ -1,0 +1,53 @@
+# Absolute pipe roughness values ε [mm]
+# Source: Moody (1944), Colebrook (1939), AWWA M11 Steel Pipe Manual,
+#         AWWA C151 Ductile-Iron Pipe, manufacturer data.
+#
+# Keys are used as the 'material' field in the API request.
+# 'roughness_mm' is the design (upper-bound) value for hydraulic calculations.
+# 'description' is the human-readable label for the UI dropdown.
+
+materials:
+  cast_iron:
+    roughness_mm: 0.26
+    description: "Cast Iron (unlined)"
+    note: "Older distribution mains; use cement-lined value if lined."
+
+  cast_iron_cement_lined:
+    roughness_mm: 0.12
+    description: "Cast Iron (cement-lined)"
+    note: "Common rehabilitation lining for existing cast-iron mains."
+
+  ductile_iron:
+    roughness_mm: 0.12
+    description: "Ductile Iron (cement-mortar lined)"
+    note: "Standard per AWWA C151/C104; most common new-installation pipe."
+
+  steel:
+    roughness_mm: 0.046
+    description: "Steel (welded)"
+    note: "AWWA C200; used for large-diameter transmission mains."
+
+  steel_cement_lined:
+    roughness_mm: 0.012
+    description: "Steel (cement-mortar lined)"
+    note: "AWWA C205; standard lining for steel transmission mains."
+
+  pvc:
+    roughness_mm: 0.0015
+    description: "PVC (unplasticised, UPVC)"
+    note: "AWWA C900/C905; common for distribution mains ≤ 600 mm."
+
+  hdpe:
+    roughness_mm: 0.007
+    description: "HDPE (PE100)"
+    note: "AS/NZS 4130, ISO 4427; trenchless and directional-drill applications."
+
+  concrete:
+    roughness_mm: 0.60
+    description: "Concrete (precast/prestressed)"
+    note: "AWWA C301; use lower value (0.30 mm) for smooth formed liners."
+
+  grp:
+    roughness_mm: 0.03
+    description: "GRP / FRP (glass-reinforced plastic)"
+    note: "AWWA C950; large-diameter gravity and pressure mains."

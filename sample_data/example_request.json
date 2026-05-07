@@ -1,0 +1,23 @@
+{
+  "_comment": "Realistic example: DN150 ductile iron rising main, small water supply PS",
+  "_scenario": "Suburban water supply pump station, 200 m rising main, net lift 23.5 m",
+  "Q_m3h": 36.0,
+  "elev_us_m": 5.0,
+  "elev_ds_m": 28.5,
+  "pipe_length_m": 200.0,
+  "pipe_diameter_mm": 150.0,
+  "material": "ductile_iron",
+  "K_values": [0.5, 0.3, 1.0],
+  "_K_notes": {
+    "0.5": "Gate valve (fully open)",
+    "0.3": "90-degree bend (long radius)",
+    "1.0": "Non-return valve (swing check)"
+  },
+  "_expected_results_approx": {
+    "velocity_ms": "~0.566",
+    "static_head_m": "23.5",
+    "friction_head_m": "~0.89",
+    "minor_head_m": "~0.027",
+    "tdh_m": "~24.42"
+  }
+}

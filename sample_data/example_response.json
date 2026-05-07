@@ -1,0 +1,22 @@
+{
+  "_comment": "Expected API response for example_request.json (values computed by backend)",
+  "velocity_ms": 0.5659,
+  "reynolds_number": 84647.6,
+  "friction_factor": 0.021289,
+  "static_head_m": 23.5,
+  "friction_head_m": 0.8907,
+  "minor_head_m": 0.0269,
+  "tdh_m": 24.4176,
+  "system_curve": [
+    {"Q_m3h": 0.0,  "H_m": 23.5},
+    {"Q_m3h": 7.71, "H_m": 23.538},
+    {"Q_m3h": 15.43,"H_m": 23.653},
+    {"Q_m3h": 23.14,"H_m": 23.840},
+    {"Q_m3h": 30.86,"H_m": 24.095},
+    {"Q_m3h": 36.0, "H_m": 24.418},
+    {"Q_m3h": 46.29,"H_m": 24.793},
+    {"Q_m3h": 54.0, "H_m": 25.246}
+  ],
+  "design_Q_m3h": 36.0,
+  "K_sum": 1.8
+}

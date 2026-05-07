@@ -1,0 +1,73 @@
+# Example pump library for ALLL WPS Designer.
+#
+# Curve coefficients follow the polynomial model:
+#   H_pump(Q) = A + B*Q + C*Q²
+# where Q is in m³/h and H is in m.
+#
+# These are illustrative values only — always verify against
+# manufacturer's certified test curves before detailed design.
+
+pumps:
+  - id: "KSB-ETANORM-125-100-200"
+    name: "Etanorm 125-100-200"
+    manufacturer: "KSB"
+    type: "End-suction centrifugal"
+    nominal_flow_m3h: 120.0
+    rated_flow_m3h: 120.0
+    rated_head_m: 32.0
+    shutoff_head_m: 42.0
+    rated_efficiency_pct: 82.0
+    rated_power_kW: 15.0
+    rated_speed_rpm: 1450
+    impeller_diameter_mm: 198
+    # H = A + B*Q + C*Q²  (Q in m³/h, H in m)
+    curve_coefficients:
+      A: 42.0
+      B: -0.0167
+      C: -0.00124
+    best_efficiency_point:
+      Q_m3h: 120.0
+      H_m: 32.0
+    notes: "AWWA Class III, flanged DN125 inlet / DN100 outlet."
+
+  - id: "GRUNDFOS-NK-65-250"
+    name: "NK 65-250"
+    manufacturer: "Grundfos"
+    type: "End-suction, close-coupled"
+    nominal_flow_m3h: 60.0
+    rated_flow_m3h: 60.0
+    rated_head_m: 45.0
+    shutoff_head_m: 56.0
+    rated_efficiency_pct: 79.0
+    rated_power_kW: 11.0
+    rated_speed_rpm: 1450
+    impeller_diameter_mm: 245
+    curve_coefficients:
+      A: 56.0
+      B: -0.0833
+      C: -0.00278
+    best_efficiency_point:
+      Q_m3h: 60.0
+      H_m: 45.0
+    notes: "Suitable for duty-standby configuration at smaller stations."
+
+  - id: "FLYGT-LC-3201"
+    name: "LC 3201"
+    manufacturer: "Xylem / Flygt"
+    type: "Submersible centrifugal"
+    nominal_flow_m3h: 200.0
+    rated_flow_m3h: 200.0
+    rated_head_m: 28.0
+    shutoff_head_m: 38.0
+    rated_efficiency_pct: 80.0
+    rated_power_kW: 22.0
+    rated_speed_rpm: 1460
+    impeller_diameter_mm: 310
+    curve_coefficients:
+      A: 38.0
+      B: -0.0125
+      C: -0.000469
+    best_efficiency_point:
+      Q_m3h: 200.0
+      H_m: 28.0
+    notes: "Submersible; suitable for wet-well installation. IP68 rated."

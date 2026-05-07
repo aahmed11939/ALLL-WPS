@@ -1,45 +1,63 @@
-# [Project name]
+# ALLL WPS Designer
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Municipal drinking-water pump station hydraulic design tool — computes TDH and system H-Q curves using Darcy-Weisbach with Colebrook-White friction factor iteration.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+**Backend (FastAPI):**
+- `uvicorn backend.api.main:app --reload --port 8000` — run API server
+
+**Frontend (Vite + React):**
+- `cd frontend && npm run dev` — dev server at port 5173
+
+**Tests:**
+- `pytest backend/tests/test_hydraulics.py -v` — 31 unit tests
+
+**No database required.** No environment variables required for local dev.
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Backend: Python 3.11, FastAPI, Uvicorn, Pydantic v2, PyYAML
+- Frontend: React 18, TypeScript, Vite, Tailwind CSS v4, Recharts, react-hook-form + zod, axios
+- Tests: pytest (31 tests, all passing)
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `backend/engine/hydraulics.py` — core hydraulic functions (source of truth for calculation logic)
+- `backend/api/schemas.py` — Pydantic v2 request/response models
+- `backend/api/main.py` — FastAPI routes (`/api/v1/calculate`, `/api/v1/materials`, `/api/v1/pump-library`)
+- `backend/data/pipe_materials.yaml` — roughness ε values per material
+- `backend/data/pump_library.yaml` — example pump catalogue
+- `frontend/src/pages/DesignPage.tsx` — main layout
+- `frontend/src/components/` — CalculationForm, ResultsPanel, SystemCurveChart
+- `frontend/src/utils/api.ts` — typed axios client
+- `sample_data/example_request.json` — realistic design scenario
+- `docs/README.md` — full technical documentation
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Darcy-Weisbach chosen over Hazen-Williams: dimensional, applicable to all fluids and all regimes, required for municipal water standards (AWWA M11).
+- Colebrook-White solved by fixed-point iteration on x = 1/√f (convergence 10⁻⁹, max 50 iterations); Swamee-Jain provides initial guess — never Newton-Raphson (avoids derivative complexity).
+- Backend is a standalone Python FastAPI service, not the existing Node.js api-server; both can coexist in the monorepo.
+- Vite proxy forwards `/api` → `http://localhost:8000` so the frontend never needs hardcoded backend URLs.
+- All reference data (pipe roughness, pump library) loaded from YAML at startup with `@lru_cache`; no database needed for the design tool's read-only catalogue.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
-
-## User preferences
-
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Engineering input form: flow Q, upstream/downstream elevations, pipe L/D/material, multiple fitting K values (add/remove dynamically).
+- Computed outputs: velocity, Reynolds number, Darcy friction factor, static head, friction loss, minor loss, TDH.
+- System H-Q curve chart (8 points, 0 → 1.5×Q_design) with reference lines at design point.
+- Pump library endpoint (3 example pumps with curve coefficients).
+- Future modules stubbed: wet-well sizing, surge analysis, Excel/Word export.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Run backend BEFORE frontend — Vite proxy to port 8000 must have a live target on startup.
+- Vite requires `server.allowedHosts: true` for Replit's reverse-proxy iframe.
+- Roughness YAML keys (e.g. `ductile_iron`) must match exactly in API requests.
+- The existing `artifacts/api-server` (Node.js/Express) is unrelated to the WPS Designer backend.
 
 ## Pointers
 
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- `docs/README.md` — full API reference, equations, references
+- See the `pnpm-workspace` skill for existing monorepo structure

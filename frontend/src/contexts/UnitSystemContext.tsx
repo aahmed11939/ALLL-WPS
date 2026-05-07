@@ -25,11 +25,22 @@ export function UnitSystemProvider({ children }: { children: ReactNode }) {
     }
   });
 
-  const [showBoth, setShowBoth] = useState(false);
+  const [showBoth, setShowBothState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("wps_showBoth") === "true";
+    } catch {
+      return false;
+    }
+  });
 
   const setUnitSystem = (s: UnitSystem) => {
     setUnitSystemState(s);
     try { localStorage.setItem("wps_unitSystem", s); } catch { /* ignore */ }
+  };
+
+  const setShowBoth = (b: boolean) => {
+    setShowBothState(b);
+    try { localStorage.setItem("wps_showBoth", String(b)); } catch { /* ignore */ }
   };
 
   return (

@@ -10,6 +10,7 @@ import {
   Dot,
 } from "recharts";
 import type { CalculationResponse, SystemCurvePoint } from "../utils/api";
+import { useUnitSystem } from "../contexts/UnitSystemContext";
 
 interface Props {
   results: CalculationResponse;
@@ -44,6 +45,7 @@ function CustomTooltip({ active, payload }: CustomTooltipProps) {
 }
 
 export default function SystemCurveChart({ results }: Props) {
+  const { showBoth } = useUnitSystem();
   const raw: SystemCurvePoint[] = results.system_curve;
   const d = results.display;
   const isUS = results.unit_system === "US";
@@ -164,12 +166,12 @@ export default function SystemCurveChart({ results }: Props) {
               <th className="pb-1 text-left text-slate-500 font-medium">
                 Q ({Q_unit})
               </th>
-              {isUS && (
+              {showBoth && isUS && (
                 <th className="pb-1 text-right text-slate-500 font-medium">
                   Q (m³/h)
                 </th>
               )}
-              {!isUS && (
+              {showBoth && !isUS && (
                 <th className="pb-1 text-right text-slate-500 font-medium">
                   Q (L/s)
                 </th>
@@ -192,11 +194,12 @@ export default function SystemCurveChart({ results }: Props) {
                   }`}
                 >
                   <td className="py-0.5 text-slate-700">{qDisp.toFixed(2)}</td>
-                  {isUS ? (
+                  {showBoth && isUS && (
                     <td className="py-0.5 text-right text-slate-600">
                       {pt.Q_m3h.toFixed(2)}
                     </td>
-                  ) : (
+                  )}
+                  {showBoth && !isUS && (
                     <td className="py-0.5 text-right text-slate-600">
                       {(pt.Q_m3h / 3.6).toFixed(3)}
                     </td>

@@ -18,10 +18,10 @@ import {
 } from "../utils/api";
 
 export default function DesignPage() {
-  const [results, setResults] = useState<CalculationResponse | null>(null);
+  const [results,  setResults]  = useState<CalculationResponse | null>(null);
   const [breakdown, setBreakdown] = useState<LossBreakdownResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState<string | null>(null);
   const { unitSystem, setUnitSystem, showBoth, setShowBoth } = useUnitSystem();
 
   const handleSubmit = async (
@@ -36,12 +36,30 @@ export default function DesignPage() {
       setResults(data);
 
       if (pickedItems.length > 0) {
-        const bd = await computeLossBreakdown({
+        // Split picked items by segment
+        const suctionItems   = pickedItems.filter((i) => i.segment === "suction");
+        const dischargeItems = pickedItems.filter((i) => i.segment === "discharge");
+        const untaggedItems  = pickedItems.filter((i) => !i.segment);
+
+        // Build the breakdown request.
+        // Discharge segment gets full pipe geometry so the backend can compute
+        // Darcy-Weisbach friction (major) head loss from first principles.
+        // Suction accessories are passed in the flat list with segment tags so
+        // they are still attributed correctly in the contribution matrix.
+        const bdReq = {
           Q_m3h: req.Q_m3h,
-          D_mm: req.pipe_diameter_mm,
-          accessories: pickedItems,
+          discharge: {
+            L_m:      req.pipe_length_m,
+            D_mm:     req.pipe_diameter_mm,
+            material: req.material,
+            accessories: dischargeItems,
+          },
+          // Suction items in flat list (no suction pipe geometry in this form)
+          accessories: [...suctionItems, ...untaggedItems],
           unit_system: unitSystem,
-        });
+        };
+
+        const bd = await computeLossBreakdown(bdReq);
         setBreakdown(bd);
       } else {
         setBreakdown(null);
@@ -75,9 +93,7 @@ export default function DesignPage() {
             </p>
           </div>
 
-          {/* Unit system toggle */}
           <div className="ml-auto flex items-center gap-3">
-            {/* Show-both toggle (only relevant when US is active) */}
             {unitSystem === "US" && (
               <label className="flex items-center gap-1.5 cursor-pointer select-none">
                 <input
@@ -90,7 +106,6 @@ export default function DesignPage() {
               </label>
             )}
 
-            {/* SI / US toggle */}
             <div className="flex rounded overflow-hidden border border-slate-300 text-xs font-semibold">
               <button
                 onClick={() => setUnitSystem("SI")}
@@ -129,7 +144,6 @@ export default function DesignPage() {
         </div>
       </header>
 
-      {/* Main content */}
       <main className="mx-auto max-w-7xl px-6 py-8">
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[380px_1fr]">
 
@@ -145,7 +159,6 @@ export default function DesignPage() {
               <CalculationForm onSubmit={handleSubmit} loading={loading} />
             </div>
 
-            {/* Design standards note */}
             <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500 leading-relaxed">
               <strong className="text-slate-600">Method:</strong> Darcy-Weisbach friction loss with
               Colebrook-White iterative friction factor (convergence 10⁻⁹). Minor losses via ΣK·V²/2g.
@@ -171,11 +184,15 @@ export default function DesignPage() {
               </div>
             )}
 
-            {/* Minor Loss Breakdown */}
             {breakdown && (
               <div>
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 mb-3">
-                  Minor Loss Breakdown
+                  Hydraulic Loss Breakdown
+                  {breakdown.grand_total_hm_m > 0 && (
+                    <span className="ml-2 text-xs font-mono font-normal text-slate-400">
+                      Grand total {breakdown.grand_total_hm_m.toFixed(3)} m
+                    </span>
+                  )}
                 </h2>
                 <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
                   <LossBreakdownPanel data={breakdown} />
@@ -183,12 +200,10 @@ export default function DesignPage() {
               </div>
             )}
 
-            {/* Pump Type Selection */}
             <div>
               <PumpSelectionStep />
             </div>
 
-            {/* Pump Curves & Operating Point */}
             <div>
               <PumpCurveStep
                 systemCurve={
@@ -202,7 +217,6 @@ export default function DesignPage() {
               />
             </div>
 
-            {/* Clear Well Sizing */}
             <div>
               <ClearWellStep />
             </div>

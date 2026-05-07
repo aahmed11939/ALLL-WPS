@@ -419,10 +419,19 @@ export interface AccessoryItem {
   default_K?: number;
 }
 
+export interface LossBreakdownSegmentInput {
+  L_m: number;
+  D_mm: number;
+  material: string;
+  accessories: AccessoryItem[];
+}
+
 export interface LossBreakdownRequest {
   Q_m3h: number;
-  D_mm: number;
-  accessories: AccessoryItem[];
+  D_mm?: number;
+  suction?: LossBreakdownSegmentInput;
+  discharge?: LossBreakdownSegmentInput;
+  accessories?: AccessoryItem[];
   suction_major_head_m?: number;
   discharge_major_head_m?: number;
   unit_system?: "SI" | "US";
@@ -451,6 +460,16 @@ export interface CategorySubtotal {
   pct_of_total_minor: number;
 }
 
+export interface ContributionRow {
+  segment: string;
+  loss_type: string;
+  category: string;
+  label: string;
+  h_m: number;
+  h_display: UnitValue;
+  pct_of_grand_total: number;
+}
+
 export interface LossBreakdownResponse {
   items: LossBreakdownItem[];
   K_sum: number;
@@ -458,11 +477,14 @@ export interface LossBreakdownResponse {
   total_hm_display: UnitValue;
   suction_minor_hm_m: number;
   discharge_minor_hm_m: number;
+  suction_major_hm_m: number;
+  discharge_major_hm_m: number;
   major_hm_m: number;
   grand_total_hm_m: number;
   pct_minor_of_grand_total: number;
   pct_major_of_grand_total: number;
   category_subtotals: CategorySubtotal[];
+  contribution_rows: ContributionRow[];
   velocity_ms: number;
   velocity_head_m: number;
   design_Q_m3h: number;

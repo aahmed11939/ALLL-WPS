@@ -473,3 +473,96 @@ accessories:
     potable_notes:
       - "Provide splash pad or energy dissipator at free-discharge outlets."
       - "Air gap required at any free-discharge into a reservoir or tank (cross-connection control)."
+
+  # ── ADDITIONAL ISOLATION VALVES ───────────────────────────────────────────
+  - id: plug_valve
+    category: isolation_valve
+    name: "Plug Valve (Lubricated or Non-Lubricated)"
+    default_K: 0.3
+    K_min: 0.1
+    K_max: 0.8
+    notes: >
+      Quarter-turn cylindrical plug; fully open gives low resistance. K increases
+      rapidly as valve is throttled. Crane TP-410 Table A-26 (full bore, fully open).
+    potable_notes:
+      - "NSF/ANSI 61 certified wetted surfaces required; avoid lead-based plug seals."
+      - "Sleeved plug valves with EPDM or PTFE sleeves are preferred for potable service."
+      - "Lubricated plug valves require food-grade lubricant where lubricant contacts water."
+
+  # ── ADDITIONAL CHECK VALVES ───────────────────────────────────────────────
+  - id: cv_ball_check
+    category: check_valve
+    name: "Ball Check Valve"
+    default_K: 0.8
+    K_min: 0.5
+    K_max: 2.5
+    notes: >
+      Floating ball seats against a conical seat on reverse flow. Lower K than
+      swing type for small diameters; suited for slurries but used in potable
+      service. K increases significantly with partial opening at low velocities.
+    potable_notes:
+      - "NSF/ANSI 61 certified ball and seat materials required."
+      - "Specify lead-free (< 0.25% Pb) bronze or stainless steel body for potable service."
+      - "Verify ball buoyancy is sufficient for minimum flow condition."
+
+  # ── ADDITIONAL METERS & INSTRUMENTS ──────────────────────────────────────
+  - id: ultrasonic_meter
+    category: meter
+    name: "Ultrasonic Flow Meter (Full-Bore)"
+    default_K: 0.5
+    K_min: 0.1
+    K_max: 1.5
+    notes: >
+      Inline clamp-on or spool-piece transducers; full-bore design gives low
+      head loss. K depends on whether spool piece has flow-conditioning section.
+      Multi-path meters may have slightly higher loss. Crane TP-410 / AWWA M6.
+    potable_notes:
+      - "NSF/ANSI 61 certified spool piece and transducer wetted surfaces required."
+      - "No moving parts — preferred for low-maintenance municipal water metering."
+      - "Minimum straight pipe: 10D upstream, 5D downstream per AWWA M6."
+
+  - id: pressure_transmitter
+    category: meter
+    name: "Pressure Transmitter / Pressure Gauge Tap"
+    default_K: 0.05
+    K_min: 0.02
+    K_max: 0.1
+    notes: >
+      Small-bore tap or manifold on the main pipe. Head loss is negligible
+      for the tap itself; any upstream isolation valve (typically needle valve)
+      contributes additional resistance but is not in the main flow path.
+    potable_notes:
+      - "Isolation valve and manifold wetted surfaces must be NSF/ANSI 61 certified."
+      - "Specify diaphragm-sealed transmitters to prevent process fluid from contacting instrument electronics."
+      - "Use stainless steel 316L or lead-free bronze fittings in potable systems."
+
+  - id: flow_transmitter
+    category: meter
+    name: "Differential-Pressure Flow Transmitter (Orifice/Venturi)"
+    default_K: 2.0
+    K_min: 0.5
+    K_max: 8.0
+    notes: >
+      Permanent pressure drop depends on beta ratio and primary element type.
+      Orifice plates (β 0.6): K ≈ 4–8; Venturi (β 0.75): K ≈ 0.5–1.5.
+      Default K is for a typical orifice plate at β = 0.65.
+    potable_notes:
+      - "NSF/ANSI 61 compliance for orifice/venturi wetted surfaces required."
+      - "Vortex and magnetic flow meters are often preferred to avoid permanent pressure loss."
+      - "Bypass line with isolation valves required for maintenance access."
+
+  # ── ADDITIONAL METERS & INSTRUMENTS ─────────────────────────────────────
+  - id: level_sensor
+    category: meter
+    name: "Level Sensor / Float Switch Connection"
+    default_K: 0.0
+    K_min: 0.0
+    K_max: 0.0
+    notes: >
+      Side-entry or top-entry level measurement device (ultrasonic, float, or
+      pressure). No direct in-line head loss on the main pipe. K = 0 because
+      the connection is a branch tap, not in-series with main flow.
+    potable_notes:
+      - "Wetted sensor materials must be NSF/ANSI 61 certified."
+      - "Float chambers and taps must be kept free of stagnant water (Legionella risk)."
+      - "Submersible level transducers in clear wells must have IP68 rating and vented cable."

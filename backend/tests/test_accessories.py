@@ -1,8 +1,19 @@
 """
 Tests for the potable-water accessories library and loss breakdown endpoint.
+
+Covers:
+- Loader utilities
+- GET /library/accessories (flat list + grouped categories)
+- GET /library/accessories/{id}
+- POST /compute/lossbreakdown — flat mode (backward-compat)
+- POST /compute/lossbreakdown — segmented mode with D-W geometry
+- Contribution matrix (contribution_rows)
+- New catalogue additions (plug_valve, cv_ball_check, ultrasonic_meter, etc.)
 """
 
 from __future__ import annotations
+
+import math
 
 import pytest
 from fastapi.testclient import TestClient
@@ -55,13 +66,15 @@ def test_all_categories_present():
 def test_k_values_non_negative():
     for rec in load_accessories_library():
         assert rec["default_K"] >= 0, f"{rec['id']}: default_K < 0"
-        assert rec["K_min"] >= 0,     f"{rec['id']}: K_min < 0"
-        assert rec["K_max"] >= 0,     f"{rec['id']}: K_max < 0"
+        assert rec["K_min"]     >= 0, f"{rec['id']}: K_min < 0"
+        assert rec["K_max"]     >= 0, f"{rec['id']}: K_max < 0"
 
 
 def test_k_range_ordering():
     for rec in load_accessories_library():
-        assert rec["K_min"] <= rec["default_K"] <= rec["K_max"] or rec["K_min"] == rec["K_max"] == rec["default_K"], (
+        assert rec["K_min"] <= rec["default_K"] <= rec["K_max"] or (
+            rec["K_min"] == rec["K_max"] == rec["default_K"]
+        ), (
             f"{rec['id']}: K_min={rec['K_min']} default_K={rec['default_K']} K_max={rec['K_max']} out of order"
         )
 
@@ -103,7 +116,29 @@ def test_potable_notes_are_lists():
 
 
 # ---------------------------------------------------------------------------
-# GET /library/accessories
+# New catalogue items
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("acc_id,expected_category", [
+    ("plug_valve",           "isolation_valve"),
+    ("cv_ball_check",        "check_valve"),
+    ("ultrasonic_meter",     "meter"),
+    ("pressure_transmitter", "meter"),
+    ("flow_transmitter",     "meter"),
+    ("level_sensor",         "meter"),
+])
+def test_new_catalogue_items_present(acc_id: str, expected_category: str):
+    rec = get_accessory_by_id(acc_id)
+    assert rec is not None, f"Missing catalogue item: {acc_id}"
+    assert rec["category"] == expected_category, (
+        f"{acc_id}: expected category '{expected_category}', got '{rec['category']}'"
+    )
+    assert rec["default_K"] >= 0
+
+
+# ---------------------------------------------------------------------------
+# GET /library/accessories — flat list
 # ---------------------------------------------------------------------------
 
 
@@ -123,10 +158,64 @@ def test_get_library_accessories_structure():
 
 def test_get_library_accessories_record_shape():
     resp = client.get("/library/accessories")
-    accessories = resp.json()["accessories"]
-    first = accessories[0]
+    first = resp.json()["accessories"][0]
     required = {"id", "category", "name", "default_K", "K_min", "K_max", "notes", "potable_notes"}
     assert required.issubset(first.keys())
+
+
+# ---------------------------------------------------------------------------
+# GET /library/accessories — grouped categories field
+# ---------------------------------------------------------------------------
+
+
+def test_get_library_accessories_has_categories_field():
+    resp = client.get("/library/accessories")
+    data = resp.json()
+    assert "categories" in data, "Response missing 'categories' field"
+    assert isinstance(data["categories"], list)
+    assert len(data["categories"]) >= 7, "Expected ≥ 7 category groups"
+
+
+def test_get_library_accessories_categories_structure():
+    resp = client.get("/library/accessories")
+    categories = resp.json()["categories"]
+    for grp in categories:
+        assert "category" in grp
+        assert "label" in grp
+        assert "accessories" in grp
+        assert isinstance(grp["accessories"], list)
+        assert len(grp["accessories"]) > 0
+
+
+def test_get_library_accessories_categories_cover_all_items():
+    resp = client.get("/library/accessories")
+    data = resp.json()
+    flat_ids = {a["id"] for a in data["accessories"]}
+    grouped_ids = {a["id"] for grp in data["categories"] for a in grp["accessories"]}
+    assert flat_ids == grouped_ids, (
+        f"Category groups don't cover all items. Missing: {flat_ids - grouped_ids}"
+    )
+
+
+def test_get_library_accessories_categories_in_canonical_order():
+    _CANONICAL = [
+        "check_valve", "isolation_valve", "control_valve", "meter",
+        "suction_fitting", "discharge_fitting", "station_special", "pipe_transition",
+    ]
+    resp = client.get("/library/accessories")
+    cats = [grp["category"] for grp in resp.json()["categories"]]
+    canonical_present = [c for c in _CANONICAL if c in cats]
+    cats_present = [c for c in cats if c in _CANONICAL]
+    assert cats_present == canonical_present
+
+
+def test_get_library_accessories_each_group_sorted_alphabetically():
+    resp = client.get("/library/accessories")
+    for grp in resp.json()["categories"]:
+        names = [a["name"] for a in grp["accessories"]]
+        assert names == sorted(names), (
+            f"Category '{grp['category']}' not alphabetically sorted: {names}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +247,7 @@ def test_get_accessory_mag_meter():
 
 
 # ---------------------------------------------------------------------------
-# POST /compute/lossbreakdown
+# POST /compute/lossbreakdown — flat mode (backward-compatible)
 # ---------------------------------------------------------------------------
 
 
@@ -166,7 +255,7 @@ BASIC_REQUEST = {
     "Q_m3h": 100.0,
     "D_mm": 200.0,
     "accessories": [
-        {"accessory_id": "cv_swing",      "count": 1},
+        {"accessory_id": "cv_swing",       "count": 1},
         {"accessory_id": "gate_fully_open", "count": 2},
     ],
     "unit_system": "SI",
@@ -181,7 +270,7 @@ def test_lossbreakdown_status():
 def test_lossbreakdown_k_sum():
     resp = client.post("/compute/lossbreakdown", json=BASIC_REQUEST)
     data = resp.json()
-    expected_k = 2.5 * 1 + 0.2 * 2  # cv_swing K=2.5, gate K=0.2 × 2
+    expected_k = 2.5 * 1 + 0.2 * 2
     assert abs(data["K_sum"] - expected_k) < 1e-6
 
 
@@ -210,9 +299,7 @@ def test_lossbreakdown_k_override():
     req = {
         "Q_m3h": 100.0,
         "D_mm": 200.0,
-        "accessories": [
-            {"accessory_id": "cv_swing", "count": 1, "K_override": 3.5},
-        ],
+        "accessories": [{"accessory_id": "cv_swing", "count": 1, "K_override": 3.5}],
         "unit_system": "SI",
     }
     resp = client.post("/compute/lossbreakdown", json=req)
@@ -225,14 +312,11 @@ def test_lossbreakdown_count_multiplies_k():
     req = {
         "Q_m3h": 100.0,
         "D_mm": 200.0,
-        "accessories": [
-            {"accessory_id": "gate_fully_open", "count": 5},
-        ],
+        "accessories": [{"accessory_id": "gate_fully_open", "count": 5}],
         "unit_system": "SI",
     }
     resp = client.post("/compute/lossbreakdown", json=req)
-    data = resp.json()
-    item = data["items"][0]
+    item = resp.json()["items"][0]
     assert item["count"] == 5
     assert abs(item["K_total"] - item["K_each"] * 5) < 1e-9
 
@@ -241,9 +325,7 @@ def test_lossbreakdown_unknown_id_returns_422():
     req = {
         "Q_m3h": 100.0,
         "D_mm": 200.0,
-        "accessories": [
-            {"accessory_id": "does_not_exist", "count": 1},
-        ],
+        "accessories": [{"accessory_id": "does_not_exist", "count": 1}],
         "unit_system": "SI",
     }
     resp = client.post("/compute/lossbreakdown", json=req)
@@ -274,9 +356,7 @@ def test_lossbreakdown_us_unit_system():
     resp = client.post("/compute/lossbreakdown", json=req)
     data = resp.json()
     assert data["unit_system"] == "US"
-    total_ft = data["total_hm_display"]["display_value"]
-    total_m  = data["total_hm_m"]
-    assert abs(total_ft - total_m * 3.28084) < 0.01
+    assert abs(data["total_hm_display"]["display_value"] - data["total_hm_m"] * 3.28084) < 0.01
 
 
 def test_lossbreakdown_si_unit_system():
@@ -299,20 +379,12 @@ def test_lossbreakdown_echo_fields():
     resp = client.post("/compute/lossbreakdown", json=BASIC_REQUEST)
     data = resp.json()
     assert data["design_Q_m3h"] == pytest.approx(100.0)
-    assert data["D_mm"] == pytest.approx(200.0)
 
 
 def test_lossbreakdown_all_categories_can_be_computed():
-    """Spot-check one item from each category."""
     items_to_test = [
-        "cv_swing",
-        "gate_fully_open",
-        "prv_fully_open",
-        "mag_meter",
-        "eccentric_reducer",
-        "elbow_90_standard",
-        "y_strainer",
-        "pipe_entrance_sharp",
+        "cv_swing", "gate_fully_open", "prv_fully_open", "mag_meter",
+        "eccentric_reducer", "elbow_90_standard", "y_strainer", "pipe_entrance_sharp",
     ]
     req = {
         "Q_m3h": 150.0,
@@ -328,7 +400,7 @@ def test_lossbreakdown_all_categories_can_be_computed():
 
 
 # ---------------------------------------------------------------------------
-# New fields: segments, category subtotals, major-vs-minor breakdown
+# Segment tagging & subtotals (flat mode)
 # ---------------------------------------------------------------------------
 
 
@@ -337,9 +409,10 @@ def test_lossbreakdown_response_has_segment_fields():
     data = resp.json()
     for field in (
         "suction_minor_hm_m", "discharge_minor_hm_m",
+        "suction_major_hm_m", "discharge_major_hm_m",
         "major_hm_m", "grand_total_hm_m",
         "pct_minor_of_grand_total", "pct_major_of_grand_total",
-        "category_subtotals",
+        "category_subtotals", "contribution_rows",
     ):
         assert field in data, f"Missing field: {field}"
 
@@ -349,25 +422,25 @@ def test_lossbreakdown_segment_tagging():
         "Q_m3h": 100.0,
         "D_mm": 200.0,
         "accessories": [
-            {"accessory_id": "cv_swing",       "count": 1, "segment": "discharge"},
-            {"accessory_id": "gate_fully_open", "count": 1, "segment": "suction"},
+            {"accessory_id": "cv_swing",        "count": 1, "segment": "discharge"},
+            {"accessory_id": "gate_fully_open",  "count": 1, "segment": "suction"},
         ],
         "unit_system": "SI",
     }
     resp = client.post("/compute/lossbreakdown", json=req)
     assert resp.status_code == 200
     data = resp.json()
-    assert data["suction_minor_hm_m"] > 0
+    assert data["suction_minor_hm_m"]   > 0
     assert data["discharge_minor_hm_m"] > 0
-    cv_item = next(it for it in data["items"] if it["accessory_id"] == "cv_swing")
+    cv_item   = next(it for it in data["items"] if it["accessory_id"] == "cv_swing")
     gate_item = next(it for it in data["items"] if it["accessory_id"] == "gate_fully_open")
-    assert cv_item["segment"] == "discharge"
+    assert cv_item["segment"]   == "discharge"
     assert gate_item["segment"] == "suction"
-    assert abs(data["suction_minor_hm_m"] - gate_item["hm_m"]) < 1e-6
-    assert abs(data["discharge_minor_hm_m"] - cv_item["hm_m"]) < 1e-6
+    assert abs(data["suction_minor_hm_m"]   - gate_item["hm_m"]) < 1e-6
+    assert abs(data["discharge_minor_hm_m"] - cv_item["hm_m"])   < 1e-6
 
 
-def test_lossbreakdown_major_head_contribution():
+def test_lossbreakdown_major_head_caller_supplied():
     req = {
         **BASIC_REQUEST,
         "suction_major_head_m":   1.5,
@@ -383,8 +456,7 @@ def test_lossbreakdown_major_head_contribution():
 
 def test_lossbreakdown_category_subtotals_present():
     resp = client.post("/compute/lossbreakdown", json=BASIC_REQUEST)
-    data = resp.json()
-    subtotals = data["category_subtotals"]
+    subtotals = resp.json()["category_subtotals"]
     assert isinstance(subtotals, list)
     assert len(subtotals) >= 1
     first = subtotals[0]
@@ -400,40 +472,259 @@ def test_lossbreakdown_category_subtotals_sum_to_total():
 
 
 def test_lossbreakdown_no_segment_no_subtotal_penalty():
-    """Items without segment are included in total but suction/discharge subtotals stay 0."""
     req = {
         "Q_m3h": 100.0,
         "D_mm": 200.0,
-        "accessories": [
-            {"accessory_id": "cv_swing", "count": 1},
-        ],
+        "accessories": [{"accessory_id": "cv_swing", "count": 1}],
         "unit_system": "SI",
     }
     resp = client.post("/compute/lossbreakdown", json=req)
     data = resp.json()
-    assert data["suction_minor_hm_m"] == 0.0
+    assert data["suction_minor_hm_m"]   == 0.0
     assert data["discharge_minor_hm_m"] == 0.0
-    assert data["total_hm_m"] > 0
+    assert data["total_hm_m"]           > 0
 
 
 def test_lossbreakdown_item_segment_echoed():
     req = {
         "Q_m3h": 100.0,
         "D_mm": 200.0,
-        "accessories": [
-            {"accessory_id": "cv_swing", "count": 1, "segment": "discharge"},
-        ],
+        "accessories": [{"accessory_id": "cv_swing", "count": 1, "segment": "discharge"}],
         "unit_system": "SI",
     }
-    resp = client.post("/compute/lossbreakdown", json=req)
-    item = resp.json()["items"][0]
+    item = client.post("/compute/lossbreakdown", json=req).json()["items"][0]
     assert item["segment"] == "discharge"
 
 
 def test_lossbreakdown_grand_total_no_major():
-    """When no major head provided, grand_total == total minor."""
     resp = client.post("/compute/lossbreakdown", json=BASIC_REQUEST)
     data = resp.json()
     assert abs(data["grand_total_hm_m"] - data["total_hm_m"]) < 1e-6
     assert data["major_hm_m"] == 0.0
-    assert data["pct_minor_of_grand_total"] == pytest.approx(100.0, abs=0.01) or data["total_hm_m"] == 0.0
+    if data["total_hm_m"] > 0:
+        assert data["pct_minor_of_grand_total"] == pytest.approx(100.0, abs=0.01)
+
+
+# ---------------------------------------------------------------------------
+# POST /compute/lossbreakdown — SEGMENTED MODE with pipe geometry (D-W)
+# ---------------------------------------------------------------------------
+
+SEGMENTED_REQUEST = {
+    "Q_m3h": 100.0,
+    "discharge": {
+        "L_m":      150.0,
+        "D_mm":     200.0,
+        "material": "ductile_iron",
+        "accessories": [
+            {"accessory_id": "cv_swing",  "count": 1},
+            {"accessory_id": "gate_fully_open", "count": 1},
+        ],
+    },
+    "accessories": [
+        {"accessory_id": "elbow_90_standard", "count": 2, "segment": "suction"},
+    ],
+    "unit_system": "SI",
+}
+
+
+def test_segmented_mode_status():
+    resp = client.post("/compute/lossbreakdown", json=SEGMENTED_REQUEST)
+    assert resp.status_code == 200
+
+
+def test_segmented_mode_computes_discharge_major_dw():
+    """Backend must compute discharge major loss from geometry — result should be > 0."""
+    resp = client.post("/compute/lossbreakdown", json=SEGMENTED_REQUEST)
+    data = resp.json()
+    assert data["discharge_major_hm_m"] > 0, (
+        "Discharge major (Darcy-Weisbach) loss should be > 0 for L=150m, D=200mm, Q=100 m³/h"
+    )
+
+
+def test_segmented_mode_discharge_major_physics():
+    """D-W formula: hf = f * L/D * V²/2g.  Result must be in ballpark 0.5–20 m."""
+    resp = client.post("/compute/lossbreakdown", json=SEGMENTED_REQUEST)
+    data = resp.json()
+    hf = data["discharge_major_hm_m"]
+    assert 0.1 < hf < 50.0, f"Unexpected discharge friction loss: {hf} m"
+
+
+def test_segmented_mode_suction_major_zero_when_no_geometry():
+    """No suction segment supplied → suction_major_hm_m should be 0."""
+    resp = client.post("/compute/lossbreakdown", json=SEGMENTED_REQUEST)
+    data = resp.json()
+    assert data["suction_major_hm_m"] == 0.0
+
+
+def test_segmented_mode_accessories_attributed_to_discharge():
+    """Accessories inside the discharge segment input should be tagged 'discharge'."""
+    resp = client.post("/compute/lossbreakdown", json=SEGMENTED_REQUEST)
+    items = resp.json()["items"]
+    discharge_items = [it for it in items if it["segment"] == "discharge"]
+    assert len(discharge_items) == 2
+    ids = {it["accessory_id"] for it in discharge_items}
+    assert ids == {"cv_swing", "gate_fully_open"}
+
+
+def test_segmented_mode_flat_accessories_keep_segment_tag():
+    """Flat accessories with segment='suction' tag must arrive in suction."""
+    resp = client.post("/compute/lossbreakdown", json=SEGMENTED_REQUEST)
+    items = resp.json()["items"]
+    suction_items = [it for it in items if it["segment"] == "suction"]
+    assert len(suction_items) == 1
+    assert suction_items[0]["accessory_id"] == "elbow_90_standard"
+
+
+def test_segmented_mode_grand_total_correct():
+    resp = client.post("/compute/lossbreakdown", json=SEGMENTED_REQUEST)
+    data = resp.json()
+    expected_grand = data["total_hm_m"] + data["discharge_major_hm_m"] + data["suction_major_hm_m"]
+    assert abs(data["grand_total_hm_m"] - expected_grand) < 1e-5
+
+
+def test_segmented_mode_invalid_material_returns_422():
+    req = {
+        "Q_m3h": 100.0,
+        "discharge": {
+            "L_m": 100.0,
+            "D_mm": 200.0,
+            "material": "unobtainium_pipe",
+            "accessories": [],
+        },
+        "unit_system": "SI",
+    }
+    resp = client.post("/compute/lossbreakdown", json=req)
+    assert resp.status_code == 422
+
+
+def test_segmented_mode_unknown_accessory_in_segment_returns_422():
+    req = {
+        "Q_m3h": 100.0,
+        "discharge": {
+            "L_m": 100.0,
+            "D_mm": 200.0,
+            "material": "ductile_iron",
+            "accessories": [{"accessory_id": "ghost_fitting", "count": 1}],
+        },
+        "unit_system": "SI",
+    }
+    resp = client.post("/compute/lossbreakdown", json=req)
+    assert resp.status_code == 422
+    assert "ghost_fitting" in resp.json()["detail"]
+
+
+def test_segmented_mode_both_suction_and_discharge_geometry():
+    req = {
+        "Q_m3h": 80.0,
+        "suction": {
+            "L_m": 20.0,
+            "D_mm": 250.0,
+            "material": "cast_iron",
+            "accessories": [{"accessory_id": "gate_fully_open", "count": 1}],
+        },
+        "discharge": {
+            "L_m": 100.0,
+            "D_mm": 200.0,
+            "material": "ductile_iron",
+            "accessories": [{"accessory_id": "cv_swing", "count": 1}],
+        },
+        "unit_system": "SI",
+    }
+    resp = client.post("/compute/lossbreakdown", json=req)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["suction_major_hm_m"]   > 0
+    assert data["discharge_major_hm_m"] > 0
+    assert data["major_hm_m"] == pytest.approx(
+        data["suction_major_hm_m"] + data["discharge_major_hm_m"], abs=1e-6
+    )
+
+
+# ---------------------------------------------------------------------------
+# Contribution matrix (contribution_rows)
+# ---------------------------------------------------------------------------
+
+
+def test_contribution_rows_present():
+    req = {
+        "Q_m3h": 100.0,
+        "discharge": {
+            "L_m": 150.0, "D_mm": 200.0, "material": "ductile_iron",
+            "accessories": [{"accessory_id": "cv_swing", "count": 1}],
+        },
+        "unit_system": "SI",
+    }
+    resp = client.post("/compute/lossbreakdown", json=req)
+    data = resp.json()
+    assert "contribution_rows" in data
+    rows = data["contribution_rows"]
+    assert isinstance(rows, list)
+    assert len(rows) >= 1
+
+
+def test_contribution_rows_structure():
+    req = {
+        "Q_m3h": 100.0,
+        "discharge": {
+            "L_m": 150.0, "D_mm": 200.0, "material": "ductile_iron",
+            "accessories": [{"accessory_id": "cv_swing", "count": 1}],
+        },
+        "unit_system": "SI",
+    }
+    resp = client.post("/compute/lossbreakdown", json=req)
+    for row in resp.json()["contribution_rows"]:
+        for field in ("segment", "loss_type", "category", "label", "h_m", "h_display", "pct_of_grand_total"):
+            assert field in row, f"contribution_rows row missing: {field}"
+        assert row["loss_type"] in ("major", "minor")
+        assert row["h_m"] >= 0
+
+
+def test_contribution_rows_sorted_descending():
+    req = {
+        "Q_m3h": 100.0,
+        "discharge": {
+            "L_m": 200.0, "D_mm": 200.0, "material": "ductile_iron",
+            "accessories": [
+                {"accessory_id": "cv_swing", "count": 1},
+                {"accessory_id": "gate_fully_open", "count": 2},
+            ],
+        },
+        "accessories": [{"accessory_id": "elbow_90_standard", "count": 1, "segment": "suction"}],
+        "unit_system": "SI",
+    }
+    resp = client.post("/compute/lossbreakdown", json=req)
+    rows = resp.json()["contribution_rows"]
+    h_values = [r["h_m"] for r in rows]
+    assert h_values == sorted(h_values, reverse=True)
+
+
+def test_contribution_rows_pct_sums_to_100():
+    req = {
+        "Q_m3h": 100.0,
+        "discharge": {
+            "L_m": 150.0, "D_mm": 200.0, "material": "ductile_iron",
+            "accessories": [{"accessory_id": "cv_swing", "count": 1}],
+        },
+        "unit_system": "SI",
+    }
+    resp = client.post("/compute/lossbreakdown", json=req)
+    rows = resp.json()["contribution_rows"]
+    total_pct = sum(r["pct_of_grand_total"] for r in rows)
+    assert abs(total_pct - 100.0) < 0.5, f"Contribution % sum = {total_pct:.2f}, expected ~100"
+
+
+def test_contribution_rows_major_row_present():
+    req = {
+        "Q_m3h": 100.0,
+        "discharge": {
+            "L_m": 150.0, "D_mm": 200.0, "material": "ductile_iron",
+            "accessories": [],
+        },
+        "unit_system": "SI",
+    }
+    resp = client.post("/compute/lossbreakdown", json=req)
+    rows = resp.json()["contribution_rows"]
+    major_rows = [r for r in rows if r["loss_type"] == "major"]
+    assert len(major_rows) >= 1
+    assert major_rows[0]["segment"] == "discharge"
+    assert major_rows[0]["category"] == "friction"

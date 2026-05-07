@@ -15,6 +15,7 @@ from pydantic import ValidationError
 
 from backend.api.domain_models import ProjectModel, ValidationResult
 from backend.api.schemas import (
+    AccessoryCategoryGroup,
     AccessoryItem,
     AccessoryLibraryResponse,
     AccessoryRecord,
@@ -24,6 +25,7 @@ from backend.api.schemas import (
     ClearWellRequest,
     ClearWellResponse,
     ComputeSystemCurvePoint,
+    ContributionRow,
     CsvImportResponse,
     CurvePoint,
     CycleResult,
@@ -33,6 +35,7 @@ from backend.api.schemas import (
     LossBreakdownItem,
     LossBreakdownRequest,
     LossBreakdownResponse,
+    LossBreakdownSegmentInput,
     MaterialOption,
     MaterialOptionsResponse,
     OperatingPoint,
@@ -193,7 +196,7 @@ def calculate(req: CalculationRequest) -> CalculationResponse:
         roughness_m = get_roughness_m(req.material)
     except KeyError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         )
 
@@ -222,7 +225,7 @@ def calculate(req: CalculationRequest) -> CalculationResponse:
         )
     except (ValueError, ZeroDivisionError) as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Hydraulic calculation error: {exc}",
         )
 
@@ -382,7 +385,7 @@ def compute_hydraulics(req: HydraulicComputeRequest) -> HydraulicComputeResponse
 
     except (ValueError, ZeroDivisionError) as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Hydraulic calculation error: {exc}",
         )
 
@@ -761,7 +764,7 @@ def _validate_and_parse_extras(
 
     if extras is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 f"Pump type '{pump_type_key}' requires additional parameters "
                 f"(extras_schema='{extras_schema}'). "
@@ -773,7 +776,7 @@ def _validate_and_parse_extras(
     except ValidationError as exc:
         messages = _fmt_validation_error(exc)
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Invalid extras for '{pump_type_key}': {'; '.join(messages)}",
         )
 
@@ -851,7 +854,7 @@ def compute_pump_selection(req: PumpSelectionRequest) -> PumpSelectionResponse:
         entry = get_pump_type(req.pump_type_key)  # type: ignore[arg-type]
     except KeyError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         )
 
@@ -1074,7 +1077,7 @@ def compute_pump(req: PumpComputeRequest) -> PumpComputeResponse:
         record = get_pump_by_id(req.pump_id)
         if record is None:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Unknown pump_id '{req.pump_id}'. "
                        f"Check GET /api/v1/pump-library for valid IDs.",
             )
@@ -1084,7 +1087,7 @@ def compute_pump(req: PumpComputeRequest) -> PumpComputeResponse:
             )
         except (KeyError, ValueError) as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Error loading curves for '{req.pump_id}': {exc}",
             )
     else:
@@ -1097,7 +1100,7 @@ def compute_pump(req: PumpComputeRequest) -> PumpComputeResponse:
             )
         except (KeyError, ValueError) as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Error building curves from supplied data: {exc}",
             )
         # Check all polynomial fits for non-physical behaviour
@@ -1313,7 +1316,7 @@ async def import_pump_curve_csv(
     # Validate required columns
     if "Q_m3h" not in fieldnames:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 f"CSV is missing required 'Q_m3h' column. "
                 f"Found columns: {fieldnames}"
@@ -1321,7 +1324,7 @@ async def import_pump_curve_csv(
         )
     if "H_m" not in fieldnames:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 f"CSV is missing required 'H_m' column. "
                 f"Found columns: {fieldnames}. "
@@ -1371,7 +1374,7 @@ async def import_pump_curve_csv(
 
     if len(hq_pts) < 2:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 f"CSV must contain at least 2 valid rows with numeric Q_m3h and H_m; "
                 f"found {len(hq_pts)} after skipping invalid rows."
@@ -1410,10 +1413,65 @@ def get_accessories_library() -> AccessoryLibraryResponse:
     - ``default_K``, ``K_min``, ``K_max``: minor-loss resistance coefficients
     - ``notes``: engineering source notes (Crane TP-410, AWWA M11, etc.)
     - ``potable_notes``: NSF/ANSI 61 and AHJ compliance guidance
+
+    The response includes both a flat ``accessories`` list (for backward compatibility)
+    and a ``categories`` list with the same records grouped by category in canonical order.
     """
+    _CATEGORY_ORDER = [
+        "check_valve",
+        "isolation_valve",
+        "control_valve",
+        "meter",
+        "suction_fitting",
+        "discharge_fitting",
+        "station_special",
+        "pipe_transition",
+    ]
+    _CATEGORY_LABELS: dict[str, str] = {
+        "check_valve":       "Check Valves",
+        "isolation_valve":   "Isolation Valves",
+        "control_valve":     "Control Valves",
+        "meter":             "Meters & Instruments",
+        "suction_fitting":   "Suction Fittings",
+        "discharge_fitting": "Discharge Fittings",
+        "station_special":   "Station Specials",
+        "pipe_transition":   "Pipe Transitions",
+    }
     raw = load_accessories_library()
     records = [AccessoryRecord(**r) for r in raw]
-    return AccessoryLibraryResponse(accessories=records, count=len(records))
+
+    # Build grouped categories in canonical order
+    _by_cat: dict[str, list[AccessoryRecord]] = {}
+    for rec in records:
+        _by_cat.setdefault(rec.category, []).append(rec)
+
+    categories: list[AccessoryCategoryGroup] = []
+    for cat in _CATEGORY_ORDER:
+        if cat in _by_cat:
+            cats_sorted = sorted(_by_cat[cat], key=lambda r: r.name)
+            categories.append(
+                AccessoryCategoryGroup(
+                    category=cat,
+                    label=_CATEGORY_LABELS.get(cat, cat),
+                    accessories=cats_sorted,
+                )
+            )
+    # Any categories not in canonical order appended at the end
+    for cat, recs in sorted(_by_cat.items()):
+        if cat not in _CATEGORY_ORDER:
+            categories.append(
+                AccessoryCategoryGroup(
+                    category=cat,
+                    label=_CATEGORY_LABELS.get(cat, cat),
+                    accessories=sorted(recs, key=lambda r: r.name),
+                )
+            )
+
+    return AccessoryLibraryResponse(
+        accessories=records,
+        count=len(records),
+        categories=categories,
+    )
 
 
 @app.get(
@@ -1442,56 +1500,129 @@ def get_accessory(accessory_id: str) -> AccessoryRecord:
     "/compute/lossbreakdown",
     response_model=LossBreakdownResponse,
     tags=["compute"],
-    summary="Compute per-accessory minor head-loss breakdown with segment and category subtotals",
+    summary="Compute per-accessory minor head-loss breakdown with server-side major losses, segment and category subtotals, and contribution matrix",
 )
-def compute_lossbreakdown(req: LossBreakdownRequest) -> LossBreakdownResponse:
+def compute_lossbreakdown(req: LossBreakdownRequest) -> LossBreakdownResponse:  # noqa: C901
     """
-    Resolve accessory IDs, apply count × (K_override or library default_K), and compute
-    per-item and total minor head losses at the given Q and pipe diameter.
+    Compute a full hydraulic loss breakdown for a pump station.
 
-    Returns:
-    - Per-item breakdown tagged with segment (suction/discharge), sorted by head-loss descending
-    - ΣK and total minor head loss h_m
-    - Per-segment (suction / discharge) minor-loss subtotals
-    - Major (friction) head loss contributions if suction_major_head_m / discharge_major_head_m provided
-    - Major-vs-minor percentage breakdown of the grand total
-    - Per-category subtotals sorted by contribution
-    - Velocity and velocity head
-    - Potable-water compliance notes per item
+    **Segmented mode** (recommended): supply ``suction`` and/or ``discharge``
+    with pipe geometry (L_m, D_mm, material).  The backend computes
+    Darcy-Weisbach friction (major) head loss for each segment using the
+    Colebrook-White friction factor, then processes the accessories in that
+    segment as minor losses.
 
-    Raises 422 if any accessory_id is not found in the library.
+    **Flat mode** (backward-compatible): supply ``D_mm`` and a flat
+    ``accessories[]`` list.  Caller may optionally provide precomputed major
+    head losses via ``suction_major_head_m`` / ``discharge_major_head_m``.
+
+    The response includes:
+    - Per-item breakdown (all segments combined) sorted by head loss descending
+    - Per-segment suction/discharge minor and major subtotals
+    - Per-category minor-loss subtotals
+    - Grand-total major-vs-minor percentage breakdown
+    - ``contribution_rows`` — segment × loss_type × category matrix sorted by h_m
+
+    Raises 422 for unknown accessory IDs or invalid pipe geometry.
     """
-    D_m = req.D_mm / 1000.0
     Q_m3s = req.Q_m3h / 3600.0
     us = req.unit_system
     warnings: list[str] = []
 
-    # Validate all IDs upfront — return 422 immediately on first unknown
-    for acc_item in req.accessories:
-        if get_accessory_by_id(acc_item.accessory_id) is None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=(
-                    f"Accessory ID '{acc_item.accessory_id}' not found in the library. "
-                    "Use GET /library/accessories to browse available IDs."
-                ),
-            )
+    _CATEGORY_LABELS: dict[str, str] = {
+        "check_valve": "Check Valve",
+        "isolation_valve": "Isolation Valve",
+        "control_valve": "Control Valve",
+        "meter": "Meter / Instrument",
+        "suction_fitting": "Suction Fitting",
+        "discharge_fitting": "Discharge Fitting",
+        "station_special": "Station Special",
+        "pipe_transition": "Pipe Transition",
+    }
 
-    # Compute velocity and velocity head
+    # ── Helper: resolve and validate accessory list; return 422 on unknown ID ─
+    def _resolve(acc_list: list[AccessoryItem], seg_tag: str | None) -> list[tuple]:
+        """Returns list of (acc_item, raw_record)."""
+        out = []
+        for ai in acc_list:
+            raw = get_accessory_by_id(ai.accessory_id)
+            if raw is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=(
+                        f"Accessory ID '{ai.accessory_id}' not found in the library. "
+                        "Use GET /library/accessories to browse available IDs."
+                    ),
+                )
+            # Inherit segment from structural position if not explicitly tagged
+            effective_seg = ai.segment if ai.segment is not None else seg_tag
+            out.append((ai, raw, effective_seg))
+        return out
+
+    # ── Helper: compute Darcy-Weisbach friction head loss for a segment ──────
+    def _major_loss(seg: LossBreakdownSegmentInput) -> float:
+        try:
+            roughness = get_roughness_m(seg.material)
+        except KeyError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"Pipe material '{seg.material}' not found in materials library.",
+            )
+        D_seg_m = seg.D_mm / 1000.0
+        try:
+            hf = friction_head_loss(Q_m3s, D_seg_m, seg.L_m, roughness)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"Friction head loss calculation error: {exc}",
+            )
+        return hf
+
+    # ── Validate and resolve all accessories ─────────────────────────────────
+    # Segmented mode: accessories are inside segment input objects
+    suction_resolved = _resolve(req.suction.accessories, "suction") if req.suction else []
+    discharge_resolved = _resolve(req.discharge.accessories, "discharge") if req.discharge else []
+    # Flat mode: root-level accessories list
+    flat_resolved = _resolve(req.accessories, None)
+
+    all_resolved = suction_resolved + discharge_resolved + flat_resolved
+
+    # ── Compute major (friction) losses ──────────────────────────────────────
+    suction_major_hm: float
+    discharge_major_hm: float
+
+    if req.suction is not None:
+        suction_major_hm = round(_major_loss(req.suction), 6)
+    else:
+        suction_major_hm = round(req.suction_major_head_m, 6)
+
+    if req.discharge is not None:
+        discharge_major_hm = round(_major_loss(req.discharge), 6)
+    else:
+        discharge_major_hm = round(req.discharge_major_head_m, 6)
+
+    # ── Choose reference D for velocity head (segment D_mm or request D_mm) ──
+    ref_D_mm = req.D_mm
+    if req.discharge is not None:
+        ref_D_mm = req.discharge.D_mm
+    elif req.suction is not None:
+        ref_D_mm = req.suction.D_mm
+
+    ref_D_m = ref_D_mm / 1000.0
     try:
-        V = velocity(Q_m3s, D_m)
+        V = velocity(Q_m3s, ref_D_m)
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Velocity calculation error: {exc}",
         )
     vh = V**2 / (2.0 * G)
 
+    # ── Process each accessory into a LossBreakdownItem ──────────────────────
     items: list[LossBreakdownItem] = []
     K_sum_total = 0.0
 
-    for acc_item in req.accessories:
-        raw = get_accessory_by_id(acc_item.accessory_id)  # already validated above
+    for acc_item, raw, seg in all_resolved:
         K_each = (
             acc_item.K_override
             if acc_item.K_override is not None
@@ -1506,20 +1637,20 @@ def compute_lossbreakdown(req: LossBreakdownRequest) -> LossBreakdownResponse:
                 accessory_id=acc_item.accessory_id,
                 name=raw["name"],
                 category=raw["category"],
-                segment=acc_item.segment,
+                segment=seg,
                 count=acc_item.count,
                 K_each=round(K_each, 6),
                 K_total=round(K_total, 6),
                 hm_m=round(hm_item, 6),
                 hm_display=convert(round(hm_item, 6), "head", us),
-                pct_of_total_minor=0.0,  # filled in after total is known
+                pct_of_total_minor=0.0,
                 potable_notes=raw.get("potable_notes", []),
             )
         )
 
     total_hm = K_sum_total * vh
 
-    # Back-fill percentage contributions and sort descending
+    # Back-fill % of total minor and sort descending
     filled_items: list[LossBreakdownItem] = []
     for it in items:
         pct = (it.hm_m / total_hm * 100.0) if total_hm > 0 else 0.0
@@ -1540,34 +1671,22 @@ def compute_lossbreakdown(req: LossBreakdownRequest) -> LossBreakdownResponse:
         )
     filled_items.sort(key=lambda x: x.hm_m, reverse=True)
 
-    if total_hm == 0.0 and len(req.accessories) > 0:
-        warnings.append(
-            "All selected accessories have K = 0 — total minor loss is zero."
-        )
+    if total_hm == 0.0 and len(all_resolved) > 0:
+        warnings.append("All selected accessories have K = 0 — total minor loss is zero.")
 
-    # Per-segment minor-loss subtotals
-    suction_minor = sum(it.hm_m for it in filled_items if it.segment == "suction")
-    discharge_minor = sum(it.hm_m for it in filled_items if it.segment == "discharge")
+    # ── Per-segment minor subtotals ───────────────────────────────────────────
+    suction_minor = round(sum(it.hm_m for it in filled_items if it.segment == "suction"), 6)
+    discharge_minor = round(sum(it.hm_m for it in filled_items if it.segment == "discharge"), 6)
 
-    # Major (friction) head losses from caller
-    major_hm = req.suction_major_head_m + req.discharge_major_head_m
+    # ── Grand total ───────────────────────────────────────────────────────────
+    major_hm = round(suction_major_hm + discharge_major_hm, 6)
     grand_total = round(total_hm + major_hm, 6)
     pct_minor = (total_hm / grand_total * 100.0) if grand_total > 0 else 0.0
     pct_major = (major_hm / grand_total * 100.0) if grand_total > 0 else 0.0
 
-    # Per-category subtotals
+    # ── Per-category subtotals ────────────────────────────────────────────────
     _cat_K: dict[str, float] = {}
     _cat_hm: dict[str, float] = {}
-    _cat_label: dict[str, str] = {
-        "check_valve": "Check Valve",
-        "isolation_valve": "Isolation Valve",
-        "control_valve": "Control Valve",
-        "meter": "Meter / Instrument",
-        "suction_fitting": "Suction Fitting",
-        "discharge_fitting": "Discharge Fitting",
-        "station_special": "Station Special",
-        "pipe_transition": "Pipe Transition",
-    }
     for it in filled_items:
         _cat_K[it.category] = _cat_K.get(it.category, 0.0) + it.K_total
         _cat_hm[it.category] = _cat_hm.get(it.category, 0.0) + it.hm_m
@@ -1578,7 +1697,7 @@ def compute_lossbreakdown(req: LossBreakdownRequest) -> LossBreakdownResponse:
         category_subtotals.append(
             CategorySubtotal(
                 category=cat,
-                label=_cat_label.get(cat, cat),
+                label=_CATEGORY_LABELS.get(cat, cat),
                 K_sum=round(_cat_K[cat], 6),
                 hm_m=round(hm_c, 6),
                 hm_display=convert(round(hm_c, 6), "head", us),
@@ -1586,22 +1705,64 @@ def compute_lossbreakdown(req: LossBreakdownRequest) -> LossBreakdownResponse:
             )
         )
 
+    # ── Contribution matrix (segment × loss_type × category) ─────────────────
+    contribution_rows: list[ContributionRow] = []
+
+    def _add_row(seg: str, loss_type: str, cat: str, label: str, hm: float) -> None:
+        if hm <= 0.0:
+            return
+        pct = (hm / grand_total * 100.0) if grand_total > 0 else 0.0
+        contribution_rows.append(
+            ContributionRow(
+                segment=seg,
+                loss_type=loss_type,
+                category=cat,
+                label=label,
+                h_m=round(hm, 6),
+                h_display=convert(round(hm, 6), "head", us),
+                pct_of_grand_total=round(pct, 2),
+            )
+        )
+
+    # Major loss rows
+    _add_row("suction",   "major", "friction", "Suction Pipe Friction",   suction_major_hm)
+    _add_row("discharge", "major", "friction", "Discharge Pipe Friction", discharge_major_hm)
+
+    # Minor loss rows — per segment per category
+    for seg_key in ("suction", "discharge", None):
+        seg_label = seg_key if seg_key else "untagged"
+        seg_display = {"suction": "Suction", "discharge": "Discharge"}.get(seg_key or "", "Untagged")  # type: ignore[arg-type]
+        for cat, hm_c in _cat_hm.items():
+            hm_seg_cat = sum(
+                it.hm_m
+                for it in filled_items
+                if it.category == cat and it.segment == seg_key
+            )
+            if hm_seg_cat > 0:
+                label = f"{seg_display} — {_CATEGORY_LABELS.get(cat, cat)}"
+                _add_row(seg_label, "minor", cat, label, hm_seg_cat)
+
+    contribution_rows.sort(key=lambda r: r.h_m, reverse=True)
+
     return LossBreakdownResponse(
         items=filled_items,
         K_sum=round(K_sum_total, 6),
         total_hm_m=round(total_hm, 6),
         total_hm_display=convert(round(total_hm, 6), "head", us),
-        suction_minor_hm_m=round(suction_minor, 6),
-        discharge_minor_hm_m=round(discharge_minor, 6),
-        major_hm_m=round(major_hm, 6),
+        suction_minor_hm_m=suction_minor,
+        discharge_minor_hm_m=discharge_minor,
+        suction_major_hm_m=suction_major_hm,
+        discharge_major_hm_m=discharge_major_hm,
+        major_hm_m=major_hm,
         grand_total_hm_m=grand_total,
         pct_minor_of_grand_total=round(pct_minor, 2),
         pct_major_of_grand_total=round(pct_major, 2),
         category_subtotals=category_subtotals,
+        contribution_rows=contribution_rows,
         velocity_ms=round(V, 4),
         velocity_head_m=round(vh, 6),
         design_Q_m3h=req.Q_m3h,
-        D_mm=req.D_mm,
+        D_mm=ref_D_mm,
         unit_system=us,
         warnings=warnings,
     )

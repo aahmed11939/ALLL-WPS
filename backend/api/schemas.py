@@ -1193,6 +1193,18 @@ class AccessoryRecord(BaseModel):
     )
 
 
+class AccessoryCategoryGroup(BaseModel):
+    """One category bucket within the grouped accessories library response."""
+
+    model_config = ConfigDict(frozen=True)
+
+    category: str = Field(description="Category key (e.g. 'check_valve')")
+    label: str = Field(description="Human-readable category name")
+    accessories: List[AccessoryRecord] = Field(
+        description="Accessories belonging to this category, alphabetical by name"
+    )
+
+
 class AccessoryLibraryResponse(BaseModel):
     """Response from GET /library/accessories."""
 
@@ -1200,6 +1212,13 @@ class AccessoryLibraryResponse(BaseModel):
 
     accessories: List[AccessoryRecord]
     count: int
+    categories: List[AccessoryCategoryGroup] = Field(
+        default_factory=list,
+        description=(
+            "Same records grouped by category in canonical order. "
+            "Equivalent to the flat 'accessories' list but pre-partitioned."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1227,8 +1246,29 @@ class AccessoryItem(BaseModel):
         description=(
             "Which pipe segment this accessory belongs to. "
             "'suction' = upstream of pump; 'discharge' = downstream of pump. "
-            "Optional — if omitted, item is counted in total but not segmented."
+            "Optional — if omitted, item is counted in the grand total but not attributed to a segment."
         ),
+    )
+
+
+class LossBreakdownSegmentInput(BaseModel):
+    """
+    Pipe segment geometry + accessories for one segment (suction or discharge).
+
+    Supplying this lets the backend compute the Darcy-Weisbach friction (major)
+    head loss from first principles rather than requiring the caller to provide it.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    L_m: Annotated[float, Field(gt=0, description="Pipe segment length [m]")]
+    D_mm: Annotated[float, Field(gt=0, description="Internal pipe diameter [mm]")]
+    material: str = Field(
+        description="Pipe material key — must match a key in pipe_materials.yaml"
+    )
+    accessories: List[AccessoryItem] = Field(
+        default_factory=list,
+        description="Accessories located in this segment",
     )
 
 
@@ -1236,32 +1276,54 @@ class LossBreakdownRequest(BaseModel):
     """
     Request for POST /compute/lossbreakdown.
 
-    Resolves accessory IDs against the library, applies count × (K_override or
-    default_K), and computes per-item and total head losses at the given flow
-    and pipe diameter.  Optionally accepts major friction head losses for suction
-    and discharge segments so the response can show major-vs-minor breakdown.
+    Two modes:
+
+    **Segmented mode** (recommended): supply ``suction`` and/or ``discharge``
+    with full segment geometry.  The backend computes Darcy-Weisbach friction
+    (major) head loss for each segment from L, D, material, and Q.  Accessories
+    inside each segment are attributed to that segment.
+
+    **Flat mode** (backward-compatible): supply ``D_mm`` and a flat
+    ``accessories[]`` list (with optional per-item ``segment`` tags).  No major
+    loss is computed; caller may supply precomputed major heads via
+    ``suction_major_head_m`` / ``discharge_major_head_m``.
     """
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
     Q_m3h: Annotated[float, Field(gt=0, description="Design flow rate [m³/h] — SI")]
-    D_mm: Annotated[float, Field(gt=0, description="Internal pipe diameter [mm] — SI")]
+    D_mm: Annotated[float, Field(gt=0, description="Pipe internal diameter [mm] — used for velocity head in flat mode")] = 200.0
+    suction: Optional[LossBreakdownSegmentInput] = Field(
+        default=None,
+        description=(
+            "Suction segment geometry + accessories. "
+            "When supplied, the backend computes suction friction loss from D-W."
+        ),
+    )
+    discharge: Optional[LossBreakdownSegmentInput] = Field(
+        default=None,
+        description=(
+            "Discharge segment geometry + accessories. "
+            "When supplied, the backend computes discharge friction loss from D-W."
+        ),
+    )
     accessories: List[AccessoryItem] = Field(
         default_factory=list,
         description=(
-            "List of accessories.  Set 'segment' to 'suction' or 'discharge' "
-            "to obtain per-segment minor-loss subtotals."
+            "Flat accessory list for single-pipe / backward-compatible use. "
+            "Items may carry 'segment' tags for minor-loss attribution. "
+            "Ignored for items that are already in suction/discharge segments."
         ),
     )
     suction_major_head_m: float = Field(
         default=0.0,
         ge=0.0,
-        description="Darcy-Weisbach friction (major) head loss in the suction pipe [m]",
+        description="Caller-supplied suction friction loss [m] — used only in flat mode (ignored if suction segment is provided)",
     )
     discharge_major_head_m: float = Field(
         default=0.0,
         ge=0.0,
-        description="Darcy-Weisbach friction (major) head loss in the discharge pipe [m]",
+        description="Caller-supplied discharge friction loss [m] — used only in flat mode (ignored if discharge segment is provided)",
     )
     unit_system: Literal["SI", "US"] = Field(
         default="SI",
@@ -1270,7 +1332,7 @@ class LossBreakdownRequest(BaseModel):
 
 
 class LossBreakdownItem(BaseModel):
-    """One row in the loss breakdown table."""
+    """One row in the per-accessory loss breakdown table."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -1308,6 +1370,34 @@ class CategorySubtotal(BaseModel):
     pct_of_total_minor: float
 
 
+class ContributionRow(BaseModel):
+    """
+    One row in the segment/category contribution matrix.
+
+    The matrix breaks the grand total into: suction major, suction minor
+    per-category, discharge major, discharge minor per-category, and any
+    untagged (flat-mode) minor losses.  Rows are sorted by hm_m descending.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    segment: str = Field(
+        description="'suction' | 'discharge' | 'untagged' — pipe segment"
+    )
+    loss_type: str = Field(
+        description="'major' (Darcy-Weisbach friction) | 'minor' (fitting K-loss)"
+    )
+    category: str = Field(
+        description="'friction' for major losses; accessory category key for minor losses"
+    )
+    label: str = Field(description="Human-readable row label")
+    h_m: float = Field(description="Head loss for this row [m]")
+    h_display: "UnitValue" = Field(description="Head loss in display units")
+    pct_of_grand_total: float = Field(
+        description="This row's share of grand total [%]"
+    )
+
+
 class LossBreakdownResponse(BaseModel):
     """Full response from POST /compute/lossbreakdown."""
 
@@ -1328,30 +1418,46 @@ class LossBreakdownResponse(BaseModel):
         default=0.0,
         description="Minor head loss for discharge-segment accessories [m]",
     )
+    suction_major_hm_m: float = Field(
+        default=0.0,
+        description="Darcy-Weisbach friction head loss for suction segment [m] (server-computed when geometry provided)",
+    )
+    discharge_major_hm_m: float = Field(
+        default=0.0,
+        description="Darcy-Weisbach friction head loss for discharge segment [m] (server-computed when geometry provided)",
+    )
     major_hm_m: float = Field(
         default=0.0,
         description="Total major (friction) head loss = suction_major + discharge_major [m]",
     )
     grand_total_hm_m: float = Field(
         default=0.0,
-        description="minor total + major total [m]",
+        description="All minor losses + all major losses [m]",
     )
     pct_minor_of_grand_total: float = Field(
         default=0.0,
-        description="Minor losses as % of grand total (minor + major) [%]",
+        description="Minor losses as % of grand total [%]",
     )
     pct_major_of_grand_total: float = Field(
         default=0.0,
-        description="Major losses as % of grand total (minor + major) [%]",
+        description="Major losses as % of grand total [%]",
     )
     category_subtotals: List[CategorySubtotal] = Field(
         default_factory=list,
         description="Per-category minor-loss subtotals, sorted by hm_m descending",
     )
+    contribution_rows: List[ContributionRow] = Field(
+        default_factory=list,
+        description=(
+            "Segment/category contribution matrix sorted by h_m descending. "
+            "Each row shows one (segment × loss_type × category) combination "
+            "with its head loss and % of grand total."
+        ),
+    )
 
     velocity_ms: float = Field(description="Mean pipe velocity at design Q [m/s]")
     velocity_head_m: float = Field(description="Velocity head V²/(2g) [m]")
     design_Q_m3h: float = Field(description="Design flow rate echoed back [m³/h]")
-    D_mm: float = Field(description="Internal pipe diameter echoed back [mm]")
+    D_mm: float = Field(description="Reference pipe diameter echoed back [mm]")
     unit_system: Literal["SI", "US"] = Field(description="Display unit system echoed from request")
     warnings: List[str] = Field(default_factory=list, description="Advisory warnings")

@@ -1756,9 +1756,9 @@ class MOCRequest(BaseModel):
     boundary_A: MOCBoundaryInput = Field(description="Upstream boundary condition (node 0)")
     boundary_B: MOCBoundaryInput = Field(description="Downstream boundary condition (node N)")
     observation_points: List[MOCObservationPoint] = Field(
-        default_factory=list, max_length=5,
+        default_factory=list, max_length=3,
     )
-    n_reaches: Optional[int] = Field(default=None, ge=2, le=200)
+    n_reaches: Optional[int] = Field(default=None, ge=10, le=200)
     t_total_s: Optional[float] = Field(default=None, gt=0)
     unit_system: Literal["SI", "US"] = Field(default="SI")
 

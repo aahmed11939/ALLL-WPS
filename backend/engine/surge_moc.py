@@ -39,9 +39,11 @@ ASSUMPTION_NOTES: list[str] = [
     "Simplified pump-trip head-decay model: H_source(t) = H_pump × (1 − t/t_trip)². "
     "No rotating-inertia (Suter curve) model. PumpTripBC is structured for "
     "future replacement with a full inertia model.",
-    "Multi-segment collapse: flow-weighted mean internal diameter D̄ and "
+    "Multi-segment pipeline: flow-weighted mean internal diameter D̄ and "
     "length-weighted mean roughness ε̄ define a single uniform grid. "
-    "Diameter changes along the pipeline are not modelled explicitly.",
+    "Elevation profile is piecewise-linearly interpolated from each segment's "
+    "elev_start_m / elev_end_m breakpoints. Diameter changes are not modelled "
+    "explicitly (conservative for screening).",
     "Column separation: minimum head clamped to vapour pressure h_vap(T) "
     "(vapour-pocket model). Void volume growth is not tracked.",
     "Courant number = 1.0 enforced: Δt = Δx / a. Total simulation duration "
@@ -104,13 +106,28 @@ def build_grid(
     # Node positions
     x_nodes = [i * dx for i in range(N + 1)]
 
-    # Linearly interpolated elevation profile
-    elev_start = float(segments[0].get("elev_start_m", 0.0))
-    elev_end   = float(segments[-1].get("elev_end_m", 0.0))
-    elev_nodes = [
-        elev_start + (elev_end - elev_start) * (xi / L_total)
-        for xi in x_nodes
-    ]
+    # Piecewise-linear elevation profile across segment breakpoints.
+    # Each segment contributes its own start/end elevation, so undulating
+    # profiles (e.g. rising then falling) are captured correctly.
+    bp_x: list[float] = [0.0]
+    bp_e: list[float] = [float(segments[0].get("elev_start_m", 0.0))]
+    cumx = 0.0
+    for seg in segments:
+        cumx += float(seg["L_m"])
+        bp_x.append(cumx)
+        bp_e.append(float(seg.get("elev_end_m", bp_e[-1])))
+
+    def _interp_elev(xi: float) -> float:
+        """Return piecewise-linearly interpolated elevation at grid position xi."""
+        for k in range(len(bp_x) - 1):
+            x0, x1 = bp_x[k], bp_x[k + 1]
+            if xi <= x1 + 1e-9:
+                span = x1 - x0
+                t = (xi - x0) / span if span > 1e-12 else 0.0
+                return bp_e[k] + t * (bp_e[k + 1] - bp_e[k])
+        return bp_e[-1]
+
+    elev_nodes = [_interp_elev(xi) for xi in x_nodes]
 
     A = math.pi * D_mean ** 2 / 4.0
     B_imp = wave_speed_ms / (G * A)   # pipeline impedance [s/m²]

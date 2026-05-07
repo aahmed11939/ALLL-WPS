@@ -481,3 +481,187 @@ class TestOverrides:
             t_total=2.0,
         )
         assert r["N"] > 0
+
+
+# ---------------------------------------------------------------------------
+# Multi-segment piecewise-linear elevation profile
+# ---------------------------------------------------------------------------
+
+
+class TestMultiSegmentElevation:
+    """Verify build_grid() honours all segment elevation breakpoints."""
+
+    def test_two_segment_midpoint_elevation(self):
+        """
+        Two segments of equal length with different slope grades.
+        Segment 1: elev 0 → 10 m (rising)
+        Segment 2: elev 10 → 5 m (falling)
+        Grid midpoint (x = L_total / 2) is at the segment junction → elev = 10 m.
+        """
+        segs = [
+            {"L_m": 300.0, "D_m": 0.3, "roughness_m": 1e-4, "elev_start_m": 0.0, "elev_end_m": 10.0},
+            {"L_m": 300.0, "D_m": 0.3, "roughness_m": 1e-4, "elev_start_m": 10.0, "elev_end_m": 5.0},
+        ]
+        grid = build_grid(segs, wave_speed_ms=1000.0, n_reaches_override=10)
+        # Node 5 sits at x = 300 m exactly (junction of the two segments)
+        assert abs(grid["elev_m"][5] - 10.0) < 0.05
+
+    def test_two_segment_elevation_first_half_monotone(self):
+        """
+        Nodes in the first segment must lie between start (0 m) and junction (10 m).
+        """
+        segs = [
+            {"L_m": 300.0, "D_m": 0.3, "roughness_m": 1e-4, "elev_start_m": 0.0, "elev_end_m": 10.0},
+            {"L_m": 300.0, "D_m": 0.3, "roughness_m": 1e-4, "elev_start_m": 10.0, "elev_end_m": 5.0},
+        ]
+        grid = build_grid(segs, wave_speed_ms=1000.0, n_reaches_override=10)
+        for i in range(6):  # nodes 0–5 in segment 1
+            assert 0.0 <= grid["elev_m"][i] <= 10.0 + 1e-6
+
+    def test_two_segment_endpoint_elevation(self):
+        """Last node elevation must match the last segment's elev_end_m."""
+        segs = [
+            {"L_m": 400.0, "D_m": 0.3, "roughness_m": 1e-4, "elev_start_m": 2.0, "elev_end_m": 20.0},
+            {"L_m": 200.0, "D_m": 0.3, "roughness_m": 1e-4, "elev_start_m": 20.0, "elev_end_m": 8.0},
+        ]
+        grid = build_grid(segs, wave_speed_ms=1000.0, n_reaches_override=12)
+        assert abs(grid["elev_m"][-1] - 8.0) < 0.1
+
+    def test_single_segment_elev_unchanged(self):
+        """Single segment: first and last node elevations must match input exactly."""
+        segs = [{"L_m": 600.0, "D_m": 0.3, "roughness_m": 1e-4, "elev_start_m": 5.0, "elev_end_m": 35.0}]
+        grid = build_grid(segs, wave_speed_ms=1000.0, n_reaches_override=10)
+        assert abs(grid["elev_m"][0]  - 5.0)  < 1e-9
+        assert abs(grid["elev_m"][-1] - 35.0) < 0.5  # slight rounding at N=10
+
+
+# ---------------------------------------------------------------------------
+# POST /surge/moc — API endpoint integration tests
+# ---------------------------------------------------------------------------
+
+
+from fastapi.testclient import TestClient  # noqa: E402 — must come after engine imports
+from backend.api.main import app           # noqa: E402
+
+_client = TestClient(app)
+
+_BASIC_MOC_REQ = {
+    "pipeline": "discharge",
+    "wave_speed_ms": 1000.0,
+    "Q_0_m3s": 0.06,
+    "H_0_m": 40.0,
+    "temperature_C": 20.0,
+    "rho_kg_m3": 1000.0,
+    "segments": [
+        {
+            "L_m": 600.0,
+            "D_m": 0.30,
+            "roughness_m": 0.00012,
+            "elev_start_m": 5.0,
+            "elev_end_m": 35.0,
+        }
+    ],
+    "boundary_A": {
+        "type": "pump_trip",
+        "H_pump_m": 40.0,
+        "Q_m3s": 0.06,
+        "t_trip_s": 2.0,
+        "H_reservoir_m": 5.0,
+    },
+    "boundary_B": {"type": "reservoir", "H_m": 35.0},
+    "unit_system": "SI",
+}
+
+
+class TestMOCEndpoint:
+    """Integration tests for POST /surge/moc via FastAPI test client."""
+
+    def test_moc_200_round_trip(self):
+        resp = _client.post("/surge/moc", json=_BASIC_MOC_REQ)
+        assert resp.status_code == 200
+
+    def test_moc_response_structure(self):
+        data = _client.post("/surge/moc", json=_BASIC_MOC_REQ).json()
+        for field in (
+            "N", "dx_m", "dt_s", "courant", "t_total_s", "envelope",
+            "observations", "global_max_H_m", "global_min_H_m",
+            "cavitation_x_m", "assumption_notes", "unit_system",
+        ):
+            assert field in data, f"Missing response field: {field}"
+
+    def test_moc_courant_is_one(self):
+        data = _client.post("/surge/moc", json=_BASIC_MOC_REQ).json()
+        assert data["courant"] == 1.0
+
+    def test_moc_envelope_length_equals_n_plus_1(self):
+        data = _client.post("/surge/moc", json=_BASIC_MOC_REQ).json()
+        assert len(data["envelope"]) == data["N"] + 1
+
+    def test_moc_n_reaches_at_least_10(self):
+        data = _client.post("/surge/moc", json=_BASIC_MOC_REQ).json()
+        assert data["N"] >= 10
+
+    def test_moc_unit_system_echoed(self):
+        data = _client.post("/surge/moc", json=_BASIC_MOC_REQ).json()
+        assert data["unit_system"] == "SI"
+
+    def test_moc_422_empty_segments(self):
+        bad = {**_BASIC_MOC_REQ, "segments": []}
+        resp = _client.post("/surge/moc", json=bad)
+        assert resp.status_code == 422
+
+    def test_moc_422_n_reaches_below_minimum(self):
+        bad = {**_BASIC_MOC_REQ, "n_reaches": 5}  # below ge=10 limit
+        resp = _client.post("/surge/moc", json=bad)
+        assert resp.status_code == 422
+
+    def test_moc_422_too_many_observation_points(self):
+        bad = {
+            **_BASIC_MOC_REQ,
+            "observation_points": [
+                {"frac": 0.0, "label": "A"},
+                {"frac": 0.25, "label": "B"},
+                {"frac": 0.5, "label": "C"},
+                {"frac": 0.75, "label": "D"},  # 4th point — exceeds max_length=3
+            ],
+        }
+        resp = _client.post("/surge/moc", json=bad)
+        assert resp.status_code == 422
+
+    def test_moc_observation_points_in_response(self):
+        req = {
+            **_BASIC_MOC_REQ,
+            "observation_points": [
+                {"frac": 0.0, "label": "Upstream"},
+                {"frac": 1.0, "label": "Downstream"},
+            ],
+        }
+        data = _client.post("/surge/moc", json=req).json()
+        assert len(data["observations"]) == 2
+        labels = [o["label"] for o in data["observations"]]
+        assert "Upstream" in labels
+        assert "Downstream" in labels
+
+    def test_moc_multi_segment_piecewise_elevation_via_endpoint(self):
+        """
+        Two-segment rising pipeline.
+        Segment 1: elev 5 → 25 m, Segment 2: elev 25 → 35 m.
+        Junction midpoint elevation must be ≈ 25 m (> simple mean of 5 and 35 = 20).
+        This verifies the endpoint uses piecewise-linear interpolation, not a
+        single straight line from elev_start of seg[0] to elev_end of seg[-1].
+        """
+        req = {
+            **_BASIC_MOC_REQ,
+            "segments": [
+                {"L_m": 300.0, "D_m": 0.30, "roughness_m": 0.00012,
+                 "elev_start_m": 5.0,  "elev_end_m": 25.0},
+                {"L_m": 300.0, "D_m": 0.30, "roughness_m": 0.00012,
+                 "elev_start_m": 25.0, "elev_end_m": 35.0},
+            ],
+        }
+        resp = _client.post("/surge/moc", json=req)
+        assert resp.status_code == 200
+        envelope = resp.json()["envelope"]
+        mid_idx = len(envelope) // 2
+        # Midpoint (junction) elevation must be ≈ 25 m; simple linear would give 20 m
+        assert envelope[mid_idx]["elev_m"] > 20.0

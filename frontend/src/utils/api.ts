@@ -376,3 +376,83 @@ export async function importPumpCurveCsv(file: File): Promise<CsvImportResponse>
   );
   return res.data;
 }
+
+// ---------------------------------------------------------------------------
+// Accessories library
+// ---------------------------------------------------------------------------
+
+export interface AccessoryRecord {
+  id: string;
+  category: string;
+  name: string;
+  default_K: number;
+  K_min: number;
+  K_max: number;
+  notes: string;
+  potable_notes: string[];
+}
+
+export interface AccessoryLibraryResponse {
+  accessories: AccessoryRecord[];
+  count: number;
+}
+
+export async function fetchAccessoriesLibrary(): Promise<AccessoryLibraryResponse> {
+  const res = await axios.get<AccessoryLibraryResponse>("/library/accessories");
+  return res.data;
+}
+
+export async function fetchAccessoryById(id: string): Promise<AccessoryRecord> {
+  const res = await axios.get<AccessoryRecord>(`/library/accessories/${id}`);
+  return res.data;
+}
+
+// ---------------------------------------------------------------------------
+// Loss breakdown compute
+// ---------------------------------------------------------------------------
+
+export interface AccessoryItem {
+  accessory_id: string;
+  count: number;
+  K_override?: number | null;
+}
+
+export interface LossBreakdownRequest {
+  Q_m3h: number;
+  D_mm: number;
+  accessories: AccessoryItem[];
+  unit_system?: "SI" | "US";
+}
+
+export interface LossBreakdownItem {
+  accessory_id: string;
+  name: string;
+  category: string;
+  count: number;
+  K_each: number;
+  K_total: number;
+  hm_m: number;
+  hm_display: UnitValue;
+  pct_of_total_minor: number;
+  potable_notes: string[];
+}
+
+export interface LossBreakdownResponse {
+  items: LossBreakdownItem[];
+  K_sum: number;
+  total_hm_m: number;
+  total_hm_display: UnitValue;
+  velocity_ms: number;
+  velocity_head_m: number;
+  design_Q_m3h: number;
+  D_mm: number;
+  unit_system: "SI" | "US";
+  warnings: string[];
+}
+
+export async function computeLossBreakdown(
+  req: LossBreakdownRequest
+): Promise<LossBreakdownResponse> {
+  const res = await axios.post<LossBreakdownResponse>("/compute/lossbreakdown", req);
+  return res.data;
+}

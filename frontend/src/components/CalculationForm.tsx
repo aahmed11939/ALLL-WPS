@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
-import { useForm, useFieldArray, Controller, type SubmitHandler } from "react-hook-form";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useForm, Controller, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { fetchMaterials, type CalculationRequest, type MaterialOption } from "../utils/api";
+import { fetchMaterials, type CalculationRequest, type MaterialOption, type AccessoryItem } from "../utils/api";
 import { useUnitSystem } from "../contexts/UnitSystemContext";
 import {
   GPM_PER_M3H,
@@ -14,6 +14,7 @@ import {
   SI_DEFAULTS,
   US_DEFAULTS,
 } from "../utils/units";
+import AccessoriesPicker from "./AccessoriesPicker";
 
 const schema = z.object({
   Q:             z.number().positive("Flow must be > 0"),
@@ -23,13 +24,12 @@ const schema = z.object({
   pipe_length:   z.number().positive("Length must be > 0"),
   pipe_diameter: z.number().positive("Diameter must be > 0"),
   material:      z.string().min(1, "Select a material"),
-  K_values:      z.array(z.object({ K: z.number().min(0, "K must be ≥ 0") })),
 });
 
 type FormValues = z.infer<typeof schema>;
 
 interface Props {
-  onSubmit: (req: CalculationRequest) => void;
+  onSubmit: (req: CalculationRequest, pickedItems: AccessoryItem[], K_sum: number) => void;
   loading: boolean;
 }
 
@@ -38,25 +38,24 @@ export default function CalculationForm({ onSubmit, loading }: Props) {
   const { unitSystem } = useUnitSystem();
   const prevUnitRef = useRef<"SI" | "US">(unitSystem);
 
+  const [pickedItems, setPickedItems] = useState<AccessoryItem[]>([]);
+  const [pickedKSum, setPickedKSum] = useState(0);
+
   const { register, handleSubmit, control, watch, setValue, getValues, formState: { errors } } =
     useForm<FormValues, unknown, FormValues>({
       resolver: zodResolver(schema),
       defaultValues: unitSystem === "SI"
-        ? { ...SI_DEFAULTS, material: "ductile_iron", K_values: [{ K: 0.5 }, { K: 0.3 }, { K: 1.0 }] }
-        : { ...US_DEFAULTS, material: "ductile_iron", K_values: [{ K: 0.5 }, { K: 0.3 }, { K: 1.0 }] },
+        ? { ...SI_DEFAULTS, material: "ductile_iron" }
+        : { ...US_DEFAULTS, material: "ductile_iron" },
     });
 
-  const { fields, append, remove } = useFieldArray({ control, name: "K_values" });
-  const watchedK    = watch("K_values");
   const watchedUnit = watch("flowUnit");
   const watchedQ    = watch("Q");
-  const kTotal = watchedK?.reduce((s, f) => s + (Number(f.K) || 0), 0) ?? 0;
 
   useEffect(() => {
     fetchMaterials().then(setMaterials).catch(console.error);
   }, []);
 
-  // Convert form values when the global unit system changes
   useEffect(() => {
     if (prevUnitRef.current === unitSystem) return;
     const prev = prevUnitRef.current;
@@ -82,6 +81,14 @@ export default function CalculationForm({ onSubmit, loading }: Props) {
     }
   }, [unitSystem, getValues, setValue]);
 
+  const handlePickerChange = useCallback(
+    (items: AccessoryItem[], kSum: number) => {
+      setPickedItems(items);
+      setPickedKSum(kSum);
+    },
+    []
+  );
+
   const submit: SubmitHandler<FormValues> = (values) => {
     let Q_m3h: number;
     if (unitSystem === "US") {
@@ -95,15 +102,21 @@ export default function CalculationForm({ onSubmit, loading }: Props) {
     const length_m  = unitSystem === "US" ? values.pipe_length   * M_PER_FT  : values.pipe_length;
     const diam_mm   = unitSystem === "US" ? values.pipe_diameter * MM_PER_IN : values.pipe_diameter;
 
-    onSubmit({
-      Q_m3h,
-      elev_us_m,
-      elev_ds_m,
-      pipe_length_m:    length_m,
-      pipe_diameter_mm: diam_mm,
-      material:         values.material,
-      K_values:         values.K_values.map((f) => f.K),
-    });
+    onSubmit(
+      {
+        Q_m3h,
+        elev_us_m,
+        elev_ds_m,
+        pipe_length_m:    length_m,
+        pipe_diameter_mm: diam_mm,
+        material:         values.material,
+        K_values:         pickedItems.flatMap((item) =>
+          Array(item.count).fill(item.K_override != null ? item.K_override : 0)
+        ),
+      },
+      pickedItems,
+      pickedKSum
+    );
   };
 
   const isUS = unitSystem === "US";
@@ -270,51 +283,17 @@ export default function CalculationForm({ onSubmit, loading }: Props) {
         {errors.material && <p className={errCls}>{errors.material.message}</p>}
       </div>
 
-      {/* Minor-loss K values */}
+      {/* Accessories picker */}
       <div>
-        <div className="flex items-center justify-between mb-1">
-          <label className={labelCls + " mb-0"}>Minor Loss K Values</label>
-          <span className="text-xs font-mono text-teal-700 font-semibold">
-            ΣK = {kTotal.toFixed(2)}
-          </span>
+        <div className="flex items-center justify-between mb-2">
+          <label className={labelCls + " mb-0"}>Fittings &amp; Accessories</label>
+          {pickedKSum > 0 && (
+            <span className="text-xs font-mono text-teal-700 font-semibold">
+              ΣK = {pickedKSum.toFixed(2)}
+            </span>
+          )}
         </div>
-        <div className="space-y-1.5">
-          {fields.map((field, i) => (
-            <div key={field.id} className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 w-5 text-right">{i + 1}.</span>
-              <Controller
-                control={control}
-                name={`K_values.${i}.K`}
-                render={({ field: f }) => (
-                  <input
-                    value={isNaN(f.value as number) ? "" : f.value}
-                    onChange={(e) => f.onChange(e.target.valueAsNumber)}
-                    onBlur={f.onBlur}
-                    type="number"
-                    step="0.05"
-                    placeholder="e.g. 0.5"
-                    className={inputCls + " flex-1"}
-                  />
-                )}
-              />
-              <button
-                type="button"
-                onClick={() => remove(i)}
-                className="text-slate-400 hover:text-red-500 transition-colors text-lg leading-none px-1"
-                title="Remove"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={() => append({ K: 0 })}
-          className="mt-2 text-xs text-teal-700 font-semibold hover:text-teal-900 transition-colors"
-        >
-          + Add fitting / valve
-        </button>
+        <AccessoriesPicker onChange={handlePickerChange} />
       </div>
 
       {/* Submit */}

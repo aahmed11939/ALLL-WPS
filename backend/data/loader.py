@@ -97,3 +97,50 @@ def get_material_options() -> list[dict[str, str]]:
         {"key": k, "label": v["description"]}
         for k, v in materials.items()
     ]
+
+
+@lru_cache(maxsize=1)
+def load_accessories_library() -> list[dict]:
+    """
+    Return the list of accessory records from accessories_library.yaml.
+
+    Each record has: id, category, name, default_K, K_min, K_max, notes,
+    potable_notes.
+    """
+    path = _DATA_DIR / "accessories_library.yaml"
+    with open(path, "r") as fh:
+        data = yaml.safe_load(fh)
+    return data["accessories"]
+
+
+def get_accessory_by_id(accessory_id: str) -> Optional[dict]:
+    """
+    Look up an accessory record by its ``id`` field.
+
+    Parameters
+    ----------
+    accessory_id : str  The accessory identifier (e.g. ``"cv_swing"``).
+
+    Returns
+    -------
+    The full accessory record dict, or None if not found.
+    """
+    for record in load_accessories_library():
+        if record.get("id") == accessory_id:
+            return record
+    return None
+
+
+def get_accessories_by_category(category: str) -> list[dict]:
+    """
+    Return all accessory records for a given category.
+
+    Parameters
+    ----------
+    category : str  e.g. "check_valve", "meter", "isolation_valve"
+
+    Returns
+    -------
+    List of matching records (may be empty for unknown categories).
+    """
+    return [r for r in load_accessories_library() if r.get("category") == category]

@@ -369,7 +369,7 @@ export default function PumpSelectionStep() {
 
   useEffect(() => {
     fetchPumpTypes()
-      .then((data) => setPumpTypes(data.pump_types))
+      .then((data) => setPumpTypes(data.pump_types ?? []))
       .catch(() => setPumpTypes([]))
       .finally(() => setLoadingTypes(false));
   }, []);

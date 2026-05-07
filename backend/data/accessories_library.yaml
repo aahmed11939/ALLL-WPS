@@ -1,0 +1,475 @@
+---
+# ALLL WPS Designer — Potable-Water Accessories & Instruments Library
+# All K values are dimensionless resistance coefficients for h_m = K·V²/(2g).
+# K values are referenced to the nominal pipe velocity at the fitting.
+# Sources: Crane TP-410, AWWA M11, HI 9.6.7, manufacturer data.
+# NSF/ANSI 61 compliance notes follow AWWA guidance for potable service.
+
+accessories:
+
+  # ── CHECK VALVES ──────────────────────────────────────────────────────────
+  - id: cv_swing
+    category: check_valve
+    name: "Swing Check Valve"
+    default_K: 2.5
+    K_min: 1.5
+    K_max: 4.5
+    notes: >
+      Fully open, waterway area ≈ 100% of pipe. K varies strongly with disc
+      geometry and installation angle. Crane TP-410 Table A-29 (2.5 typical
+      for full-bore disc at V > 1 m/s).
+    potable_notes:
+      - "NSF/ANSI 61 certified seat and disc materials required for potable service."
+      - "Avoid lead-brass alloys; specify lead-free bronze (< 0.25% Pb) or ductile iron."
+      - "Install on discharge side of pump; never upstream of the meter."
+
+  - id: cv_silent
+    category: check_valve
+    name: "Silent (Non-Slam) Check Valve"
+    default_K: 1.5
+    K_min: 0.8
+    K_max: 3.0
+    notes: >
+      Spring-loaded dual disc or axial piston closes before flow reversal.
+      Lower K than swing type; preferred where water-hammer is a concern.
+    potable_notes:
+      - "NSF/ANSI 61 internal materials required."
+      - "Spring material must be stainless steel 316 for chlorinated potable water."
+
+  - id: cv_tilting_disc
+    category: check_valve
+    name: "Tilting-Disc Check Valve"
+    default_K: 1.0
+    K_min: 0.5
+    K_max: 2.0
+    notes: >
+      Full-bore tilting disc; lowest minor loss among check valves.
+      Commonly specified for large-diameter transmission mains.
+    potable_notes:
+      - "NSF/ANSI 61 certified. Disc and seat must be lead-free alloy."
+      - "Suitable for ductile iron main bodies with epoxy lining per AWWA C116."
+
+  - id: cv_foot
+    category: check_valve
+    name: "Foot Valve with Strainer"
+    default_K: 5.5
+    K_min: 3.5
+    K_max: 8.0
+    notes: >
+      Installed at suction pipe inlet; holds prime. High K due to strainer screen.
+      Use for surface-suction pumps only; not applicable for submersible pumps.
+    potable_notes:
+      - "Strainer mesh must be stainless steel 316; no galvanised materials."
+      - "NSF/ANSI 61 body and internals; verify with AHJ for potable groundwater supply."
+
+  # ── GATE / ISOLATION VALVES ───────────────────────────────────────────────
+  - id: gate_fully_open
+    category: isolation_valve
+    name: "Gate Valve (Fully Open)"
+    default_K: 0.2
+    K_min: 0.1
+    K_max: 0.4
+    notes: >
+      Resilient-seated gate valve fully open. AWWA C509 / C515. Very low resistance;
+      not intended for throttling.
+    potable_notes:
+      - "AWWA C509 (bronze-mounted) or C515 (resilient-seated) with NSF/ANSI 61 epoxy lining."
+      - "Stem must extend to grade for buried service; use valve box per local standard."
+
+  - id: butterfly_open
+    category: isolation_valve
+    name: "Butterfly Valve (Fully Open)"
+    default_K: 0.5
+    K_min: 0.2
+    K_max: 1.2
+    notes: >
+      Concentric or double-eccentric disc at 0° (full open). K depends on
+      disc thickness and seat profile. Crane TP-410 Table A-29.
+    potable_notes:
+      - "AWWA C504 / C516 rubber-seated; NSF/ANSI 61 body lining required."
+      - "Avoid throttling below 20°; disc flutter can damage seat."
+      - "Triple-offset (metal-seated) preferred for high-pressure or high-cycle service."
+
+  - id: ball_valve_open
+    category: isolation_valve
+    name: "Ball Valve (Fully Open)"
+    default_K: 0.1
+    K_min: 0.05
+    K_max: 0.3
+    notes: >
+      Full-bore ball valve. Nearly zero obstruction to flow when fully open.
+      Common for pump station bypass and smaller service connections.
+    potable_notes:
+      - "Lead-free brass body (ASTM B584 C87850) or stainless steel 316."
+      - "NSF/ANSI 61 certified seats and seals required."
+
+  # ── CONTROL VALVES ────────────────────────────────────────────────────────
+  - id: prv_fully_open
+    category: control_valve
+    name: "Pressure-Reducing Valve (PRV) — Fully Open"
+    default_K: 5.0
+    K_min: 3.0
+    K_max: 10.0
+    notes: >
+      Pilot-operated diaphragm PRV in fully-open position. Actual K varies
+      with valve body design and inlet pressure; consult manufacturer's Cv.
+      Use K = Cv_to_K conversion: K = 1.6 × (D²/Cv)² for SI (D in mm, Cv in gpm/psi^0.5).
+    potable_notes:
+      - "NSF/ANSI 61 internals; diaphragm and pilot materials must be verified."
+      - "Specify stainless steel 316 pilot tubing to avoid contamination."
+      - "Include isolation valve and bypass for maintenance access."
+
+  - id: pressure_sustaining_open
+    category: control_valve
+    name: "Pressure-Sustaining / Back-Pressure Valve (Fully Open)"
+    default_K: 5.5
+    K_min: 3.0
+    K_max: 11.0
+    notes: >
+      Holds minimum upstream pressure; similar body to PRV. K similar to PRV class.
+    potable_notes:
+      - "NSF/ANSI 61 body and internals required."
+      - "Pilot filter must be cleaned per manufacturer schedule to prevent contamination."
+
+  - id: flow_control_open
+    category: control_valve
+    name: "Flow-Control Valve (Fully Open)"
+    default_K: 4.0
+    K_min: 2.5
+    K_max: 8.0
+    notes: >
+      Modulating rate-of-flow controller; orifice ring throttles to setpoint.
+      At full open, K approaches body loss only.
+    potable_notes:
+      - "NSF/ANSI 61 body lining (fusion-bonded epoxy or polyurethane)."
+      - "Pilot lines must not dead-end; add miniature flush valves."
+
+  # ── METERS & INSTRUMENTS ──────────────────────────────────────────────────
+  - id: mag_meter
+    category: meter
+    name: "Electromagnetic (Mag) Flow Meter"
+    default_K: 0.5
+    K_min: 0.2
+    K_max: 1.5
+    notes: >
+      Full-bore electrodes; obstructions minimal. K accounts for entrance/exit
+      transitions to meter body. Requires 5D upstream, 2D downstream straight pipe.
+    potable_notes:
+      - "Liner must be NSF/ANSI 61 certified (PTFE, polyurethane, rubber)."
+      - "Electrode material: SS316 or Hastelloy C; avoid carbon or titanium in high-Cl⁻ service."
+      - "AWWA M6 recommends factory calibration and field verification at commissioning."
+
+  - id: venturi_meter
+    category: meter
+    name: "Venturi Flow Meter"
+    default_K: 0.3
+    K_min: 0.1
+    K_max: 0.8
+    notes: >
+      Cast or fabricated venturi; throat area 50–70% of pipe. Low permanent pressure
+      loss vs. orifice plate. Requires 10D upstream, 5D downstream straight pipe.
+    potable_notes:
+      - "Internal surfaces must be smooth-finished stainless steel 316 or fusion-bonded epoxy-lined ductile iron."
+      - "NSF/ANSI 61 certification required for wetted materials."
+
+  - id: orifice_plate
+    category: meter
+    name: "Orifice Plate Flow Meter (β = 0.6)"
+    default_K: 4.0
+    K_min: 2.0
+    K_max: 7.0
+    notes: >
+      Thin-plate orifice with β (d/D) ≈ 0.6. High permanent pressure loss.
+      K = [(1-β²)/β²]² × Cd⁻² ≈ 4 for β = 0.6. Use Venturi or mag meter where
+      head loss budget is tight.
+    potable_notes:
+      - "Stainless steel 316 plate required for potable service."
+      - "Seal taps with NSF/ANSI 61 compatible sealant."
+
+  - id: turbine_meter
+    category: meter
+    name: "Turbine Flow Meter"
+    default_K: 2.5
+    K_min: 1.0
+    K_max: 4.5
+    notes: >
+      Axial-flow turbine with rotor; higher K than mag meter. Sensitive to
+      swirl; install with 10D upstream straight pipe.
+    potable_notes:
+      - "Rotor and internals: stainless steel 316 or PVDF; NSF/ANSI 61 required."
+      - "Not suitable where sand or debris is expected (rotor damage)."
+      - "AWWA M6 recommends strainer upstream in raw/source water service."
+
+  # ── SUCTION PIPING ────────────────────────────────────────────────────────
+  - id: eccentric_reducer
+    category: suction_fitting
+    name: "Eccentric Reducer (Flat-Top Orientation)"
+    default_K: 0.05
+    K_min: 0.02
+    K_max: 0.15
+    notes: >
+      Flat-top orientation prevents air entrainment on suction piping. K per
+      gradual contraction (Crane TP-410 for θ < 45°). Very low loss; primarily
+      specified for air-pocket prevention, not hydraulic optimisation.
+    potable_notes:
+      - "AWWA M11 requires flat-top eccentric reducer directly upstream of horizontal pump."
+      - "Concentric reducer prohibited on pump suction — creates air pocket at crown."
+
+  - id: suction_elbow_long
+    category: suction_fitting
+    name: "Long-Radius Elbow 90° on Suction (r/D = 1.5)"
+    default_K: 0.35
+    K_min: 0.2
+    K_max: 0.6
+    notes: >
+      Long-radius 90° elbow. Preferable to standard elbow on suction to
+      minimise flow disturbance to pump impeller inlet.
+    potable_notes:
+      - "Fusion-bonded epoxy (FBE) lining per AWWA C210 for ductile iron."
+      - "Avoid galvanised fittings in any potable suction piping."
+
+  - id: tee_branch_suction
+    category: suction_fitting
+    name: "Tee — Branch (Suction Header Takeoff)"
+    default_K: 1.0
+    K_min: 0.6
+    K_max: 1.8
+    notes: >
+      Flow through branch of tee (header to pump suction). High turbulence;
+      prefer a wye fitting (K ≈ 0.5) where space allows.
+    potable_notes:
+      - "Lined ductile iron or stainless steel for potable service."
+      - "AWWA M11: minimum 2D straight suction pipe between tee and pump nozzle."
+
+  # ── DISCHARGE PIPING ──────────────────────────────────────────────────────
+  - id: concentric_reducer_discharge
+    category: discharge_fitting
+    name: "Concentric Reducer on Discharge"
+    default_K: 0.04
+    K_min: 0.01
+    K_max: 0.10
+    notes: >
+      Gradual concentric reduction on pump discharge; flow accelerates (K for
+      contraction). Nearly negligible. Crane TP-410 gradual contraction table.
+    potable_notes:
+      - "FBE-lined ductile iron or stainless; match pipe lining material."
+
+  - id: elbow_90_standard
+    category: discharge_fitting
+    name: "Standard Elbow 90° (r/D = 1.0)"
+    default_K: 0.8
+    K_min: 0.5
+    K_max: 1.2
+    notes: >
+      Standard 90° elbow. K from Crane TP-410 / Hydraulic Institute.
+      Consider long-radius (r/D = 1.5, K ≈ 0.35) for higher-velocity lines.
+    potable_notes:
+      - "FBE or cement-mortar lining per AWWA C116 for ductile iron fittings."
+      - "Stainless steel 316 for diameters ≤ 200 mm in high-value installations."
+
+  - id: elbow_90_long
+    category: discharge_fitting
+    name: "Long-Radius Elbow 90° (r/D = 1.5)"
+    default_K: 0.35
+    K_min: 0.2
+    K_max: 0.6
+    notes: >
+      Preferred for discharge bends at velocities > 2 m/s to limit head loss.
+    potable_notes:
+      - "FBE-lined ductile iron (AWWA C153) or stainless steel 316."
+
+  - id: elbow_45
+    category: discharge_fitting
+    name: "45° Elbow"
+    default_K: 0.4
+    K_min: 0.2
+    K_max: 0.7
+    notes: >
+      Standard 45° elbow. Crane TP-410 Table A-29.
+    potable_notes:
+      - "Lined ductile iron or lead-free bronze for potable service."
+
+  - id: tee_straight_through
+    category: discharge_fitting
+    name: "Tee — Straight Through (Run)"
+    default_K: 0.3
+    K_min: 0.15
+    K_max: 0.5
+    notes: >
+      Flow runs straight through tee body; lower loss than branch flow.
+    potable_notes:
+      - "FBE lining required for ductile iron."
+
+  - id: tee_branch_discharge
+    category: discharge_fitting
+    name: "Tee — Branch (Discharge to Header)"
+    default_K: 1.0
+    K_min: 0.6
+    K_max: 1.8
+    notes: >
+      Flow from pump discharge branch into common header.
+    potable_notes:
+      - "Lined ductile iron or stainless. Consider wye fitting to reduce K."
+
+  - id: concentric_increaser
+    category: discharge_fitting
+    name: "Concentric Increaser (Sudden Enlargement)"
+    default_K: 0.9
+    K_min: 0.5
+    K_max: 1.5
+    notes: >
+      Sudden enlargement from pump discharge nozzle to larger header.
+      K ≈ (1 − A1/A2)² (Borda-Carnot). For gradual increaser (θ < 15°), K ≈ 0.1.
+    potable_notes:
+      - "Wetted materials must be NSF/ANSI 61 certified."
+      - "Gradual increaser preferred to recover velocity head on large-Q systems."
+
+  # ── PUMP STATION SPECIALS ─────────────────────────────────────────────────
+  - id: y_strainer
+    category: station_special
+    name: "Y-Strainer (Clean)"
+    default_K: 1.5
+    K_min: 0.5
+    K_max: 4.0
+    notes: >
+      Wye-body strainer with 40-mesh (400 μm) screen; K when clean. K rises
+      significantly as screen fouls — size with fouled condition per manufacturer Cv.
+    potable_notes:
+      - "Screen: stainless steel 316. Body: ductile iron with FBE lining or stainless."
+      - "NSF/ANSI 61 certification. Install upstream of control valves and meters."
+      - "Provide isolation valves for blow-down without dewatering the station."
+
+  - id: basket_strainer
+    category: station_special
+    name: "Basket Strainer (Clean)"
+    default_K: 1.0
+    K_min: 0.4
+    K_max: 3.0
+    notes: >
+      Larger basket area than Y-strainer; lower clean K. Common on suction
+      header for raw-water or river-water intake stations.
+    potable_notes:
+      - "316 SS basket. NSF/ANSI 61 body. Install pressure gauges upstream and downstream."
+      - "Duplex baskets (switch-over under flow) preferred for continuous service."
+
+  - id: flexible_coupling
+    category: station_special
+    name: "Flexible Pump Connection (Expansion Joint)"
+    default_K: 0.15
+    K_min: 0.05
+    K_max: 0.4
+    notes: >
+      Rubber expansion joint or flexible hose connector at pump nozzle; absorbs
+      vibration and thermal movement. Low but non-zero K from liner geometry.
+    potable_notes:
+      - "EPDM or PTFE-lined elastomer; verify NSF/ANSI 61 for the liner material."
+      - "Avoid natural rubber or neoprene in chlorinated service > 2 mg/L."
+
+  - id: air_valve
+    category: station_special
+    name: "Air Release / Vacuum Break Valve (Tapping)"
+    default_K: 0.2
+    K_min: 0.1
+    K_max: 0.5
+    notes: >
+      Saddle or flanged tapping for air-release valve on discharge header high
+      points. K approximates the tee branch plus valve body at full flow.
+    potable_notes:
+      - "NSF/ANSI 61 valve body; PTFE or stainless float and orifice."
+      - "Install at every high point on discharge piping per AWWA M11."
+      - "Include inlet screen to prevent insect ingress when vacuum forms."
+
+  - id: surge_anticipator
+    category: station_special
+    name: "Surge Anticipator / Relief Valve"
+    default_K: 6.0
+    K_min: 3.0
+    K_max: 12.0
+    notes: >
+      Pilot-operated relief valve; K at fully-open position. Normally closed;
+      opens on transient pressure wave.
+    potable_notes:
+      - "Discharge to atmosphere or drain; verify AHJ permits atmospheric discharge of potable water."
+      - "NSF/ANSI 61 body; pilot materials must be compatible with disinfectant residuals."
+
+  - id: pressure_gauge
+    category: station_special
+    name: "Pressure Gauge (Tapping + Snubber)"
+    default_K: 0.05
+    K_min: 0.02
+    K_max: 0.15
+    notes: >
+      Small-bore gauge tapping; minimal head loss at pipe velocities. K included
+      for completeness; negligible in practice.
+    potable_notes:
+      - "Glycerin-filled Bourdon gauge; stainless 316 wetted parts (no copper)."
+      - "Install with isolating needle valve and pulsation snubber."
+      - "NSF/ANSI 61 not required for gauge itself but isolating valve wetted parts must comply."
+
+  - id: sample_tap
+    category: station_special
+    name: "Sample Tap / Petcock"
+    default_K: 0.05
+    K_min: 0.02
+    K_max: 0.1
+    notes: >
+      Small-bore sample tap tapping; negligible pipe loss at design flow.
+    potable_notes:
+      - "NSF/ANSI 61 brass petcock (lead-free, < 0.25% Pb)."
+      - "Sample taps must be dedicated and labelled; cannot share with other services."
+      - "Install per 10-State Standards §5.8 to avoid back-siphonage."
+
+  # ── PIPE TRANSITIONS ──────────────────────────────────────────────────────
+  - id: pipe_entrance_sharp
+    category: pipe_transition
+    name: "Sharp-Edged Pipe Entrance"
+    default_K: 0.5
+    K_min: 0.4
+    K_max: 0.6
+    notes: >
+      Square-edged pipe entrance from a reservoir, tank, or clear well.
+      Borda-Carnot K ≈ 0.5. Use rounded entrance (K ≈ 0.04) or bell-mouth
+      (K ≈ 0.03) where suction head is limited.
+    potable_notes:
+      - "Bell-mouth entrance strongly recommended on clear well suction to minimise NPSHr."
+      - "Submergence must be sufficient to prevent vortex formation per HI 9.8."
+
+  - id: pipe_entrance_rounded
+    category: pipe_transition
+    name: "Rounded (Well-Radiused) Pipe Entrance"
+    default_K: 0.04
+    K_min: 0.02
+    K_max: 0.1
+    notes: >
+      Bell-mouth or well-rounded entrance; r/D ≥ 0.15. Dramatically reduces
+      entrance loss vs. sharp-edged.
+    potable_notes:
+      - "Preferred entrance geometry for clear well suction headers."
+      - "Stainless steel 316 or FBE-lined ductile iron bell-mouth."
+
+  - id: pipe_exit_submerged
+    category: pipe_transition
+    name: "Submerged Pipe Exit"
+    default_K: 1.0
+    K_min: 0.9
+    K_max: 1.1
+    notes: >
+      Full velocity head is lost at a submerged exit (Borda-Carnot, A2 → ∞).
+      K = 1.0 regardless of pipe size when discharge is fully submerged.
+    potable_notes:
+      - "Discharge diffuser recommended in reservoirs to minimise short-circuit."
+      - "Anti-backflow check valve typically required at reservoir inlet per local authority."
+
+  - id: pipe_exit_free
+    category: pipe_transition
+    name: "Free-Discharge Pipe Exit (Into Air)"
+    default_K: 0.0
+    K_min: 0.0
+    K_max: 0.0
+    notes: >
+      Velocity head is not recovered for free discharge; but K is counted as 0 in
+      the H-Q system curve because the velocity head term in TDH accounts for it.
+      No separate minor loss entry needed for free discharge.
+    potable_notes:
+      - "Provide splash pad or energy dissipator at free-discharge outlets."
+      - "Air gap required at any free-discharge into a reservoir or tank (cross-connection control)."

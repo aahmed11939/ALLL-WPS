@@ -1,31 +1,58 @@
 import { useState } from "react";
 import CalculationForm from "../components/CalculationForm";
 import ClearWellStep from "../components/ClearWellStep";
+import LossBreakdownPanel from "../components/LossBreakdownPanel";
 import PumpCurveStep from "../components/PumpCurveStep";
 import PumpSelectionStep from "../components/PumpSelectionStep";
 import ResultsPanel from "../components/ResultsPanel";
 import SystemCurveChart from "../components/SystemCurveChart";
 import { useUnitSystem } from "../contexts/UnitSystemContext";
-import { calculate, type CalculationRequest, type CalculationResponse, type CurvePoint } from "../utils/api";
+import {
+  calculate,
+  computeLossBreakdown,
+  type AccessoryItem,
+  type CalculationRequest,
+  type CalculationResponse,
+  type CurvePoint,
+  type LossBreakdownResponse,
+} from "../utils/api";
 
 export default function DesignPage() {
   const [results, setResults] = useState<CalculationResponse | null>(null);
+  const [breakdown, setBreakdown] = useState<LossBreakdownResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { unitSystem, setUnitSystem, showBoth, setShowBoth } = useUnitSystem();
 
-  const handleSubmit = async (req: CalculationRequest) => {
+  const handleSubmit = async (
+    req: CalculationRequest,
+    pickedItems: AccessoryItem[],
+    _kSum: number
+  ) => {
     setLoading(true);
     setError(null);
     try {
       const data = await calculate({ ...req, unit_system: unitSystem });
       setResults(data);
+
+      if (pickedItems.length > 0) {
+        const bd = await computeLossBreakdown({
+          Q_m3h: req.Q_m3h,
+          D_mm: req.pipe_diameter_mm,
+          accessories: pickedItems,
+          unit_system: unitSystem,
+        });
+        setBreakdown(bd);
+      } else {
+        setBreakdown(null);
+      }
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
         "Unexpected error — check console for details.";
       setError(typeof msg === "string" ? msg : JSON.stringify(msg));
       setResults(null);
+      setBreakdown(null);
     } finally {
       setLoading(false);
     }
@@ -141,6 +168,18 @@ export default function DesignPage() {
                   System Curve
                 </h2>
                 <SystemCurveChart results={results} />
+              </div>
+            )}
+
+            {/* Minor Loss Breakdown */}
+            {breakdown && (
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 mb-3">
+                  Minor Loss Breakdown
+                </h2>
+                <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
+                  <LossBreakdownPanel data={breakdown} />
+                </div>
               </div>
             )}
 

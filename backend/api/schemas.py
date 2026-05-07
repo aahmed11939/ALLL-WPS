@@ -1152,3 +1152,142 @@ class CsvImportResponse(BaseModel):
         default_factory=list,
         description="Parse warnings (e.g. skipped non-numeric rows)",
     )
+
+
+# ---------------------------------------------------------------------------
+# Accessories library — schemas
+# ---------------------------------------------------------------------------
+
+ACCESSORY_CATEGORIES = Literal[
+    "check_valve",
+    "isolation_valve",
+    "control_valve",
+    "meter",
+    "suction_fitting",
+    "discharge_fitting",
+    "station_special",
+    "pipe_transition",
+]
+
+
+class AccessoryRecord(BaseModel):
+    """A single item in the potable-water accessories library."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str = Field(description="Unique slug identifier (e.g. 'cv_swing')")
+    category: str = Field(
+        description=(
+            "Fitting/accessory category: check_valve | isolation_valve | control_valve | "
+            "meter | suction_fitting | discharge_fitting | station_special | pipe_transition"
+        )
+    )
+    name: str = Field(description="Human-readable display name")
+    default_K: float = Field(ge=0.0, description="Recommended default K value [-]")
+    K_min: float = Field(ge=0.0, description="Typical minimum K (varies with size / model) [-]")
+    K_max: float = Field(ge=0.0, description="Typical maximum K [-]")
+    notes: str = Field(default="", description="Engineering notes (source, assumptions)")
+    potable_notes: List[str] = Field(
+        default_factory=list,
+        description="Potable-water compliance notes (NSF/ANSI 61, AWWA, AHJ guidance)",
+    )
+
+
+class AccessoryLibraryResponse(BaseModel):
+    """Response from GET /library/accessories."""
+
+    model_config = ConfigDict()
+
+    accessories: List[AccessoryRecord]
+    count: int
+
+
+# ---------------------------------------------------------------------------
+# Loss breakdown compute — request / response
+# ---------------------------------------------------------------------------
+
+
+class AccessoryItem(BaseModel):
+    """One accessory instance in a loss-breakdown request."""
+
+    model_config = ConfigDict()
+
+    accessory_id: str = Field(description="ID matching an AccessoryRecord in the library")
+    count: Annotated[int, Field(ge=1, description="Number of identical items")] = 1
+    K_override: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "Custom K value. When supplied, overrides the library default_K. "
+            "Use when the engineer has site-specific data."
+        ),
+    )
+
+    @property
+    def effective_K(self) -> float:
+        """K value to use (override wins over library default)."""
+        return self.K_override if self.K_override is not None else 0.0
+
+
+class LossBreakdownRequest(BaseModel):
+    """
+    Request for POST /compute/lossbreakdown.
+
+    Resolves accessory IDs against the library, applies count × K_override (or
+    default_K), then computes per-item and total head losses at the given
+    flow and pipe diameter.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    Q_m3h: Annotated[float, Field(gt=0, description="Design flow rate [m³/h] — SI")]
+    D_mm: Annotated[float, Field(gt=0, description="Internal pipe diameter [mm] — SI")]
+    accessories: List[AccessoryItem] = Field(
+        default_factory=list,
+        description="List of accessories with optional count and K_override",
+    )
+    unit_system: Literal["SI", "US"] = Field(
+        default="SI",
+        description="Display unit system for head-loss results",
+    )
+
+
+class LossBreakdownItem(BaseModel):
+    """One row in the loss breakdown table."""
+
+    model_config = ConfigDict(frozen=True)
+
+    accessory_id: str = Field(description="Library ID")
+    name: str = Field(description="Display name from library")
+    category: str = Field(description="Category from library")
+    count: int = Field(description="Number of identical items")
+    K_each: float = Field(description="K coefficient per item (after override)")
+    K_total: float = Field(description="count × K_each")
+    hm_m: float = Field(description="Head loss for this item group [m]")
+    hm_display: "UnitValue" = Field(description="Head loss in display units")
+    pct_of_total_minor: float = Field(
+        description="This item's share of total minor loss [%] — 0 when total is zero"
+    )
+    potable_notes: List[str] = Field(
+        default_factory=list,
+        description="Potable-water compliance notes for this accessory",
+    )
+
+
+class LossBreakdownResponse(BaseModel):
+    """Full response from POST /compute/lossbreakdown."""
+
+    model_config = ConfigDict()
+
+    items: List[LossBreakdownItem] = Field(
+        description="Per-accessory breakdown, sorted by hm_m descending"
+    )
+    K_sum: float = Field(description="Total ΣK across all accessories [-]")
+    total_hm_m: float = Field(description="Total minor head loss [m]")
+    total_hm_display: "UnitValue" = Field(description="Total minor loss in display units")
+    velocity_ms: float = Field(description="Mean pipe velocity at design Q [m/s]")
+    velocity_head_m: float = Field(description="Velocity head V²/(2g) [m]")
+    design_Q_m3h: float = Field(description="Design flow rate echoed back [m³/h]")
+    D_mm: float = Field(description="Internal pipe diameter echoed back [mm]")
+    unit_system: Literal["SI", "US"] = Field(description="Display unit system echoed from request")
+    warnings: List[str] = Field(default_factory=list, description="Advisory warnings")

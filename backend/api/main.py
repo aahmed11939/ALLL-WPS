@@ -15,6 +15,9 @@ from pydantic import ValidationError
 
 from backend.api.domain_models import ProjectModel, ValidationResult
 from backend.api.schemas import (
+    AccessoryItem,
+    AccessoryLibraryResponse,
+    AccessoryRecord,
     CalculationRequest,
     CalculationResponse,
     ClearWellRequest,
@@ -26,6 +29,9 @@ from backend.api.schemas import (
     DisplayValues,
     HydraulicComputeRequest,
     HydraulicComputeResponse,
+    LossBreakdownItem,
+    LossBreakdownRequest,
+    LossBreakdownResponse,
     MaterialOption,
     MaterialOptionsResponse,
     OperatingPoint,
@@ -56,9 +62,11 @@ from backend.engine.pump_types import (
     list_pump_types,
 )
 from backend.data.loader import (
+    get_accessory_by_id,
     get_material_options,
     get_pump_by_id,
     get_roughness_m,
+    load_accessories_library,
     load_pump_library,
 )
 from backend.engine.pump_curves import (
@@ -1377,3 +1385,165 @@ async def import_pump_curve_csv(
     )
 
     return CsvImportResponse(curve_data=curve_data, warnings=parse_warns)
+
+
+# ---------------------------------------------------------------------------
+# Accessories library endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.get(
+    "/library/accessories",
+    response_model=AccessoryLibraryResponse,
+    tags=["library"],
+    summary="Return the potable-water accessories & instruments library",
+)
+def get_accessories_library() -> AccessoryLibraryResponse:
+    """
+    Return all accessories in the potable-water fittings library.
+
+    Each record contains:
+    - ``id``: unique slug for use in POST /compute/lossbreakdown
+    - ``category``: one of check_valve | isolation_valve | control_valve |
+      meter | suction_fitting | discharge_fitting | station_special | pipe_transition
+    - ``default_K``, ``K_min``, ``K_max``: minor-loss resistance coefficients
+    - ``notes``: engineering source notes (Crane TP-410, AWWA M11, etc.)
+    - ``potable_notes``: NSF/ANSI 61 and AHJ compliance guidance
+    """
+    raw = load_accessories_library()
+    records = [AccessoryRecord(**r) for r in raw]
+    return AccessoryLibraryResponse(accessories=records, count=len(records))
+
+
+@app.get(
+    "/library/accessories/{accessory_id}",
+    response_model=AccessoryRecord,
+    tags=["library"],
+    summary="Return a single accessory record by ID",
+)
+def get_accessory(accessory_id: str) -> AccessoryRecord:
+    """Return the full record for one accessory by its slug ID."""
+    raw = get_accessory_by_id(accessory_id)
+    if raw is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Accessory '{accessory_id}' not found in library.",
+        )
+    return AccessoryRecord(**raw)
+
+
+# ---------------------------------------------------------------------------
+# Loss breakdown compute endpoint
+# ---------------------------------------------------------------------------
+
+
+@app.post(
+    "/compute/lossbreakdown",
+    response_model=LossBreakdownResponse,
+    tags=["compute"],
+    summary="Compute per-accessory minor head-loss breakdown",
+)
+def compute_lossbreakdown(req: LossBreakdownRequest) -> LossBreakdownResponse:
+    """
+    Resolve accessory IDs, apply count × K (or K_override), and compute
+    per-item and total minor head losses at the given Q and pipe diameter.
+
+    The response includes:
+    - Per-item breakdown sorted by head-loss contribution (descending)
+    - ΣK and total minor head loss h_m
+    - Velocity and velocity head
+    - Potable-water compliance notes per item
+    - Advisory warnings (unknown IDs, zero-loss items, etc.)
+    """
+    D_m = req.D_mm / 1000.0
+    Q_m3s = req.Q_m3h / 3600.0
+    us = req.unit_system
+    warnings: list[str] = []
+
+    # Compute velocity and velocity head
+    try:
+        V = velocity(Q_m3s, D_m)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Velocity calculation error: {exc}",
+        )
+    vh = V**2 / (2.0 * G)
+
+    items: list[LossBreakdownItem] = []
+    K_sum_total = 0.0
+
+    for acc_item in req.accessories:
+        raw = get_accessory_by_id(acc_item.accessory_id)
+        if raw is None:
+            warnings.append(
+                f"Accessory '{acc_item.accessory_id}' not found in library — skipped."
+            )
+            continue
+
+        K_each = (
+            acc_item.K_override
+            if acc_item.K_override is not None
+            else raw["default_K"]
+        )
+        K_total = K_each * acc_item.count
+        hm_item = K_total * vh
+
+        K_sum_total += K_total
+
+        items.append(
+            LossBreakdownItem(
+                accessory_id=acc_item.accessory_id,
+                name=raw["name"],
+                category=raw["category"],
+                count=acc_item.count,
+                K_each=round(K_each, 6),
+                K_total=round(K_total, 6),
+                hm_m=round(hm_item, 6),
+                hm_display=convert(round(hm_item, 6), "head", us),
+                pct_of_total_minor=0.0,  # filled in after total is known
+                potable_notes=raw.get("potable_notes", []),
+            )
+        )
+
+    total_hm = K_sum_total * vh
+
+    # Back-fill percentage contributions
+    filled_items: list[LossBreakdownItem] = []
+    for it in items:
+        pct = (it.hm_m / total_hm * 100.0) if total_hm > 0 else 0.0
+        filled_items.append(
+            LossBreakdownItem(
+                accessory_id=it.accessory_id,
+                name=it.name,
+                category=it.category,
+                count=it.count,
+                K_each=it.K_each,
+                K_total=it.K_total,
+                hm_m=it.hm_m,
+                hm_display=it.hm_display,
+                pct_of_total_minor=round(pct, 2),
+                potable_notes=it.potable_notes,
+            )
+        )
+
+    # Sort descending by head loss
+    filled_items.sort(key=lambda x: x.hm_m, reverse=True)
+
+    if total_hm == 0.0 and len(req.accessories) > 0 and not warnings:
+        warnings.append(
+            "All selected accessories have K = 0 — total minor loss is zero."
+        )
+
+    return LossBreakdownResponse(
+        items=filled_items,
+        K_sum=round(K_sum_total, 6),
+        total_hm_m=round(total_hm, 6),
+        total_hm_display=convert(round(total_hm, 6), "head", us),
+        velocity_ms=round(V, 4),
+        velocity_head_m=round(vh, 6),
+        design_Q_m3h=req.Q_m3h,
+        D_mm=req.D_mm,
+        unit_system=us,
+        warnings=warnings,
+    )

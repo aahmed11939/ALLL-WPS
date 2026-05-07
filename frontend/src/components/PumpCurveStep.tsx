@@ -36,6 +36,8 @@ export interface PumpCurveStepProps {
   designFlowM3h?: number;
   /** Design TDH from the hydraulic calculation [m] (optional) */
   designTdhM?: number;
+  /** Called whenever a pump compute result is available (or cleared) */
+  onResult?: (result: PumpComputeResponse | null) => void;
 }
 
 const inputCls =
@@ -346,7 +348,7 @@ function ManualCurveEditor({ rows, label, unit, onChange }: ManualCurveEditorPro
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h, designTdhM }: PumpCurveStepProps) {
+export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h, designTdhM, onResult }: PumpCurveStepProps) {
   const { unitSystem } = useUnitSystem();
   const isUS = unitSystem === "US";
 
@@ -418,6 +420,8 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
   // When system curve arrives from parent, auto-clear stale result
   useEffect(() => {
     setResult(null);
+    onResult?.(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [systemCurve]);
 
   // --------------- CSV import ---------------
@@ -515,10 +519,12 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
     try {
       const data = await computePump(req);
       setResult(data);
+      onResult?.(data);
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Compute error.";
       setError(typeof msg === "string" ? msg : JSON.stringify(msg));
       setResult(null);
+      onResult?.(null);
     } finally {
       setLoading(false);
     }

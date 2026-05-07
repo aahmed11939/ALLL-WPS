@@ -1,6 +1,7 @@
 import { useState } from "react";
 import CalculationForm from "../components/CalculationForm";
 import ClearWellStep from "../components/ClearWellStep";
+import EquationsPanel from "../components/EquationsPanel";
 import LossBreakdownPanel from "../components/LossBreakdownPanel";
 import PumpCurveStep from "../components/PumpCurveStep";
 import PumpSelectionStep from "../components/PumpSelectionStep";
@@ -15,13 +16,16 @@ import {
   type CalculationResponse,
   type CurvePoint,
   type LossBreakdownResponse,
+  type PumpComputeResponse,
 } from "../utils/api";
 
 export default function DesignPage() {
-  const [results,  setResults]  = useState<CalculationResponse | null>(null);
-  const [breakdown, setBreakdown] = useState<LossBreakdownResponse | null>(null);
-  const [loading,  setLoading]  = useState(false);
-  const [error,    setError]    = useState<string | null>(null);
+  const [results,    setResults]    = useState<CalculationResponse | null>(null);
+  const [breakdown,  setBreakdown]  = useState<LossBreakdownResponse | null>(null);
+  const [lastReq,    setLastReq]    = useState<CalculationRequest | null>(null);
+  const [pumpResult, setPumpResult] = useState<PumpComputeResponse | null>(null);
+  const [loading,    setLoading]    = useState(false);
+  const [error,      setError]      = useState<string | null>(null);
   const { unitSystem, setUnitSystem, showBoth, setShowBoth } = useUnitSystem();
 
   const handleSubmit = async (
@@ -31,6 +35,7 @@ export default function DesignPage() {
   ) => {
     setLoading(true);
     setError(null);
+    setLastReq(req);
     try {
       const data = await calculate({ ...req, unit_system: unitSystem });
       setResults(data);
@@ -180,6 +185,14 @@ export default function DesignPage() {
               <ResultsPanel results={results} loading={loading} error={error} />
             </div>
 
+            {results && lastReq && (
+              <EquationsPanel
+                results={results}
+                lastReq={lastReq}
+                pumpResult={pumpResult}
+              />
+            )}
+
             {results && (
               <div>
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 mb-3">
@@ -221,6 +234,7 @@ export default function DesignPage() {
                 staticHeadM={results?.static_head_m ?? undefined}
                 designFlowM3h={results?.design_Q_m3h ?? undefined}
                 designTdhM={results?.tdh_m ?? undefined}
+                onResult={setPumpResult}
               />
             </div>
 

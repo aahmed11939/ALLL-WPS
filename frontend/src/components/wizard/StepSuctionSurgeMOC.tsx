@@ -724,7 +724,7 @@ export default function StepSuctionSurgeMOC() {
           {/* NPSHa KPI strip */}
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">
-              NPSHa Analysis
+              <TermTip term="NPSHa">NPSHa</TermTip> Analysis
             </p>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <KpiCard

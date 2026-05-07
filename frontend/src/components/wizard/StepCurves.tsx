@@ -15,6 +15,7 @@ import { useDebounce } from "../../hooks/useDebounce";
 import { computePump } from "../../utils/api";
 import { buildPumpReqFromConfig } from "../../utils/pumpUtils";
 import ChartErrorBoundary from "../ChartErrorBoundary";
+import TermTip from "../TermTip";
 
 interface ChartPt {
   Q: number;
@@ -221,10 +222,12 @@ export default function StepCurves() {
             <Metric label="Power"
               value={op.power_kW != null ? `${op.power_kW.toFixed(2)} kW` : "—"}
             />
-            <Metric label="NPSHr"
+            <Metric
+              label={<><TermTip term="NPSHr">NPSHr</TermTip></>}
               value={op.npshr_m != null ? `${op.npshr_m.toFixed(2)} m` : "—"}
             />
-            <Metric label="NPSH margin"
+            <Metric
+              label={<><TermTip term="NPSHa">NPSH margin</TermTip></>}
               value={op.npsh_margin_m != null ? `${op.npsh_margin_m.toFixed(2)} m` : "—"}
             />
           </div>
@@ -267,7 +270,7 @@ export default function StepCurves() {
   );
 }
 
-function Metric({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function Metric({ label, value, highlight }: { label: React.ReactNode; value: string; highlight?: boolean }) {
   return (
     <div>
       <p className="text-[10px] uppercase tracking-wide text-slate-400">{label}</p>

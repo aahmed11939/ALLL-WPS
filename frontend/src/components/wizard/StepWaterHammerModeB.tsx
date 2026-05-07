@@ -854,6 +854,7 @@ export default function StepWaterHammerModeB() {
               <Label>Density ρ [kg/m³]</Label>
               <input type="number" min={500} max={1500} step={1}
                 value={rhoStr} onChange={e => setRhoStr(e.target.value)} className={inp} />
+              <Hint>Roughness <TermTip term="ε" /> derived from pipe material per segment</Hint>
             </div>
             <div>
               <Label>Temperature [°C]</Label>

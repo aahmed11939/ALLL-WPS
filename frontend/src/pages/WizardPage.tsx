@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import wpsLogo from "../assets/WPS_Logo_1778184724504.png";
 import { useProject } from "../contexts/ProjectContext";
 import { useUnitSystem } from "../contexts/UnitSystemContext";
 import { hadStoredSession } from "../contexts/ProjectContext";
@@ -313,9 +314,11 @@ export default function WizardPage() {
       {/* ===== TOP TOOLBAR ===== */}
       <header className="shrink-0 border-b border-slate-200 bg-white shadow-sm z-10">
         <div className="flex items-center gap-3 px-4 py-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-teal-700 text-white font-bold text-xs shrink-0">
-            WPS
-          </div>
+          <img
+            src={wpsLogo}
+            alt="WPS logo"
+            className="h-9 w-auto shrink-0"
+          />
           <div className="hidden sm:block">
             <p className="text-sm font-bold text-slate-900 leading-tight">ALLL WPS Designer</p>
             <p className="text-[10px] text-slate-400 font-mono leading-none">

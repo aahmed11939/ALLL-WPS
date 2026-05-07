@@ -1,4 +1,5 @@
 import { useState } from "react";
+import wpsLogo from "../assets/WPS_Logo_1778184724504.png";
 import CalculationForm from "../components/CalculationForm";
 import ClearWellStep from "../components/ClearWellStep";
 import EquationsPanel from "../components/EquationsPanel";
@@ -91,9 +92,11 @@ export default function DesignPage() {
       {/* Header */}
       <header className="border-b border-slate-200 bg-white shadow-sm">
         <div className="mx-auto max-w-7xl px-6 py-4 flex items-center gap-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-700 text-white font-bold text-sm">
-            WPS
-          </div>
+          <img
+            src={wpsLogo}
+            alt="WPS logo"
+            className="h-9 w-auto shrink-0"
+          />
           <div>
             <h1 className="text-lg font-semibold text-slate-900 leading-tight tracking-tight">
               ALLL WPS Designer

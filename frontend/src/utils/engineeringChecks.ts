@@ -398,11 +398,11 @@ function checkCycling(draft: ProjectDraft, _isUS?: boolean): CheckResult {
   if (!cfg) {
     return {
       id: "cycling",
-      category: "Wet Well Cycling",
+      category: "Clearwell Cycling",
       severity: "info",
-      title: "Wet well cycling — configuration not yet set",
-      message: "Visit Step 4 (Wet Well Sizing) to configure the wet well geometry and pump stages.",
-      recommendation: "Complete the wet well configuration to unlock this check.",
+      title: "Clearwell cycling — configuration not yet set",
+      message: "Visit Step 4 (Clearwell Sizing) to configure the clearwell geometry and pump stages.",
+      recommendation: "Complete the clearwell configuration to unlock this check.",
       skipped: true,
     };
   }
@@ -419,18 +419,18 @@ function checkCycling(draft: ProjectDraft, _isUS?: boolean): CheckResult {
     if (!cr.cycles_ok || cycles > maxAllowed) {
       return {
         id: "cycling",
-        category: "Wet Well Cycling",
+        category: "Clearwell Cycling",
         severity: "warning",
         title: "Pump start frequency exceeds configured maximum",
         message: `Computed cycling rate is ${metric}, exceeding the configured maximum of ${maxAllowed} starts/hr (AWWA M32 motor protection guidance). Stage: ${cr.label}, Q_pump = ${round(cr.Q_pump_m3h, 1)} m³/h.`,
-        recommendation: "Add a VFD to modulate pump speed and eliminate discrete cycling, or increase the wet well operating volume (raise HWL or deepen the well) to reduce starts per hour.",
+        recommendation: "Add a VFD to modulate pump speed and eliminate discrete cycling, or increase the clearwell operating volume (raise HWL or deepen the well) to reduce starts per hour.",
         metric,
       };
     }
 
     return {
       id: "cycling",
-      category: "Wet Well Cycling",
+      category: "Clearwell Cycling",
       severity: "info",
       title: "Pump cycling within acceptable limit",
       message: `Computed cycling rate is ${metric} — within the configured maximum of ${maxAllowed} starts/hr (AWWA M32).`,
@@ -444,11 +444,11 @@ function checkCycling(draft: ProjectDraft, _isUS?: boolean): CheckResult {
   if (!firstStage) {
     return {
       id: "cycling",
-      category: "Wet Well Cycling",
+      category: "Clearwell Cycling",
       severity: "info",
-      title: "Wet well cycling — no pump stage defined",
+      title: "Clearwell cycling — no pump stage defined",
       message: "No pump stage is configured on Step 4.",
-      recommendation: "Add at least one pump stage, then run the wet well compute to get an accurate cycling rate.",
+      recommendation: "Add at least one pump stage, then run the clearwell compute to get an accurate cycling rate.",
       skipped: true,
     };
   }
@@ -464,11 +464,11 @@ function checkCycling(draft: ProjectDraft, _isUS?: boolean): CheckResult {
   if (V_op_m3 <= 0) {
     return {
       id: "cycling",
-      category: "Wet Well Cycling",
+      category: "Clearwell Cycling",
       severity: "info",
-      title: "Wet well cycling — cannot compute volume",
-      message: "Operating volume could not be derived from the current wet well geometry. Run the wet well compute on Step 4 for an accurate result.",
-      recommendation: "Check that wet well dimensions and levels are entered correctly, then compute on Step 4.",
+      title: "Clearwell cycling — cannot compute volume",
+      message: "Operating volume could not be derived from the current clearwell geometry. Run the clearwell compute on Step 4 for an accurate result.",
+      recommendation: "Check that clearwell dimensions and levels are entered correctly, then compute on Step 4.",
       skipped: true,
     };
   }
@@ -492,10 +492,10 @@ function checkCycling(draft: ProjectDraft, _isUS?: boolean): CheckResult {
   } else if (Q_pump_m3h <= Q_in_m3h) {
     return {
       id: "cycling",
-      category: "Wet Well Cycling",
+      category: "Clearwell Cycling",
       severity: "warning",
       title: "Pump capacity ≤ inflow — continuous operation or overflow",
-      message: `The first pump stage (${round(Q_pump_m3h, 1)} m³/h) cannot drain faster than the configured inflow (${round(Q_in_m3h, 1)} m³/h). The wet well will overflow unless a second pump stage is activated. Run Step 4 compute for detailed analysis.`,
+      message: `The first pump stage (${round(Q_pump_m3h, 1)} m³/h) cannot drain faster than the configured inflow (${round(Q_in_m3h, 1)} m³/h). The clearwell will overflow unless a second pump stage is activated. Run Step 4 compute for detailed analysis.`,
       recommendation: "Add a larger pump stage or verify the inflow assumption. Consider an emergency overflow design.",
       metric: `Q_pump ≤ Q_in`,
     };
@@ -507,22 +507,22 @@ function checkCycling(draft: ProjectDraft, _isUS?: boolean): CheckResult {
   if (cycles_per_hour > maxAllowed) {
     return {
       id: "cycling",
-      category: "Wet Well Cycling",
+      category: "Clearwell Cycling",
       severity: "warning",
       title: "Estimated pump start frequency exceeds maximum",
       message: `Analytical cycling estimate is ${metric}, exceeding the configured maximum of ${maxAllowed} starts/hr (AWWA M32). This uses Q_in = ${round(Q_in_m3h, 1)} m³/h and operating volume = ${round(V_op_m3, 1)} m³.`,
-      recommendation: "Add a VFD to modulate pump speed and eliminate cycling, or increase the wet well operating volume. Run the Step 4 compute to confirm.",
+      recommendation: "Add a VFD to modulate pump speed and eliminate cycling, or increase the clearwell operating volume. Run the Step 4 compute to confirm.",
       metric,
     };
   }
 
   return {
     id: "cycling",
-    category: "Wet Well Cycling",
+    category: "Clearwell Cycling",
     severity: "info",
     title: "Estimated cycling within acceptable limit",
     message: `Analytical cycling estimate is ${metric} — within the configured maximum of ${maxAllowed} starts/hr.`,
-    recommendation: "Run the wet well compute on Step 4 to confirm with the detailed API result.",
+    recommendation: "Run the clearwell compute on Step 4 to confirm with the detailed API result.",
     metric,
   };
 }

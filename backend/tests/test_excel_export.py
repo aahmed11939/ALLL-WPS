@@ -305,7 +305,7 @@ EXPECTED_SHEETS = [
     "System Curve",
     "Pump Curves",
     "Operating Points",
-    "Wet Well",
+    "Clearwell",
     "Engineering Checks",
     "Surge Quick (Mode A)",
     "Surge MOC Time Histories",
@@ -402,7 +402,7 @@ class TestBuildWorkbook:
     def test_wet_well_sheet_has_volume_curve(self):
         data = _bwb(full_draft())
         wb   = load_workbook(io.BytesIO(data))
-        ws   = wb["Wet Well"]
+        ws   = wb["Clearwell"]
         assert any("19.6" in v or "39.3" in v for v in _cells(ws))
 
     def test_engineering_checks_present(self):

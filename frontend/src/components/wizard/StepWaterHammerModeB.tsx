@@ -92,7 +92,7 @@ const UPSTREAM_BC_TYPES = [
   {
     value: "reservoir",
     label: "Reservoir / Fixed HGL",
-    desc: "Constant-head source (suction wet well or fixed supply)",
+    desc: "Constant-head source (suction clearwell or fixed supply)",
   },
 ];
 

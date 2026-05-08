@@ -8,7 +8,7 @@ Produces a stamped engineering memorandum with:
   - Hydraulic calculations: Darcy-Weisbach equations, per-segment breakdown table,
     head budget summary, system curve data points
   - Pump analysis (H-Q / η / P / NPSHr curves, operating points, VFD affinity laws)
-  - Wet well sizing and pump cycling (AWWA M32)
+  - Clearwell sizing and pump cycling (AWWA M32)
   - Engineering checks summary with pass/warn/critical colours and recommendations
   - Surge / water hammer analysis: Joukowsky + MOC for suction AND discharge pipelines
     (uses suctionSurgeResult + mocResult separately), protection device comparison
@@ -413,7 +413,7 @@ def _executive_summary(doc: Document, draft: dict) -> None:
         f"project '{meta.get('name', 'unnamed')}'. "
         f"The design flow is {_fmt(Q, 1)} m³/h. "
         f"The system has been assessed for hydraulic adequacy, pump selection, "
-        f"wet well capacity, and surge protection."
+        f"clearwell capacity, and surge protection."
     ))
     doc.add_paragraph()
 
@@ -518,7 +518,7 @@ def _basis_of_design(doc: Document, draft: dict) -> None:
 
     _para(doc, "The following criteria have been adopted for this design:")
     criteria = [
-        "Design standards: AS/NZS 3500, AWWA M32 (wet well sizing), AWWA M11 (steel pipe).",
+        "Design standards: AS/NZS 3500, AWWA M32 (clearwell sizing), AWWA M11 (steel pipe).",
         "Water quality: potable water, temperature 20 °C, density ρ = 998.2 kg/m³.",
         "Pipe velocity: target 0.5–3.0 m/s under duty flow (per AS/NZS 3500 Sec. 5).",
         "NPSH margin: minimum 0.6 m (NPSHa – NPSHr ≥ 0.6 m at all operating points).",
@@ -767,17 +767,17 @@ def _pump_section(doc: Document, draft: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Section 6 — Wet Well Sizing
+# Section 6 — Clearwell Sizing
 # ---------------------------------------------------------------------------
 
 def _wetwell_section(doc: Document, draft: dict) -> None:
-    _heading(doc, "6. Wet Well Sizing and Pump Cycling")
+    _heading(doc, "6. Clearwell Sizing and Pump Cycling")
 
     cw = draft.get("clearwellResult") or {}
     us = draft.get("unitSystem", "SI")
 
     if not cw or not cw.get("active"):
-        _para(doc, "Wet well analysis not activated.", italic=True)
+        _para(doc, "Clearwell analysis not activated.", italic=True)
         return
 
     _heading(doc, "6.1 Key Results", level=2)
@@ -849,11 +849,11 @@ _RECOMMENDATIONS: dict[str, str] = {
         "Consider alternative pump models or re-sizing the impeller."
     ),
     "Pump cycles": (
-        "Increase wet well operating volume to reduce cycling frequency. "
+        "Increase clearwell operating volume to reduce cycling frequency. "
         "Excessive starts per hour will shorten motor life and void the motor warranty."
     ),
     "Detention time": (
-        "Increase wet well volume or reduce minimum detention requirements to comply with "
+        "Increase clearwell volume or reduce minimum detention requirements to comply with "
         "water quality standards (typically 30 min for potable water)."
     ),
 }

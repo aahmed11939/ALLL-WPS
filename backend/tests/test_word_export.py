@@ -430,7 +430,7 @@ class TestBuildDocument:
     def test_wetwell_section_present(self):
         doc  = build_document(full_draft())
         text = _all_text(doc)
-        assert "Wet Well" in text
+        assert "Clearwell" in text
 
     def test_wetwell_volume_in_tables(self):
         doc  = build_document(full_draft())

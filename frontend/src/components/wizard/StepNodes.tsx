@@ -93,7 +93,7 @@ export default function StepNodes() {
                 </p>
               )}
               <p className="mt-0.5 text-[10px] text-slate-400">
-                Suction-side static pressure (0 for open wet well)
+                Suction-side static pressure (0 for open clearwell)
               </p>
             </div>
           </div>

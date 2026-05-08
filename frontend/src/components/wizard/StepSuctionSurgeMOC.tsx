@@ -222,7 +222,7 @@ export default function StepSuctionSurgeMOC() {
 
   // Observation points
   const [obs0Frac,  setObs0Frac]  = useState(cfg?.obs_points?.[0]?.frac  ?? "0");
-  const [obs0Label, setObs0Label] = useState(cfg?.obs_points?.[0]?.label ?? "Source (wet well)");
+  const [obs0Label, setObs0Label] = useState(cfg?.obs_points?.[0]?.label ?? "Source (clearwell)");
   const [obs1Frac,  setObs1Frac]  = useState(cfg?.obs_points?.[1]?.frac  ?? "0.5");
   const [obs1Label, setObs1Label] = useState(cfg?.obs_points?.[1]?.label ?? "Midpoint");
   const [obs2Frac,  setObs2Frac]  = useState(cfg?.obs_points?.[2]?.frac  ?? "1");
@@ -515,7 +515,7 @@ export default function StepSuctionSurgeMOC() {
         {[
           "NPSHa(t) = H_suction(t) − h_vap(T) in gauge head. At risk when NPSHa(t) < NPSHr.",
           "Pump node placed at fractional position along suction pipe (default = 1.0, i.e. downstream end).",
-          "Boundary A = wet-well / suction source (reservoir or free surface). Boundary B = pump trip event.",
+          "Boundary A = clearwell / suction source (reservoir or free surface). Boundary B = pump trip event.",
           "Column separation: head clamped at vapour pressure h_vap(T). Vapour-pocket model.",
           "NPSHa margin = NPSHa(t) − NPSHr. Negative margin → transient cavitation risk at pump inlet.",
         ].map((note, i) => (
@@ -650,9 +650,9 @@ export default function StepSuctionSurgeMOC() {
         </Section>
 
         <Section title="Boundary Conditions">
-          {/* Boundary A — Source (wet well) */}
+          {/* Boundary A — Source (clearwell) */}
           <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4 space-y-3">
-            <p className="text-xs font-semibold text-slate-700">Boundary A — Source / Wet Well (node 0)</p>
+            <p className="text-xs font-semibold text-slate-700">Boundary A — Source / Clearwell (node 0)</p>
             <div>
               <Label>Boundary type</Label>
               <select
@@ -660,13 +660,13 @@ export default function StepSuctionSurgeMOC() {
                 onChange={e => setBcAType(e.target.value as "reservoir" | "suction_pump_trip")}
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-400"
               >
-                <option value="reservoir">Reservoir / Fixed HGL (wet well free surface)</option>
+                <option value="reservoir">Reservoir / Fixed HGL (clearwell free surface)</option>
                 <option value="suction_pump_trip">Suction Pump Trip</option>
               </select>
             </div>
             {bcAType === "reservoir" && (
               <div>
-                <Label>Wet well LWL / HGL [{headUnit} above datum]</Label>
+                <Label>Clearwell LWL / HGL [{headUnit} above datum]</Label>
                 <input type="number" step={0.1}
                   value={bcA_H_m} onChange={e => setBcA_H_m(e.target.value)}
                   placeholder={`e.g. ${wetWellLWLDisplay.toFixed(1)} (upstream node elevation)`}
@@ -720,7 +720,7 @@ export default function StepSuctionSurgeMOC() {
                   <input type="number" step={0.5} value={bcB_Hsump}
                     onChange={e => setBcB_Hsump(e.target.value)}
                     placeholder={wetWellLWLDisplay.toFixed(1)} className={inp} />
-                  <Hint>Total piezometric head at pump inlet — use wet well LWL</Hint>
+                  <Hint>Total piezometric head at pump inlet — use clearwell LWL</Hint>
                 </div>
                 <div>
                   <Label>Flow Q₀ [m³/s]</Label>
@@ -772,7 +772,7 @@ export default function StepSuctionSurgeMOC() {
         {/* Observation points */}
         <Section title="Observation Points — Time Histories">
           <p className="text-[10px] text-slate-400 -mt-1">
-            Drag sliders to set fractional positions along the suction pipe (0 = wet well, 1 = pump flange).
+            Drag sliders to set fractional positions along the suction pipe (0 = clearwell, 1 = pump flange).
           </p>
           <div className="space-y-3">
             {[
@@ -893,7 +893,7 @@ export default function StepSuctionSurgeMOC() {
                 <p className="text-xs text-red-600 mt-0.5">
                   NPSHa falls below NPSHr for {result.npsha_risk_duration_s.toFixed(2)} s during the transient.
                   Min NPSHa = {fmtH(result.npsha_min_m)}, NPSHr = {result.NPSHr_m !== null ? fmtH(result.NPSHr_m) : "N/A"}.
-                  Consider: increasing wet well LWL, reducing pipe losses, adding surge vessel, or extending pump trip time.
+                  Consider: increasing clearwell LWL, reducing pipe losses, adding surge vessel, or extending pump trip time.
                 </p>
               </div>
             </div>

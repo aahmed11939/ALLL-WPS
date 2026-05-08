@@ -10,7 +10,7 @@ Sheets
  3. System Curve            — Q/H table; chart: HQ pump curves + system + duty pts
  4. Pump Curves             — Q/H/η/P/NPSHr table; chart: η vs Q
  5. Operating Points        — duty table; charts: P vs Q and NPSHa vs NPSHr
- 6. Wet Well                — geometry KPIs, volume curve, cycle results
+ 6. Clearwell               — geometry KPIs, volume curve, cycle results
  7. Engineering Checks      — velocity, Re, NPSH, cycling, surge checks
  8. Surge Quick (Mode A)    — suction section + discharge section
  9. Surge MOC Time Histories— suction section + discharge section (≤ 1000 rows each)
@@ -818,15 +818,15 @@ def _sh_operating_points(wb: Workbook, draft: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Sheet 6 — Wet Well
+# Sheet 6 — Clearwell
 # ---------------------------------------------------------------------------
 
 def _sh_wet_well(wb: Workbook, draft: dict) -> None:
-    ws   = wb.create_sheet("Wet Well")
+    ws   = wb.create_sheet("Clearwell")
     meta = draft.get("meta", {}) or {}
     us   = draft.get("unitSystem", "SI")
 
-    _title_banner(ws, "Wet Well / Clear Well Sizing",
+    _title_banner(ws, "Clearwell Sizing",
                   "Geometry, volume curve, cycle analysis, detention time")
     row = 3
     row = _meta_rows(ws, meta, row)

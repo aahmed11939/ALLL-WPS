@@ -457,7 +457,7 @@ PUMP_TYPE_CATALOGUE: dict[str, dict[str, Any]] = {
         "constraints": [
             "Motor cooling depends on through-flow — minimum continuous flow must be maintained.",
             "Cable entry seal is a critical failure point; use submersible-grade cable and glands.",
-            "Requires wet-well access for pull-out; guide rail or guide wire installation recommended.",
+            "Requires clearwell access for pull-out; guide rail or guide wire installation recommended.",
             "Thermal protection (motor winding thermistor) strongly recommended.",
         ],
         "potable_notes": [

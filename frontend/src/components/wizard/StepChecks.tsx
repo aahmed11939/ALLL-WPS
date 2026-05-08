@@ -39,7 +39,7 @@ export default function StepChecks() {
       {/* Reference standards bar */}
       <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-mono text-slate-500">
         <span>AWWA M11 — Pipe velocity</span>
-        <span>AWWA M32 — Wet well cycling</span>
+        <span>AWWA M32 — Clearwell cycling</span>
         <span>HI 9.6.3 — NPSH margin &amp; duty point</span>
         <span>Ten States Standards — Redundancy</span>
       </div>

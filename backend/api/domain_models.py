@@ -331,14 +331,14 @@ class PipeAssembly(BaseModel):
 
 
 class WetWell(BaseModel):
-    """Wet-well (sump) geometry and operating level configuration."""
+    """Clearwell (sump) geometry and operating level configuration."""
 
     model_config = ConfigDict()
 
     geometry: Annotated[
         WetWellGeometry,
         Field(default="cylindrical",
-              description="Wet-well plan geometry: 'cylindrical' or 'rectangular'"),
+              description="Clearwell plan geometry: 'cylindrical' or 'rectangular'"),
     ]
 
     # Cylindrical geometry
@@ -403,7 +403,7 @@ class WetWell(BaseModel):
             name_hi, val_hi = levels[i + 1]
             if val_lo >= val_hi:
                 raise ValueError(
-                    f"Wet-well level ordering violated: {name_lo} ({val_lo} m) "
+                    f"Clearwell level ordering violated: {name_lo} ({val_lo} m) "
                     f"must be strictly less than {name_hi} ({val_hi} m)."
                 )
         return self
@@ -453,7 +453,7 @@ class PumpStation(BaseModel):
               description=(
                   "Pump type. Potable-service common choices: 'end_suction', "
                   "'split_case' (large stations), 'vertical_turbine' (deep sumps), "
-                  "'submersible' (wet-well installation)."
+                  "'submersible' (clearwell installation)."
               )),
     ]
     potable_compliant_materials: Annotated[
@@ -837,7 +837,7 @@ class ProjectModel(BaseModel):
     ]
     wet_well: Annotated[
         Optional[WetWell],
-        Field(default=None, description="Wet-well / sump configuration"),
+        Field(default=None, description="Clearwell / sump configuration"),
     ]
     pump_station: Annotated[
         Optional[PumpStation],

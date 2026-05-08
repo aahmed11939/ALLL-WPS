@@ -2191,7 +2191,7 @@ async def suction_transient(req: SuctionTransientRequest) -> SuctionTransientRes
 
     | boundary | type | notes |
     |----------|------|-------|
-    | A (upstream, node 0) | `reservoir` | wet-well at LWL (worst case) |
+    | A (upstream, node 0) | `reservoir` | clearwell at LWL (worst case) |
     | B (downstream, node N) | `suction_pump_trip` | pump demand collapses |
 
     **Risk flag** — ``transient_npsh_risk`` is set when NPSHa(t) < NPSHr at any
@@ -2627,7 +2627,7 @@ async def export_word(body: ExcelExportRequest) -> StreamingResponse:
     Accept the full ProjectDraft as a typed Pydantic model and return a .docx report.
 
     The report contains: title page, executive summary, hydraulic analysis,
-    pump analysis, wet well sizing, engineering checks, surge analysis,
+    pump analysis, clearwell sizing, engineering checks, surge analysis,
     protection device comparison, and appendices. Figures are embedded as PNG.
     """
     draft: dict = body.model_dump()

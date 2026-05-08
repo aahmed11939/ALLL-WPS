@@ -2,7 +2,7 @@ import type { ProjectDraft } from "../types/project";
 
 export const SAMPLE_PROJECT_VT: ProjectDraft = {
   meta: {
-    name: "Deep Wet Well — DN200 Vertical Turbine",
+    name: "Deep Clearwell — DN200 Vertical Turbine",
     client: "Ridgeway Municipal Utilities",
     job_number: "WPS-2024-VT-01",
     date: "2024-06-01",

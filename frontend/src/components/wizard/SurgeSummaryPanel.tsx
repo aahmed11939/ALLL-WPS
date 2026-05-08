@@ -46,7 +46,7 @@ const MITIGATIONS: Record<RiskLevel, string[]> = {
     "Evaluate: variable-speed drive (VSD) for soft start/stop to reduce ΔV.",
     "Review pump trip time — motor flywheel or hydraulic coupling can extend coast-down.",
     "Check: vacuum break valves or air release valves at pipeline high points.",
-    "NPSHa margin below zero → suction line redesign or wet-well LWL increase required.",
+    "NPSHa margin below zero → suction line redesign or clearwell LWL increase required.",
     "Engage surge specialist for detailed MOC / Suter-curve analysis.",
   ],
 };

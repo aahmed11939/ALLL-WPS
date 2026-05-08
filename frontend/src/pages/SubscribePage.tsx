@@ -40,7 +40,7 @@ export default function SubscribePage() {
     "Full hydraulic system design (Darcy-Weisbach + Hazen-Williams)",
     "Surge/transient analysis using Method of Characteristics",
     "Pump curve overlay and operating-point finder",
-    "Wet-well sizing and duty-cycle calculations",
+    "Clearwell sizing and duty-cycle calculations",
     "Professional PDF / Excel report export",
     "Unlimited saved projects",
     "Priority engineering support",

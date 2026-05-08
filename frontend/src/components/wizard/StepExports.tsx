@@ -96,7 +96,7 @@ const EXCEL_STAGES = [
   "Collecting hydraulic data…",
   "Building system-curve sheet…",
   "Writing pump & curve data…",
-  "Adding wet-well analysis…",
+  "Adding clearwell analysis…",
   "Writing surge results…",
   "Generating engineering checks…",
   "Formatting workbook…",

@@ -1855,7 +1855,7 @@ class SuctionTransientRequest(BaseModel):
 
     Extends the standard MOC request with NPSHa-specific parameters.
     ``pipeline`` is forced to ``"suction"`` by the endpoint; boundary_A is
-    typically a reservoir (wet-well constant head); boundary_B is typically
+    typically a reservoir (clearwell constant head); boundary_B is typically
     ``suction_pump_trip`` (pump demand collapses on power failure).
     """
 
@@ -1878,8 +1878,8 @@ class SuctionTransientRequest(BaseModel):
     segments: List[MOCSegmentInput] = Field(min_length=1)
     boundary_A: MOCBoundaryAInput = Field(
         description=(
-            "Upstream boundary (wet-well / suction reservoir). "
-            "Typical: reservoir with H_m = wet-well LWL."
+            "Upstream boundary (clearwell / suction reservoir). "
+            "Typical: reservoir with H_m = clearwell LWL."
         ),
     )
     boundary_B: MOCBoundaryBInput = Field(

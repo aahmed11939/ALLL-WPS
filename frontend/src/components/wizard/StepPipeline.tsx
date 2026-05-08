@@ -94,7 +94,7 @@ export default function StepPipeline({ label }: Props) {
 
   const title = label === "suction" ? "Suction Pipeline" : "Discharge Pipeline";
   const desc  = label === "suction"
-    ? "Define suction pipe segments from the wet well to the pump(s)."
+    ? "Define suction pipe segments from the clearwell to the pump(s)."
     : "Define discharge pipe segments from the pump(s) to the delivery node.";
 
   return (

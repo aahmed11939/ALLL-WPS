@@ -397,7 +397,7 @@ export default function WizardPage({
     },
     {
       label: "Vertical turbine",
-      desc:  "DN200 · deep wet well · 50 m³/h",
+      desc:  "DN200 · deep clearwell · 50 m³/h",
       draft: SAMPLE_PROJECT_VT,
     },
     {

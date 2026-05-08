@@ -1,7 +1,6 @@
 import { ClerkProvider, useAuth } from "@clerk/react";
 import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wouter";
-import SignInPage from "./pages/SignInPage";
-import SignUpPage from "./pages/SignUpPage";
+import AuthPage from "./pages/AuthPage";
 import MainApp from "./pages/MainApp";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -21,6 +20,20 @@ function HomeRoute() {
   const { isSignedIn, isLoaded } = useAuth();
   if (!isLoaded) return null;
   return isSignedIn ? <Redirect to="/app" /> : <Redirect to="/sign-in" />;
+}
+
+function SignInRoute() {
+  const { isSignedIn, isLoaded } = useAuth();
+  if (!isLoaded) return null;
+  if (isSignedIn) return <Redirect to="/app" />;
+  return <AuthPage defaultTab="sign-in" />;
+}
+
+function SignUpRoute() {
+  const { isSignedIn, isLoaded } = useAuth();
+  if (!isLoaded) return null;
+  if (isSignedIn) return <Redirect to="/app" />;
+  return <AuthPage defaultTab="sign-up" />;
 }
 
 function AppRoute() {
@@ -43,8 +56,8 @@ function ClerkProviderWithRoutes() {
     >
       <Switch>
         <Route path="/" component={HomeRoute} />
-        <Route path="/sign-in" component={SignInPage} />
-        <Route path="/sign-up" component={SignUpPage} />
+        <Route path="/sign-in" component={SignInRoute} />
+        <Route path="/sign-up" component={SignUpRoute} />
         <Route path="/app" component={AppRoute} />
         <Route path="/app/*" component={AppRoute} />
         <Route>

@@ -56,7 +56,7 @@ function EmptyState({ onNew }: { onNew: () => void }) {
   );
 }
 
-export default function ProjectsPage({ onOpenProject, onNewProject, onImportJSON }: Props) {
+export default function ProjectsPage({ onOpenProject, onNewProject, onImportJSON: _onImportJSON }: Props) {
   const { signOut } = useClerk();
   const { user } = useUser();
   const [projects, setProjects] = useState<ProjectMeta[]>([]);

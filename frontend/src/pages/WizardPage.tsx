@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, MutableRefObject } from "react";
+import { useState, useRef, useEffect, type MutableRefObject } from "react";
 import wpsLogo from "../assets/WPS_Logo_1778184724504.png";
 import { useProject } from "../contexts/ProjectContext";
 import { useUnitSystem } from "../contexts/UnitSystemContext";
@@ -523,6 +523,20 @@ export default function WizardPage({
               <span className="text-xs text-rose-600 font-medium">{loadError}</span>
             )}
 
+            {/* Export JSON */}
+            <button
+              type="button"
+              onClick={handleExportJSON}
+              className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-slate-400 hover:bg-slate-50 transition-colors flex items-center gap-1.5"
+              title="Download project as JSON"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              JSON
+            </button>
+
             {/* Open Project (back to landing page) */}
             {onGoToLanding && (
               <button
@@ -690,6 +704,16 @@ export default function WizardPage({
 
           {/* Sticky live-results strip */}
           <ResultsStrip />
+
+          {/* Hidden file input for JSON import (triggered via importTriggerRef) */}
+          <input
+            ref={loadFileRef}
+            type="file"
+            accept=".json,application/json"
+            onChange={handleLoadFile}
+            className="hidden"
+            aria-hidden="true"
+          />
 
           {/* Navigation footer */}
           <div className="shrink-0 border-t border-slate-200 bg-white px-6 py-3 space-y-2">

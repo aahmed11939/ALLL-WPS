@@ -1142,28 +1142,51 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
 
           <Section title="Key Equations">
             <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-[11px] font-mono text-slate-700 space-y-2">
-              <p>
-                ΔH_Joukowsky = a·ΔV/g = {result.wave_speed_ms.toFixed(0)}·{result.delta_V_ms.toFixed(4)}/{G}
-                {" = "}<strong className="text-slate-900">{fmtH(result.delta_H_joukowsky_m, us)}</strong>
-                {us && <span className="text-slate-400"> ({result.delta_H_joukowsky_m.toFixed(4)} m)</span>}
-              </p>
-              <p>
-                ΔP_Joukowsky = ρ·a·ΔV = {result.rho_kg_m3}·{result.wave_speed_ms.toFixed(0)}·{result.delta_V_ms.toFixed(4)}/1000
-                {" = "}<strong className="text-slate-900">{fmtP(result.delta_P_joukowsky_kPa, us)}</strong>
-                {us && <span className="text-slate-400"> ({result.delta_P_joukowsky_kPa.toFixed(3)} kPa)</span>}
-              </p>
-              <p>
-                T (char.) = 2L/a = 2×{result.pipe_length_m.toFixed(1)}/{result.wave_speed_ms.toFixed(0)}
-                {" = "}<strong className="text-slate-900">{result.T_char_s.toFixed(4)} s</strong>
-              </p>
-              <p>
-                h_vap ({result.temperature_C} °C)
-                {" = "}<strong className="text-slate-900">{fmtH(result.vapor_pressure_head_m, us)}</strong> gauge
-              </p>
-              <p>
-                V₀ = <strong className="text-slate-900">{fmtV(result.delta_V_ms, us)}</strong>
-                {"  "}H₀ = <strong className="text-slate-900">{fmtH(result.H_operating_m, us)}</strong>
-              </p>
+              {(() => {
+                const a_disp   = us ? result.wave_speed_ms * FPS_PER_MS : result.wave_speed_ms;
+                const dV_disp  = us ? result.delta_V_ms    * FPS_PER_MS : result.delta_V_ms;
+                const L_disp   = us ? result.pipe_length_m * FT_PER_M   : result.pipe_length_m;
+                const g_disp   = us ? 32.174 : G;
+                const vUnit    = us ? "ft/s" : "m/s";
+                const lUnit    = us ? "ft"   : "m";
+                return (
+                  <>
+                    <p>
+                      ΔH_Joukowsky = a·ΔV/g = {a_disp.toFixed(0)} {vUnit}·{dV_disp.toFixed(4)} {vUnit}/{g_disp}
+                      {" = "}<strong className="text-slate-900">{fmtH(result.delta_H_joukowsky_m, us)}</strong>
+                      {us && <span className="text-slate-400"> ({result.delta_H_joukowsky_m.toFixed(4)} m)</span>}
+                    </p>
+                    <p>
+                      {us ? (
+                        <>
+                          {/* US: ρ [slug/ft³] · a [ft/s] · ΔV [ft/s] / 144 [ft²/in²] = psi */}
+                          ΔP_Joukowsky = ρ·a·ΔV/144 = {(result.rho_kg_m3 / 515.379).toFixed(4)} slug/ft³·{a_disp.toFixed(0)} ft/s·{dV_disp.toFixed(4)} ft/s/144
+                          {" = "}<strong className="text-slate-900">{fmtP(result.delta_P_joukowsky_kPa, us)}</strong>
+                          <span className="text-slate-400"> ({result.delta_P_joukowsky_kPa.toFixed(3)} kPa)</span>
+                        </>
+                      ) : (
+                        <>
+                          {/* SI: ρ [kg/m³] · a [m/s] · ΔV [m/s] / 1000 [Pa→kPa] = kPa */}
+                          ΔP_Joukowsky = ρ·a·ΔV/1000 = {result.rho_kg_m3}·{result.wave_speed_ms.toFixed(0)} m/s·{result.delta_V_ms.toFixed(4)} m/s/1000
+                          {" = "}<strong className="text-slate-900">{fmtP(result.delta_P_joukowsky_kPa, us)}</strong>
+                        </>
+                      )}
+                    </p>
+                    <p>
+                      T (char.) = 2L/a = 2×{L_disp.toFixed(1)} {lUnit}/{a_disp.toFixed(0)} {vUnit}
+                      {" = "}<strong className="text-slate-900">{result.T_char_s.toFixed(4)} s</strong>
+                    </p>
+                    <p>
+                      h_vap ({result.temperature_C} °C)
+                      {" = "}<strong className="text-slate-900">{fmtH(result.vapor_pressure_head_m, us)}</strong> gauge
+                    </p>
+                    <p>
+                      V₀ = <strong className="text-slate-900">{fmtV(result.V0_ms, us)}</strong>
+                      {"  "}H₀ = <strong className="text-slate-900">{fmtH(result.H_operating_m, us)}</strong>
+                    </p>
+                  </>
+                );
+              })()}
             </div>
           </Section>
 

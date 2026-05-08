@@ -74,11 +74,12 @@ async function getOrCreateUser(
 }
 
 async function isWhitelisted(email: string): Promise<boolean> {
-  if (email === ADMIN_EMAIL) return true;
+  const normalised = email.toLowerCase();
+  if (normalised === ADMIN_EMAIL.toLowerCase()) return true;
   const rows = await db
     .select()
     .from(whitelistEmails)
-    .where(eq(whitelistEmails.email, email))
+    .where(eq(whitelistEmails.email, normalised))
     .limit(1);
   return rows.length > 0 && (rows[0].active ?? false);
 }

@@ -1,0 +1,34 @@
+A.	Add a sign up / sign in page like the attached one.  Replace the logo with ALLL WPS Designer Logo and change the name from “ALLL PFAS Design Tool” to “ALLL WPS Designer”.  Keep the email and password box blank for the user to fill in.  Add an eye on the right side of the password so that the user can toggle it to see the password correctness.
+B.	Create subscription using Stripe.  Use the following subscription flow:
+ 
+1. Landing / Sign-in
+
+Unauthenticated visitors see the public cover page with a "Subscribe — $4,999/year" call to action.
+Clicking sign-in goes through Clerk authentication.
+2. Post-login gate
+
+Once signed in, the app checks subscription status against the server.
+Admin account (azizahmed1234@gmail.com) bypasses the check entirely and goes straight into the app.
+All other users without an active subscription are redirected to the /subscribe page.
+3. Checkout
+
+The subscribe page shows the plan details and a "Subscribe — $4,999/year" button.
+Clicking it calls the backend, which creates or retrieves a Stripe customer for that user, then opens a Stripe-hosted checkout session using the configured price.  Let me know what you need from me here.
+The user completes payment on Stripe's page with their card.
+4. Post-payment redirect
+
+Success → lands on /?checkout=success. The app shows "Confirming your subscription…" and polls the status every 2 seconds (up to 30 seconds). Once confirmed, a toast "Subscription activated! Welcome aboard." fires and the user is sent into the app.
+Cancel → lands on /?checkout=cancel, shows a "Checkout cancelled — no payment was made" notice, then redirects back to /subscribe after 2 seconds where an amber banner reminds them no charge was taken.
+5. Subscription verification
+
+The backend checks the stripe.subscriptions table (kept in sync by Stripe webhooks) and confirms the user's Stripe customer has an active subscription.
+6. Active subscribers
+
+Go directly into the app on every login.
+Can open the Stripe Billing Portal from within the app to update payment methods, download invoices, or cancel.
+
+C.	Add an Admin Panel for the Admin to control all users.  This Admin Panel should be accessible to the Admin only.  Add the following tabs to the Admin Panel”
+1.	Email Whitelist - where the admin can add user's email address to give free access without subscription.  The Admin should be able to remove a user by either removing his address or by making the user inactive.  
+2.	Registered Users – where the Admin can add team members and grant access.  The Admin should be able to activate / inactivate Registered Users.  Admin should also be able to make a Registered User admin.
+3.	Projects – where the Admin can view all subscription projects across all users
+4.	Audit Logs

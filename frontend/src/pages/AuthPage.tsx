@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSignIn, useSignUp, useAuth } from "@clerk/react";
 import { useLocation } from "wouter";
 import wpsLogo from "../assets/WPS_Logo_1778184724504.png";
@@ -25,10 +25,13 @@ export default function AuthPage({ defaultTab = "sign-in" }: Props) {
   const [code, setCode] = useState("");
   const [globalError, setGlobalError] = useState<string | null>(null);
 
-  if (isLoaded && isSignedIn) {
-    setLocation("/app");
-    return null;
-  }
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      setLocation("/app");
+    }
+  }, [isLoaded, isSignedIn, setLocation]);
+
+  if (isLoaded && isSignedIn) return null;
 
   const switchTab = (t: Tab) => {
     setTab(t);

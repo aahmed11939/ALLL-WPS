@@ -51,12 +51,12 @@ export default function AccessoriesPicker({ segment, onChange, initialItems }: P
   const [selected, setSelected]             = useState<Record<string, PickerItem>>({});
   const [searchQuery, setSearchQuery]       = useState<string>("");
   /**
-   * Tracks the last `initialItems` reference that was used to seed `selected`.
-   * When the reference changes (e.g. because a new project was loaded), the
-   * seeding effect re-runs and re-populates the picker from the new items.
-   * This replaces the old one-shot `initializedRef` approach.
+   * Tracks the last initialItems content (as a stable JSON key) used to seed
+   * `selected`. Comparing by content rather than reference prevents an infinite
+   * loop: onChange → setPipeline → reducer creates new array ref → new
+   * initialItems ref → seeding fires again → repeat.
    */
-  const lastSeededItemsRef = useRef<typeof initialItems>(undefined);
+  const lastSeededKeyRef = useRef<string>("");
 
   useEffect(() => {
     fetchAccessoriesLibrary()
@@ -70,15 +70,21 @@ export default function AccessoriesPicker({ segment, onChange, initialItems }: P
       .catch(() => setLoadError("Failed to load accessories library."));
   }, []);
 
-  // Seed `selected` from initialItems whenever the library is ready AND
-  // initialItems identity has changed (new project loaded). This replaces the
-  // one-shot initializedRef approach so subsequent project loads correctly
-  // re-populate the picker.
+  // Seed `selected` from initialItems whenever the library is ready AND the
+  // actual content of initialItems has changed (e.g. new project loaded).
+  // Uses a JSON fingerprint instead of reference equality so a new-reference-
+  // but-same-content array (produced by the reducer after every onChange call)
+  // does NOT re-trigger seeding and cause an infinite dispatch loop.
   useEffect(() => {
     if (library.length === 0) return;
-    // Skip if we already seeded from this exact initialItems reference
-    if (lastSeededItemsRef.current === initialItems) return;
-    lastSeededItemsRef.current = initialItems;
+    const key = JSON.stringify(
+      (initialItems ?? [])
+        .filter(i => i.count > 0)
+        .map(i => `${i.accessory_id}:${i.count}:${i.K_override ?? ""}`)
+        .sort()
+    );
+    if (lastSeededKeyRef.current === key) return;
+    lastSeededKeyRef.current = key;
 
     if (!initialItems || initialItems.length === 0) {
       setSelected({});

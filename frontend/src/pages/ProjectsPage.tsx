@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useClerk, useUser } from "@clerk/react";
 import wpsLogo from "../assets/WPS_Logo_1778184724504.png";
 import {
   listProjects,
@@ -56,6 +57,8 @@ function EmptyState({ onNew }: { onNew: () => void }) {
 }
 
 export default function ProjectsPage({ onOpenProject, onNewProject, onImportJSON }: Props) {
+  const { signOut } = useClerk();
+  const { user } = useUser();
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,13 +118,26 @@ export default function ProjectsPage({ onOpenProject, onNewProject, onImportJSON
               Municipal Drinking-Water Pump Station
             </p>
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-3">
+            {user?.primaryEmailAddress?.emailAddress && (
+              <span className="text-[11px] text-slate-400 hidden sm:block truncate max-w-[180px]">
+                {user.primaryEmailAddress.emailAddress}
+              </span>
+            )}
             <button
               type="button"
               onClick={onNewProject}
               className="rounded-lg bg-teal-700 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-600 transition-colors shadow-sm"
             >
               + New Project
+            </button>
+            <button
+              type="button"
+              onClick={() => signOut({ redirectUrl: "/" })}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700 hover:border-slate-300 transition-colors"
+              title="Sign out"
+            >
+              Sign out
             </button>
           </div>
         </div>

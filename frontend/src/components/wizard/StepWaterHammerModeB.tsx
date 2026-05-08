@@ -19,7 +19,7 @@ import type { MOCResponse, MOCBoundaryInput, MOCBoundaryAInput, MOCBoundaryBInpu
 import ProtectionDevicePanel from "./ProtectionDevicePanel";
 import WhatIfComparisonPanel from "./WhatIfComparisonPanel";
 import TermTip from "../TermTip";
-import { FT_PER_M, M_PER_FT, PSI_PER_KPA } from "../../utils/units";
+import { FT_PER_M, M_PER_FT, PSI_PER_KPA, FPS_PER_MS } from "../../utils/units";
 
 // ---------------------------------------------------------------------------
 // Collapsible solver notes banner
@@ -1107,6 +1107,47 @@ export default function StepWaterHammerModeB() {
               <span className="text-slate-400 font-sans text-[10px] block uppercase tracking-wide mb-0.5">T_char = 2L/a</span>
               {result.T_char_s.toFixed(3)} s
             </div>
+          </div>
+
+          {/* Key Equations — solver parameter trace in active display units */}
+          <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-[11px] font-mono text-slate-700 space-y-1.5">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 font-sans">Key Equations</p>
+            {(() => {
+              const a_disp  = us ? a  * FPS_PER_MS : a;
+              const L_disp  = us ? pipeLen * FT_PER_M  : pipeLen;
+              const dx_disp = us ? result.dx_m * FT_PER_M : result.dx_m;
+              const vUnit   = us ? "ft/s" : "m/s";
+              const lUnit   = us ? "ft"   : "m";
+              return (
+                <>
+                  <p>
+                    a = <strong className="text-slate-900">{a_disp.toFixed(0)} {vUnit}</strong>
+                    {us && <span className="text-slate-400"> ({a.toFixed(0)} m/s)</span>}
+                  </p>
+                  <p>
+                    T_char = 2L/a = 2×{L_disp.toFixed(1)} {lUnit}/{a_disp.toFixed(0)} {vUnit}
+                    {" = "}<strong className="text-slate-900">{result.T_char_s.toFixed(3)} s</strong>
+                  </p>
+                  <p>
+                    Δx = L/N = {L_disp.toFixed(1)} {lUnit}/{result.N}
+                    {" = "}<strong className="text-slate-900">{dx_disp.toFixed(2)} {lUnit}</strong>
+                  </p>
+                  <p>
+                    Δt = Δx/a = {dx_disp.toFixed(2)} {lUnit}/{a_disp.toFixed(0)} {vUnit}
+                    {" = "}<strong className="text-slate-900">{result.dt_s.toFixed(5)} s</strong>
+                  </p>
+                  <p>
+                    h_vap ({result.temperature_C} °C)
+                    {" = "}<strong className="text-slate-900">{fmtH(result.h_vap_m)}</strong> gauge
+                  </p>
+                  {h0 > 0 && (
+                    <p>
+                      H₀ (initial head) = <strong className="text-slate-900">{fmtH(h0)}</strong>
+                    </p>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           {/* Envelope chart */}

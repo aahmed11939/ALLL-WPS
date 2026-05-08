@@ -222,8 +222,13 @@ router.patch("/users/:id", async (req: Request, res: Response) => {
 router.get("/projects", async (_req: Request, res: Response) => {
   try {
     const secret = process.env.ADMIN_SECRET ?? "";
-    const response = await fetch("http://localhost:8000/api/v1/projects", {
-      headers: secret ? { "X-Admin-Secret": secret } : {},
+    if (!secret) {
+      // No shared secret configured — warn and return empty rather than an unprotected call
+      res.json({ projects: [], count: 0, warning: "ADMIN_SECRET env var not set" });
+      return;
+    }
+    const response = await fetch("http://localhost:8000/api/v1/admin/projects", {
+      headers: { "X-Admin-Secret": secret },
     });
     if (!response.ok) {
       res.status(response.status).json({ error: "Failed to fetch projects from backend" });

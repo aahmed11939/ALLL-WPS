@@ -2765,6 +2765,48 @@ def api_list_projects() -> ProjectListResponse:
     )
 
 
+class AdminProjectMeta(BaseModel):
+    slug: str
+    name: str
+    owner_email: str
+    created_at: str
+    updated_at: str
+
+
+class AdminProjectListResponse(BaseModel):
+    projects: list[AdminProjectMeta]
+    count: int
+
+
+@app.get(
+    "/api/v1/admin/projects",
+    response_model=AdminProjectListResponse,
+    tags=["admin"],
+    summary="Admin-only project listing with secret validation",
+)
+def api_admin_list_projects(request: Request) -> AdminProjectListResponse:
+    """List all projects with owner info — requires X-Admin-Secret header.
+
+    This endpoint is for the admin panel proxy (Node.js api-server) only.
+    It validates the shared secret and attaches a tenant owner_email to each row.
+    """
+    import os as _os
+    admin_secret = _os.environ.get("ADMIN_SECRET", "")
+    request_secret = request.headers.get("x-admin-secret", "")
+    if admin_secret and request_secret != admin_secret:
+        from fastapi import HTTPException as _HTTPException
+        raise _HTTPException(status_code=403, detail="Forbidden")
+    tenant_email = _os.environ.get("ADMIN_EMAIL", "azizahmed1234@gmail.com")
+    rows = list_projects()
+    return AdminProjectListResponse(
+        projects=[
+            AdminProjectMeta(owner_email=tenant_email, **r)
+            for r in rows
+        ],
+        count=len(rows),
+    )
+
+
 @app.post(
     "/api/v1/projects",
     response_model=ProjectSaveResponse,

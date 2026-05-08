@@ -603,6 +603,7 @@ def run_moc(
         "temperature_C":  temperature_C,
         "assumption_notes": ASSUMPTION_NOTES,
         "rating_check":   rating_check,
+        "wave_speed_ms":  round(wave_speed_ms, 1),
     }
 
 

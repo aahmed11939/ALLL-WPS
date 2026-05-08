@@ -2180,6 +2180,13 @@ class WhatIfRunMetrics(BaseModel):
     envelope: List[WhatIfEnvelopePoint] = Field(
         description="Pressure envelope for chart overlay",
     )
+    # Solver grid parameters — for audit trail in comparison panel
+    wave_speed_ms: float = Field(default=0.0, description="Acoustic wave speed a [m/s]")
+    N: int = Field(default=0, description="Number of MOC reaches")
+    dx_m: float = Field(default=0.0, description="Reach length Δx [m]")
+    dt_s: float = Field(default=0.0, description="Time step Δt [s]")
+    courant: float = Field(default=1.0, description="Courant number")
+    T_char_s: float = Field(default=0.0, description="Pipe characteristic time T_char = 2L/a [s]")
 
 
 class WhatIfResponse(BaseModel):

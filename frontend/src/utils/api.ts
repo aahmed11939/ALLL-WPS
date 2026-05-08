@@ -934,6 +934,13 @@ export interface WhatIfRunMetrics {
   rating_check: PressureRatingCheck | null;
   sizing_summary: Record<string, unknown> | null;
   envelope: WhatIfEnvelopePoint[];
+  // Solver grid parameters
+  wave_speed_ms: number;
+  N: number;
+  dx_m: number;
+  dt_s: number;
+  courant: number;
+  T_char_s: number;
 }
 
 export interface WhatIfResponse {

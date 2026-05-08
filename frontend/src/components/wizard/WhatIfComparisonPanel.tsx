@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import type { WhatIfResponse, WhatIfRunMetrics } from "../../utils/api";
 import { useProject } from "../../contexts/ProjectContext";
-import { FT_PER_M, PSI_PER_KPA } from "../../utils/units";
+import { FT_PER_M, FPS_PER_MS, PSI_PER_KPA } from "../../utils/units";
 
 // ---------------------------------------------------------------------------
 // Colour palette — one per scenario
@@ -133,6 +133,45 @@ function SizingDrawer({ sizing, label }: { sizing: Record<string, unknown> | nul
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Solver parameters compact block — mirrors Key Equations style
+// ---------------------------------------------------------------------------
+
+function SolverParamsBlock({ run, isUS }: { run: WhatIfRunMetrics; isUS: boolean }) {
+  const vUnit = isUS ? "ft/s" : "m/s";
+  const lUnit = isUS ? "ft"   : "m";
+  const a_disp  = isUS ? run.wave_speed_ms * FPS_PER_MS : run.wave_speed_ms;
+  const dx_disp = isUS ? run.dx_m * FT_PER_M : run.dx_m;
+
+  return (
+    <div className="mt-1.5 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 space-y-0.5">
+      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1">Solver Parameters</p>
+      <dl className="space-y-0.5 font-mono text-[9px] text-slate-700">
+        <div className="flex justify-between gap-3">
+          <dt className="text-slate-400">a</dt>
+          <dd className="font-semibold">{a_disp.toFixed(0)} {vUnit}</dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-slate-400">Courant</dt>
+          <dd className="font-semibold">{run.courant.toFixed(3)}</dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-slate-400">Δx</dt>
+          <dd className="font-semibold">{dx_disp.toFixed(1)} {lUnit}</dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-slate-400">Δt</dt>
+          <dd className="font-semibold">{run.dt_s.toFixed(4)} s</dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-slate-400">T_char</dt>
+          <dd className="font-semibold">{run.T_char_s.toFixed(3)} s</dd>
+        </div>
+      </dl>
     </div>
   );
 }
@@ -269,6 +308,7 @@ export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIf
                       <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
                       <span className="truncate max-w-[160px]" title={run.label}>{run.label}</span>
                     </div>
+                    {!run.run_error && <SolverParamsBlock run={run} isUS={us} />}
                   </td>
                   <td className="px-3 py-2 text-right font-mono">
                     <span className={run.global_max_H_m > (result.baseline.global_max_H_m * 1.05) ? "text-red-600" : ""}>

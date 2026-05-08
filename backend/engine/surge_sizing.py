@@ -653,4 +653,11 @@ def extract_whatif_metrics(
         "rating_check":             raw.get("rating_check"),
         "envelope":                 env_lite,
         "sizing_summary":           None,   # filled by caller
+        # Solver grid parameters — passed through for audit trail
+        "wave_speed_ms":            round(float(raw.get("wave_speed_ms", 0.0)), 1),
+        "N":                        int(raw.get("N", 0)),
+        "dx_m":                     round(float(raw.get("dx_m", 0.0)), 4),
+        "dt_s":                     round(float(raw.get("dt_s", 0.0)), 6),
+        "courant":                  round(float(raw.get("courant", 1.0)), 4),
+        "T_char_s":                 round(float(raw.get("T_char_s", 0.0)), 4),
     }

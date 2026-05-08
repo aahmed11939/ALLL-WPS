@@ -17,6 +17,10 @@ export default defineConfig({
         target: "http://localhost:8000",
         changeOrigin: true,
       },
+      "/surge": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
     },
   },
 });

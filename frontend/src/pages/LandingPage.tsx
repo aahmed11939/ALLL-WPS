@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useLocation } from "wouter";
 import wpsLogo from "../assets/WPS_Logo_1778184724504.png";
 
@@ -8,8 +9,14 @@ interface Props {
 export default function LandingPage({ checkoutResult }: Props) {
   const [, setLocation] = useLocation();
 
+  useEffect(() => {
+    if (checkoutResult === "cancel") {
+      const id = setTimeout(() => setLocation("/subscribe?cancelled=true"), 2000);
+      return () => clearTimeout(id);
+    }
+  }, [checkoutResult, setLocation]);
+
   if (checkoutResult === "cancel") {
-    setTimeout(() => setLocation("/subscribe?cancelled=true"), 2000);
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="text-center max-w-sm px-6">

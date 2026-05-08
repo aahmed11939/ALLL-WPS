@@ -7,7 +7,12 @@ import { getUncachableStripeClient } from "./stripeClient";
 const router = Router();
 
 const ADMIN_EMAIL = "azizahmed1234@gmail.com";
-const PRICE_ID = process.env.STRIPE_PRICE_ID ?? "";
+
+/**
+ * The server-configured Stripe Price ID for the annual plan.
+ * Loaded once at module init — never overridden by client requests.
+ */
+const SERVER_PRICE_ID = process.env.STRIPE_PRICE_ID ?? "";
 
 /**
  * Returns the canonical app origin, validated against the REPLIT_DOMAINS allowlist.
@@ -78,8 +83,27 @@ async function isWhitelisted(email: string): Promise<boolean> {
   return rows.length > 0 && (rows[0].active ?? false);
 }
 
+/**
+ * Checks for an active subscription scoped to the configured price, if known.
+ * Falls back to checking any active subscription on the customer when no
+ * STRIPE_PRICE_ID is configured (e.g. during initial setup).
+ */
 async function hasActiveSubscription(customerId: string): Promise<boolean> {
   try {
+    if (SERVER_PRICE_ID) {
+      // Strict: require an active sub containing the exact configured price
+      const result = await db.execute(
+        sql`SELECT s.id
+            FROM stripe.subscriptions s
+            JOIN stripe.subscription_items si ON si.subscription = s.id
+            WHERE s.customer = ${customerId}
+              AND s.status IN ('active', 'trialing')
+              AND si.price = ${SERVER_PRICE_ID}
+            LIMIT 1`,
+      );
+      return result.rows.length > 0;
+    }
+    // No price configured yet — broad check (setup mode only)
     const result = await db.execute(
       sql`SELECT id FROM stripe.subscriptions
           WHERE customer = ${customerId}
@@ -131,18 +155,18 @@ router.post("/checkout", requireAuth(), async (req: Request, res: Response) => {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
-    const clerkUser = await clerkClient.users.getUser(userId);
-    const email = clerkUser.emailAddresses[0]?.emailAddress ?? "";
 
-    const body = req.body as { priceId?: string } | undefined;
-    const priceId = body?.priceId ?? PRICE_ID;
-    if (!priceId) {
-      res.status(400).json({
+    // Price is always server-configured — never accept from client
+    if (!SERVER_PRICE_ID) {
+      res.status(503).json({
         error:
-          "No Stripe Price ID configured. Set STRIPE_PRICE_ID env var or pass priceId in the request body.",
+          "Stripe Price ID not yet configured. Ask your admin to set STRIPE_PRICE_ID and connect the Stripe integration.",
       });
       return;
     }
+
+    const clerkUser = await clerkClient.users.getUser(userId);
+    const email = clerkUser.emailAddresses[0]?.emailAddress ?? "";
 
     const user = await getOrCreateUser(userId, email);
     const stripe = await getUncachableStripeClient();
@@ -165,7 +189,7 @@ router.post("/checkout", requireAuth(), async (req: Request, res: Response) => {
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       payment_method_types: ["card"],
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: [{ price: SERVER_PRICE_ID, quantity: 1 }],
       mode: "subscription",
       success_url: `${origin}/?checkout=success`,
       cancel_url: `${origin}/?checkout=cancel`,

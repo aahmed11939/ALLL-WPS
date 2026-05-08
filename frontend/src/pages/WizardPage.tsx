@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, type MutableRefObject } from "react";
+import { useUser } from "@clerk/react";
 import wpsLogo from "../assets/WPS_Logo_1778184724504.png";
 import { useProject } from "../contexts/ProjectContext";
 import { useUnitSystem } from "../contexts/UnitSystemContext";
@@ -210,6 +211,8 @@ export default function WizardPage({
   onGoToLanding,
   importTriggerRef,
 }: WizardPageProps = {}) {
+  const { user } = useUser();
+  const ownerEmail = user?.primaryEmailAddress?.emailAddress ?? "";
   const { draft, dispatch, loadJSON } = useProject();
   const { setUnitSystem, setShowBoth } = useUnitSystem();
 
@@ -343,9 +346,9 @@ export default function WizardPage({
       const data = draft as unknown as Record<string, unknown>;
       let row;
       if (currentSlug) {
-        row = await updateProject(currentSlug, data);
+        row = await updateProject(currentSlug, data, ownerEmail || undefined);
       } else {
-        row = await saveProject(data);
+        row = await saveProject(data, ownerEmail || undefined);
         setCurrentSlug(row.slug);
       }
       setSaveStatus("saved");

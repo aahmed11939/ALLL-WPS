@@ -2721,6 +2721,7 @@ class ProjectSaveRequest(BaseModel):
     """Payload for saving a project.  ``slug`` is optional on create."""
     slug: str | None = None
     data: dict
+    owner_email: str | None = None
 
 
 class ProjectMeta(BaseModel):
@@ -2782,27 +2783,26 @@ class AdminProjectListResponse(BaseModel):
     "/api/v1/admin/projects",
     response_model=AdminProjectListResponse,
     tags=["admin"],
-    summary="Admin-only project listing with secret validation",
+    summary="Admin-only project listing with enforced secret validation",
 )
 def api_admin_list_projects(request: Request) -> AdminProjectListResponse:
-    """List all projects with owner info — requires X-Admin-Secret header.
+    """List all projects with per-project owner info — requires X-Admin-Secret header.
 
     This endpoint is for the admin panel proxy (Node.js api-server) only.
-    It validates the shared secret and attaches a tenant owner_email to each row.
+    It is fail-closed: if ADMIN_SECRET is not configured OR the header does not
+    match, access is denied with 403.  No open-access fallback.
     """
     import os as _os
+    from fastapi import HTTPException as _HTTPException
     admin_secret = _os.environ.get("ADMIN_SECRET", "")
+    if not admin_secret:
+        raise _HTTPException(status_code=503, detail="ADMIN_SECRET not configured on server")
     request_secret = request.headers.get("x-admin-secret", "")
-    if admin_secret and request_secret != admin_secret:
-        from fastapi import HTTPException as _HTTPException
+    if request_secret != admin_secret:
         raise _HTTPException(status_code=403, detail="Forbidden")
-    tenant_email = _os.environ.get("ADMIN_EMAIL", "azizahmed1234@gmail.com")
     rows = list_projects()
     return AdminProjectListResponse(
-        projects=[
-            AdminProjectMeta(owner_email=tenant_email, **r)
-            for r in rows
-        ],
+        projects=[AdminProjectMeta(**r) for r in rows],
         count=len(rows),
     )
 
@@ -2822,7 +2822,7 @@ def api_create_project(body: ProjectSaveRequest) -> ProjectSaveResponse:
     """
     data_json = json.dumps(body.data)
     try:
-        row = create_project(data_json)
+        row = create_project(data_json, owner_email=body.owner_email or "")
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     return ProjectSaveResponse(**row)
@@ -2837,11 +2837,12 @@ def api_create_project(body: ProjectSaveRequest) -> ProjectSaveResponse:
 def api_update_project(slug: str, body: ProjectSaveRequest) -> ProjectSaveResponse:
     """
     Overwrite an existing project identified by *slug*.
-    ``created_at`` is preserved from the original record.
+    ``created_at`` is preserved from the original record.  ``owner_email`` is
+    updated only if provided; otherwise the stored value is preserved.
     """
     data_json = json.dumps(body.data)
     try:
-        row = update_project(slug, data_json)
+        row = update_project(slug, data_json, owner_email=body.owner_email or None)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Project '{slug}' not found.")
     return ProjectSaveResponse(**row)

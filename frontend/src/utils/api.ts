@@ -545,17 +545,26 @@ export async function listProjects(): Promise<ProjectListResponse> {
 }
 
 export async function saveProject(
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
+  ownerEmail?: string,
 ): Promise<ProjectSaveResponse> {
-  const res = await axios.post<ProjectSaveResponse>(`${BASE}/projects`, { data });
+  const res = await axios.post<ProjectSaveResponse>(`${BASE}/projects`, {
+    data,
+    ...(ownerEmail ? { owner_email: ownerEmail } : {}),
+  });
   return res.data;
 }
 
 export async function updateProject(
   slug: string,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
+  ownerEmail?: string,
 ): Promise<ProjectSaveResponse> {
-  const res = await axios.put<ProjectSaveResponse>(`${BASE}/projects/${slug}`, { slug, data });
+  const res = await axios.put<ProjectSaveResponse>(`${BASE}/projects/${slug}`, {
+    slug,
+    data,
+    ...(ownerEmail ? { owner_email: ownerEmail } : {}),
+  });
   return res.data;
 }
 

@@ -11,9 +11,11 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { useProject } from "../../contexts/ProjectContext";
+import { useUnitSystem } from "../../contexts/UnitSystemContext";
 import { useDebounce } from "../../hooks/useDebounce";
 import { computePump } from "../../utils/api";
 import { buildPumpReqFromConfig } from "../../utils/pumpUtils";
+import { FT_PER_M, GPM_PER_M3H, HP_PER_KW, FPS_PER_MS } from "../../utils/units";
 import ChartErrorBoundary from "../ChartErrorBoundary";
 import TermTip from "../TermTip";
 
@@ -25,10 +27,17 @@ interface ChartPt {
 
 export default function StepCurves() {
   const { draft, dispatch } = useProject();
+  const { unitSystem } = useUnitSystem();
+  const isUS = unitSystem === "US";
+
+  const qFactor = isUS ? GPM_PER_M3H : 1;
+  const hFactor = isUS ? FT_PER_M : 1;
+  const qUnit   = isUS ? "gpm" : "m³/h";
+  const hUnit   = isUS ? "ft"  : "m";
+
   const r  = draft.hydraulicsResult;
   const pr = draft.pumpResult;
 
-  // Auto-refresh pump overlay when pump config changes (300 ms debounce)
   const pumpCfgKey = useDebounce(JSON.stringify(draft.pumpCurveConfig), 300);
   const mountedRef = useRef(false);
   useEffect(() => {
@@ -48,32 +57,29 @@ export default function StepCurves() {
 
   const op = pr?.operating_points?.[0] ?? null;
 
-  // Build merged chart data
   const chartData: ChartPt[] = (() => {
     const map = new Map<number, ChartPt>();
-
-    // System curve
     if (r?.system_curve) {
       for (const pt of r.system_curve) {
-        const key = Math.round(pt.Q_m3h * 100) / 100;
-        map.set(key, { Q: key, sys: Math.round(pt.H_m * 100) / 100 });
+        const key = Math.round(pt.Q_m3h * qFactor * 100) / 100;
+        map.set(key, { Q: key, sys: Math.round(pt.H_m * hFactor * 100) / 100 });
       }
     }
-
-    // Pump H-Q curve
     if (pr?.hq_curve) {
       for (const pt of pr.hq_curve) {
-        const key = Math.round(pt.Q_m3h * 100) / 100;
+        const key = Math.round(pt.Q_m3h * qFactor * 100) / 100;
         const existing = map.get(key) ?? { Q: key };
-        map.set(key, { ...existing, pump: Math.round(pt.value * 100) / 100 });
+        map.set(key, { ...existing, pump: Math.round(pt.value * hFactor * 100) / 100 });
       }
     }
-
     return Array.from(map.values()).sort((a, b) => a.Q - b.Q);
   })();
 
   const hasSys  = chartData.some((p) => p.sys  !== undefined);
   const hasPump = chartData.some((p) => p.pump !== undefined);
+
+  const opQ = op ? op.Q_m3h * qFactor : null;
+  const opH = op ? op.H_m  * hFactor  : null;
 
   return (
     <div className="space-y-6">
@@ -87,7 +93,6 @@ export default function StepCurves() {
         </p>
       </div>
 
-      {/* Overlay chart */}
       {!hasSys && !hasPump ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center space-y-2">
           <p className="text-sm font-semibold text-slate-600">No curve data yet</p>
@@ -111,14 +116,14 @@ export default function StepCurves() {
                 domain={["auto", "auto"]}
                 tickCount={8}
                 tickFormatter={(v: number) => v.toFixed(1)}
-                label={{ value: "Q (m³/h)", position: "insideBottom", offset: -12, fontSize: 11 }}
+                label={{ value: `Q (${qUnit})`, position: "insideBottom", offset: -12, fontSize: 11 }}
                 tick={{ fontSize: 10 }}
               />
               <YAxis
                 type="number"
                 domain={["auto", "auto"]}
                 tickFormatter={(v: number) => v.toFixed(1)}
-                label={{ value: "H (m)", angle: -90, position: "insideLeft", offset: 10, fontSize: 11 }}
+                label={{ value: `H (${hUnit})`, angle: -90, position: "insideLeft", offset: 10, fontSize: 11 }}
                 tick={{ fontSize: 10 }}
               />
               <Tooltip
@@ -127,7 +132,7 @@ export default function StepCurves() {
                   return (
                     <div className="rounded-xl border border-slate-200 bg-white shadow-lg px-3 py-2.5 text-xs space-y-1.5 min-w-[160px]">
                       <p className="font-semibold text-slate-500 border-b border-slate-100 pb-1.5 mb-1">
-                        Q = {typeof label === "number" ? label.toFixed(2) : label} m³/h
+                        Q = {typeof label === "number" ? label.toFixed(2) : label} {qUnit}
                       </p>
                       {payload.map((p) => (
                         <div key={p.dataKey as string} className="flex justify-between items-center gap-4">
@@ -138,7 +143,7 @@ export default function StepCurves() {
                             </span>
                           </span>
                           <span className="font-bold font-mono text-slate-800">
-                            {typeof p.value === "number" ? `${p.value.toFixed(2)} m` : "—"}
+                            {typeof p.value === "number" ? `${p.value.toFixed(2)} ${hUnit}` : "—"}
                           </span>
                         </div>
                       ))}
@@ -173,21 +178,21 @@ export default function StepCurves() {
                   connectNulls
                 />
               )}
-              {op && (
+              {op && opQ !== null && opH !== null && (
                 <>
                   <ReferenceLine
-                    x={op.Q_m3h}
+                    x={opQ}
                     stroke="#f59e0b"
                     strokeDasharray="4 3"
                     strokeWidth={1.5}
-                    label={{ value: `Q*=${op.Q_m3h.toFixed(1)}`, position: "top", fontSize: 10, fill: "#b45309" }}
+                    label={{ value: `Q*=${opQ.toFixed(1)}`, position: "top", fontSize: 10, fill: "#b45309" }}
                   />
                   <ReferenceLine
-                    y={op.H_m}
+                    y={opH}
                     stroke="#f59e0b"
                     strokeDasharray="4 3"
                     strokeWidth={1.5}
-                    label={{ value: `H*=${op.H_m.toFixed(1)}`, position: "right", fontSize: 10, fill: "#b45309" }}
+                    label={{ value: `H*=${opH.toFixed(1)}`, position: "right", fontSize: 10, fill: "#b45309" }}
                   />
                 </>
               )}
@@ -207,28 +212,39 @@ export default function StepCurves() {
         </div>
       )}
 
-      {/* Operating point summary */}
       {pr && op ? (
         <div className="rounded-xl border border-teal-200 bg-teal-50 p-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-teal-600 mb-3">
             Pump Operating Point
           </p>
           <div className="grid grid-cols-3 gap-4 text-sm">
-            <Metric label="Q*"           value={`${op.Q_m3h.toFixed(2)} m³/h`}       highlight />
-            <Metric label="H*"           value={`${op.H_m.toFixed(2)} m`}            highlight />
+            <Metric label="Q*"
+              value={`${(op.Q_m3h * qFactor).toFixed(2)} ${qUnit}`}
+              highlight />
+            <Metric label="H*"
+              value={`${(op.H_m * hFactor).toFixed(2)} ${hUnit}`}
+              highlight />
             <Metric label="η"
               value={op.eta_pct != null ? `${op.eta_pct.toFixed(1)} %` : "—"}
             />
             <Metric label="Power"
-              value={op.power_kW != null ? `${op.power_kW.toFixed(2)} kW` : "—"}
+              value={op.power_kW != null
+                ? isUS
+                  ? `${(op.power_kW * HP_PER_KW).toFixed(2)} hp`
+                  : `${op.power_kW.toFixed(2)} kW`
+                : "—"}
             />
             <Metric
               label={<><TermTip term="NPSHr">NPSHr</TermTip></>}
-              value={op.npshr_m != null ? `${op.npshr_m.toFixed(2)} m` : "—"}
+              value={op.npshr_m != null
+                ? `${(op.npshr_m * hFactor).toFixed(2)} ${hUnit}`
+                : "—"}
             />
             <Metric
               label={<><TermTip term="NPSHa">NPSH margin</TermTip></>}
-              value={op.npsh_margin_m != null ? `${op.npsh_margin_m.toFixed(2)} m` : "—"}
+              value={op.npsh_margin_m != null
+                ? `${(op.npsh_margin_m * hFactor).toFixed(2)} ${hUnit}`
+                : "—"}
             />
           </div>
           {pr.warnings.length > 0 && (
@@ -250,19 +266,27 @@ export default function StepCurves() {
         )
       )}
 
-      {/* Hydraulic summary if available */}
       {r && (
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">
             Hydraulic Summary
           </p>
           <div className="grid grid-cols-3 gap-4 text-sm">
-            <Metric label="TDH"          value={`${r.tdh_m.toFixed(2)} m`}                       highlight />
-            <Metric label="Static head"  value={`${r.static_head_m.toFixed(2)} m`}               />
-            <Metric label="Friction hf"  value={`${r.friction_head_m.toFixed(2)} m`}             />
-            <Metric label="Minor hm"     value={`${r.minor_head_m.toFixed(2)} m`}                />
-            <Metric label="Velocity"     value={`${r.velocity_ms.toFixed(3)} m/s`}               />
-            <Metric label="Reynolds No." value={Math.round(r.reynolds_number).toLocaleString()}   />
+            <Metric label="TDH"
+              value={`${(r.tdh_m * hFactor).toFixed(2)} ${hUnit}`}
+              highlight />
+            <Metric label="Static head"
+              value={`${(r.static_head_m * hFactor).toFixed(2)} ${hUnit}`} />
+            <Metric label="Friction hf"
+              value={`${(r.friction_head_m * hFactor).toFixed(2)} ${hUnit}`} />
+            <Metric label="Minor hm"
+              value={`${(r.minor_head_m * hFactor).toFixed(2)} ${hUnit}`} />
+            <Metric label="Velocity"
+              value={isUS
+                ? `${(r.velocity_ms * FPS_PER_MS).toFixed(3)} fps`
+                : `${r.velocity_ms.toFixed(3)} m/s`} />
+            <Metric label="Reynolds No."
+              value={Math.round(r.reynolds_number).toLocaleString()} />
           </div>
         </div>
       )}

@@ -1,5 +1,13 @@
 import { useState, useEffect, useRef } from "react";
-import { useForm, useFieldArray, type SubmitHandler } from "react-hook-form";
+import {
+  useForm,
+  useFieldArray,
+  useController,
+  Controller,
+  type SubmitHandler,
+  type Control,
+  type FieldPath,
+} from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
@@ -8,6 +16,8 @@ import {
   type ClearWellResponse,
 } from "../utils/api";
 import ClearWellDiagram from "./ClearWellDiagram";
+import { useUnitSystem } from "../contexts/UnitSystemContext";
+import { FT_PER_M, GPM_PER_M3H } from "../utils/units";
 
 // ---------------------------------------------------------------------------
 // Zod schema for the form
@@ -66,6 +76,53 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
   );
 }
 
+function UnitInput<T extends FormValues>({
+  name,
+  control,
+  toDisplay,
+  toSI,
+  suffix,
+  step = "any",
+  min,
+  placeholder,
+  inputClassName,
+}: {
+  name: FieldPath<T>;
+  control: Control<T>;
+  toDisplay: (si: number) => number;
+  toSI: (display: number) => number;
+  suffix: string;
+  step?: string;
+  min?: string;
+  placeholder?: string;
+  inputClassName?: string;
+}) {
+  const { field } = useController({ name, control } as Parameters<typeof useController>[0]);
+  const siVal = field.value as number;
+  const displayVal = Number.isFinite(siVal) ? parseFloat(toDisplay(siVal).toFixed(4)) : "";
+  return (
+    <div className="relative">
+      <input
+        type="number"
+        step={step}
+        min={min}
+        placeholder={placeholder}
+        value={displayVal}
+        onChange={(e) => {
+          const v = parseFloat(e.target.value);
+          field.onChange(Number.isFinite(v) ? toSI(v) : NaN);
+        }}
+        onBlur={field.onBlur}
+        ref={field.ref}
+        className={inputClassName ?? inputCls}
+      />
+      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">
+        {suffix}
+      </span>
+    </div>
+  );
+}
+
 const DEFAULT_HOURLY = Array(24).fill({ Q: 36 });
 
 // ---------------------------------------------------------------------------
@@ -97,6 +154,17 @@ const BUILT_IN_DEFAULTS: FormValues = {
 };
 
 export default function ClearWellStep({ initialConfig, onConfigChange, onComputeResult }: ClearWellStepProps = {}) {
+  const { unitSystem } = useUnitSystem();
+  const isUS = unitSystem === "US";
+  const lenSuffix  = isUS ? "ft"    : "m";
+  const flowSuffix = isUS ? "gpm"   : "m³/h";
+  const volSuffix  = isUS ? "ft³"   : "m³";
+  const toLen   = (m: number)   => isUS ? m * FT_PER_M              : m;
+  const fromLen = (v: number)   => isUS ? v / FT_PER_M              : v;
+  const toFlow  = (m3h: number) => isUS ? m3h * GPM_PER_M3H        : m3h;
+  const fromFlow= (v: number)   => isUS ? v / GPM_PER_M3H          : v;
+  const toVol   = (m3: number)  => isUS ? m3 * FT_PER_M * FT_PER_M * FT_PER_M : m3;
+
   const [stepState, setStepState] = useState<StepState>("active");
   const [result, setResult] = useState<ClearWellResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -300,18 +368,16 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
                 </div>
                 {watchShape === "cylindrical" ? (
                   <div>
-                    <label className={labelCls}>Internal Diameter (m)</label>
-                    <div className="relative">
-                      <input
-                        {...register("diameter_m", { valueAsNumber: true })}
-                        type="number"
-                        step="0.1"
-                        className={inputCls}
-                      />
-                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">
-                        m
-                      </span>
-                    </div>
+                    <label className={labelCls}>Internal Diameter ({lenSuffix})</label>
+                    <UnitInput
+                      name="diameter_m"
+                      control={control}
+                      toDisplay={toLen}
+                      toSI={fromLen}
+                      suffix={lenSuffix}
+                      step="0.01"
+                      min="0"
+                    />
                     {errors.diameter_m && (
                       <p className={errCls}>{errors.diameter_m.message}</p>
                     )}
@@ -319,35 +385,31 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
                 ) : (
                   <>
                     <div>
-                      <label className={labelCls}>Length (m)</label>
-                      <div className="relative">
-                        <input
-                          {...register("length_m", { valueAsNumber: true })}
-                          type="number"
-                          step="0.1"
-                          className={inputCls}
-                        />
-                        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">
-                          m
-                        </span>
-                      </div>
+                      <label className={labelCls}>Length ({lenSuffix})</label>
+                      <UnitInput
+                        name="length_m"
+                        control={control}
+                        toDisplay={toLen}
+                        toSI={fromLen}
+                        suffix={lenSuffix}
+                        step="0.01"
+                        min="0"
+                      />
                       {errors.length_m && (
                         <p className={errCls}>{errors.length_m.message}</p>
                       )}
                     </div>
                     <div>
-                      <label className={labelCls}>Width (m)</label>
-                      <div className="relative">
-                        <input
-                          {...register("width_m", { valueAsNumber: true })}
-                          type="number"
-                          step="0.1"
-                          className={inputCls}
-                        />
-                        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">
-                          m
-                        </span>
-                      </div>
+                      <label className={labelCls}>Width ({lenSuffix})</label>
+                      <UnitInput
+                        name="width_m"
+                        control={control}
+                        toDisplay={toLen}
+                        toSI={fromLen}
+                        suffix={lenSuffix}
+                        step="0.01"
+                        min="0"
+                      />
                       {errors.width_m && (
                         <p className={errCls}>{errors.width_m.message}</p>
                       )}
@@ -359,7 +421,7 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
 
             {/* ---- Operating levels ---- */}
             <div>
-              <SectionHeader>Operating Levels (m above datum)</SectionHeader>
+              <SectionHeader>Operating Levels ({lenSuffix} above datum)</SectionHeader>
               <div className="grid grid-cols-2 gap-3">
                 {(
                   [
@@ -371,17 +433,14 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
                 ).map(([field, label]) => (
                   <div key={field}>
                     <label className={labelCls}>{label}</label>
-                    <div className="relative">
-                      <input
-                        {...register(field, { valueAsNumber: true })}
-                        type="number"
-                        step="0.05"
-                        className={inputCls}
-                      />
-                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">
-                        m
-                      </span>
-                    </div>
+                    <UnitInput
+                      name={field}
+                      control={control}
+                      toDisplay={toLen}
+                      toSI={fromLen}
+                      suffix={lenSuffix}
+                      step="0.01"
+                    />
                     {errors[field] && (
                       <p className={errCls}>{errors[field]?.message}</p>
                     )}
@@ -411,20 +470,33 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
                       />
                     </div>
                     <div className="flex-1">
-                      <div className="relative">
-                        <input
-                          {...register(`pump_stages.${i}.Q_pump_m3h`, {
-                            valueAsNumber: true,
-                          })}
-                          type="number"
-                          step="1"
-                          placeholder="Flow"
-                          className={inputCls}
-                        />
-                        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">
-                          m³/h
-                        </span>
-                      </div>
+                      <Controller
+                        name={`pump_stages.${i}.Q_pump_m3h`}
+                        control={control}
+                        render={({ field }) => {
+                          const dv = Number.isFinite(field.value) ? parseFloat(toFlow(field.value).toFixed(2)) : "";
+                          return (
+                            <div className="relative">
+                              <input
+                                type="number"
+                                step="1"
+                                placeholder="Flow"
+                                value={dv}
+                                onChange={(e) => {
+                                  const v = parseFloat(e.target.value);
+                                  field.onChange(Number.isFinite(v) ? fromFlow(v) : NaN);
+                                }}
+                                onBlur={field.onBlur}
+                                ref={field.ref}
+                                className={inputCls}
+                              />
+                              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">
+                                {flowSuffix}
+                              </span>
+                            </div>
+                          );
+                        }}
+                      />
                     </div>
                     <button
                       type="button"
@@ -469,25 +541,23 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
 
               {watchInflowType === "constant" ? (
                 <div>
-                  <label className={labelCls}>Constant Inflow Q_in</label>
-                  <div className="relative">
-                    <input
-                      {...register("Q_in_m3h", { valueAsNumber: true })}
-                      type="number"
-                      step="0.5"
-                      className={inputCls}
-                    />
-                    <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">
-                      m³/h
-                    </span>
-                  </div>
+                  <label className={labelCls}>Constant Inflow Q_in ({flowSuffix})</label>
+                  <UnitInput
+                    name="Q_in_m3h"
+                    control={control}
+                    toDisplay={toFlow}
+                    toSI={fromFlow}
+                    suffix={flowSuffix}
+                    step="0.5"
+                    min="0"
+                  />
                   {errors.Q_in_m3h && (
                     <p className={errCls}>{errors.Q_in_m3h.message}</p>
                   )}
                 </div>
               ) : (
                 <div>
-                  <label className={labelCls}>Hourly Inflow — 24 values (m³/h)</label>
+                  <label className={labelCls}>Hourly Inflow — 24 values ({flowSuffix})</label>
                   <div className="grid grid-cols-6 gap-1.5">
                     {hourlyFields.map((field, i) => (
                       <div key={field.id} className="flex flex-col gap-0.5">
@@ -591,6 +661,7 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
               HHL_m={watchHHL}
               pump_stages={watchStages ?? []}
               max_cycles_per_hour={watchMaxCycles ?? 6}
+              isUS={isUS}
             />
           </div>
 
@@ -614,9 +685,9 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
                     Operating Volume
                   </p>
                   <p className="font-mono text-2xl font-bold text-teal-800">
-                    {result.operating_volume_m3?.toFixed(2)}
+                    {result.operating_volume_m3 != null ? toVol(result.operating_volume_m3).toFixed(2) : "—"}
                     <span className="ml-1.5 text-sm font-normal text-teal-600">
-                      m³
+                      {volSuffix}
                     </span>
                   </p>
                   <p className="text-xs text-teal-600 mt-0.5">LWL → HWL</p>
@@ -648,9 +719,9 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
                     Max Volume (HHL)
                   </p>
                   <p className="font-mono text-2xl font-bold text-slate-800">
-                    {result.volume_curve.at(-1)?.volume_m3.toFixed(2) ?? "—"}
+                    {result.volume_curve.length > 0 ? toVol(result.volume_curve.at(-1)!.volume_m3).toFixed(2) : "—"}
                     <span className="ml-1.5 text-sm font-normal text-slate-500">
-                      m³
+                      {volSuffix}
                     </span>
                   </p>
                   <p className="text-xs text-slate-400 mt-0.5">LLL to HHL</p>
@@ -670,16 +741,16 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
                           Stage
                         </th>
                         <th className="text-right py-1.5 pr-3 font-semibold text-slate-600">
-                          Q pump (m³/h)
+                          Q pump ({flowSuffix})
                         </th>
                         <th className="text-right py-1.5 pr-3 font-semibold text-slate-600">
-                          Q in (m³/h)
+                          Q in ({flowSuffix})
                         </th>
                         <th className="text-right py-1.5 pr-3 font-semibold text-slate-600">
                           Cycles/h
                         </th>
                         <th className="text-right py-1.5 pr-3 font-semibold text-slate-600">
-                          V req (m³)
+                          V req ({volSuffix})
                         </th>
                         <th className="text-center py-1.5 pr-4 font-semibold text-slate-600">
                           Status
@@ -696,10 +767,10 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
                             {cr.label || `Stage ${cr.stage}`}
                           </td>
                           <td className="py-1.5 pr-3 text-right font-mono text-slate-700">
-                            {cr.Q_pump_m3h.toFixed(1)}
+                            {toFlow(cr.Q_pump_m3h).toFixed(1)}
                           </td>
                           <td className="py-1.5 pr-3 text-right font-mono text-slate-700">
-                            {cr.Q_in_m3h.toFixed(1)}
+                            {toFlow(cr.Q_in_m3h).toFixed(1)}
                           </td>
                           <td className="py-1.5 pr-3 text-right font-mono text-slate-700">
                             {cr.cycles_per_hour > 0
@@ -707,7 +778,7 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
                               : "—"}
                           </td>
                           <td className="py-1.5 pr-3 text-right font-mono text-slate-700">
-                            {cr.V_req_m3.toFixed(2)}
+                            {toVol(cr.V_req_m3).toFixed(2)}
                           </td>
                           <td className="py-1.5 pr-4 text-center">
                             {!cr.pump_can_drain ? (
@@ -742,13 +813,13 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
                       <thead className="sticky top-0 bg-slate-50 border-t border-slate-200">
                         <tr>
                           <th className="text-right py-1.5 px-4 font-semibold text-slate-600">
-                            Level (m)
+                            Level ({lenSuffix})
                           </th>
                           <th className="text-right py-1.5 pr-4 font-semibold text-slate-600">
-                            Depth above LLL (m)
+                            Depth above LLL ({lenSuffix})
                           </th>
                           <th className="text-right py-1.5 pr-4 font-semibold text-slate-600">
-                            Volume (m³)
+                            Volume ({volSuffix})
                           </th>
                         </tr>
                       </thead>
@@ -759,13 +830,13 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
                             className="border-t border-slate-100 odd:bg-white even:bg-slate-50"
                           >
                             <td className="py-1 px-4 text-right font-mono text-slate-700">
-                              {pt.level_m.toFixed(3)}
+                              {toLen(pt.level_m).toFixed(3)}
                             </td>
                             <td className="py-1 pr-4 text-right font-mono text-slate-700">
-                              {pt.depth_m.toFixed(3)}
+                              {toLen(pt.depth_m).toFixed(3)}
                             </td>
                             <td className="py-1 pr-4 text-right font-mono text-slate-700">
-                              {pt.volume_m3.toFixed(3)}
+                              {toVol(pt.volume_m3).toFixed(3)}
                             </td>
                           </tr>
                         ))}

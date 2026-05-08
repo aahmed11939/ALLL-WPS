@@ -36,14 +36,14 @@ const STEPS: StepDef[] = [
   { label: "Project Setup",              shortLabel: "Setup",      badge: "Meta"  },
   { label: "System Nodes",               shortLabel: "Nodes",      badge: "Elev"  },
   { label: "Suction Pipeline",           shortLabel: "Suction",    badge: "Pipe"  },
-  { label: "Wet Well Sizing",            shortLabel: "Wet Well",   badge: "CW"    },
+  { label: "Clear Well Sizing",           shortLabel: "Clear Well", badge: "CW"    },
   { label: "Pump Selection & Curves",    shortLabel: "Pump",       badge: "H-Q"   },
   { label: "Discharge Pipeline",         shortLabel: "Discharge",  badge: "Pipe"  },
   { label: "Hydraulic Results",          shortLabel: "Hydraulics", badge: "TDH"   },
   { label: "System Curve & Op. Point",   shortLabel: "Sys Curve",  badge: "Q*H*"  },
   { label: "Water Hammer",               shortLabel: "WH Surge",   badge: "Surge" },
   { label: "Engineering Checks",         shortLabel: "Checks",     badge: "✓ Eng" },
-  { label: "Summary & Export",           shortLabel: "Export",     badge: "JSON"  },
+  { label: "Summary & Export",           shortLabel: "Export",     badge: "Report"},
 ];
 
 // ---------------------------------------------------------------------------
@@ -576,29 +576,6 @@ export default function WizardPage({
               {saveStatus === "saved" ? "Saved!" : saveStatus === "error" ? "Error" : "Save"}
             </button>
 
-            {/* Export JSON download */}
-            <button
-              type="button"
-              onClick={handleExportJSON}
-              className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-slate-400 hover:bg-slate-50 transition-colors"
-            >
-              Export JSON
-            </button>
-
-            <input
-              ref={loadFileRef}
-              type="file"
-              accept=".json,.wps.json"
-              className="hidden"
-              onChange={handleLoadFile}
-            />
-            <button
-              type="button"
-              onClick={() => loadFileRef.current?.click()}
-              className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-slate-400 hover:bg-slate-50 transition-colors"
-            >
-              Import JSON
-            </button>
             <div ref={sampleBtnRef} className="relative">
               <button
                 type="button"

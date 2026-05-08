@@ -358,40 +358,6 @@ export default function StepExports() {
         </div>
         <div className="p-4 space-y-3">
 
-          {/* JSON — functional */}
-          <div className="flex items-center justify-between rounded-lg border border-teal-200 bg-teal-50 px-4 py-3">
-            <div>
-              <p className="text-sm font-semibold text-teal-800">Project File (.wps.json)</p>
-              <p className="text-xs text-teal-600 mt-0.5">
-                All design inputs as JSON — reload in WPS Designer or process programmatically.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={handleDownloadJson}
-              className="shrink-0 rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-600 transition-colors"
-            >
-              Download JSON
-            </button>
-          </div>
-
-          {/* Text Report — functional */}
-          <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3">
-            <div>
-              <p className="text-sm font-semibold text-slate-700">Engineering Checks Report (.txt)</p>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Plain-text compliance checklist — all check results with standards references and recommended actions.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={handleDownloadText}
-              className="shrink-0 rounded-lg bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-600 transition-colors"
-            >
-              Download Report
-            </button>
-          </div>
-
           {/* Excel — live */}
           <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
             <div>
@@ -402,7 +368,7 @@ export default function StepExports() {
                 </span>
               </div>
               <p className="text-xs text-emerald-700 mt-0.5">
-                11-sheet workbook — inputs, hydraulics, pump curves, wet well, surge analysis &amp; engineering checks.
+                11-sheet workbook — inputs, hydraulics, pump curves, clear well, surge analysis &amp; engineering checks.
               </p>
               <ExportSpinner stages={EXCEL_STAGES} active={excelLoading} />
             </div>
@@ -432,7 +398,7 @@ export default function StepExports() {
                 </span>
               </div>
               <p className="text-xs text-indigo-700 mt-0.5">
-                Stamped design memorandum — hydraulics, pump curves, wet well, surge analysis &amp; figures.
+                Stamped design memorandum — hydraulics, pump curves, clear well, surge analysis &amp; figures.
               </p>
               <ExportSpinner stages={WORD_STAGES} active={wordLoading} />
             </div>

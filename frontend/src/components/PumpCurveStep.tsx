@@ -112,6 +112,8 @@ interface ChartConfig {
   showBep?: boolean;
   /** If true, show a diamond marker at (opQ, opV) — use on H-Q chart */
   showOpDiamond?: boolean;
+  /** Pass true when unit system is US Customary so axis labels update */
+  isUS?: boolean;
 }
 
 function PumpChart({ cfg }: { cfg: ChartConfig }) {
@@ -167,9 +169,9 @@ function PumpChart({ cfg }: { cfg: ChartConfig }) {
           <XAxis
             dataKey="Q_m3h"
             type="number"
-            label={{ value: "Q (m³/h)", position: "insideBottomRight", offset: -8, fontSize: 10, fill: "#64748b" }}
+            label={{ value: cfg.isUS ? "Q (gpm)" : "Q (m³/h)", position: "insideBottomRight", offset: -8, fontSize: 10, fill: "#64748b" }}
             tick={{ fontSize: 10, fontFamily: "monospace", fill: "#64748b" }}
-            tickFormatter={(v: number) => v.toFixed(0)}
+            tickFormatter={(v: number) => cfg.isUS ? (v * 4.40287).toFixed(0) : v.toFixed(0)}
           />
           <YAxis
             label={{ value: cfg.yLabel, angle: -90, position: "insideLeft", offset: 12, fontSize: 10, fill: "#64748b" }}
@@ -251,7 +253,7 @@ function PumpChart({ cfg }: { cfg: ChartConfig }) {
               stroke="#dc2626"
               strokeDasharray="5 3"
               strokeWidth={1.5}
-              label={{ value: `Q*=${cfg.opQ.toFixed(1)}`, position: "top", fontSize: 9, fill: "#dc2626", fontFamily: "monospace" }}
+              label={{ value: `Q*=${cfg.isUS ? (cfg.opQ * 4.40287).toFixed(1) : cfg.opQ.toFixed(1)}`, position: "top", fontSize: 9, fill: "#dc2626", fontFamily: "monospace" }}
             />
           )}
           {/* Operating point value horizontal line */}
@@ -1019,6 +1021,7 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
                     speedCurves: vfd ? result.speed_curves : undefined,
                     systemPts: systemCurve,
                     showOpDiamond: true,
+                    isUS,
                   }}
                 />
                 <PumpChart
@@ -1030,6 +1033,7 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
                     opQ: primaryOp?.Q_m3h,
                     opV: primaryOp?.eta_pct ?? undefined,
                     showBep: result.eta_curve.length > 0,
+                    isUS,
                   }}
                 />
                 <PumpChart
@@ -1044,6 +1048,7 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
                     opV: primaryOp?.power_kW != null
                       ? (isUS ? primaryOp.power_kW * KW_TO_HP : primaryOp.power_kW)
                       : undefined,
+                    isUS,
                   }}
                 />
                 <PumpChart
@@ -1055,6 +1060,7 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
                     opQ: primaryOp?.Q_m3h,
                     opV: primaryOp?.npshr_m ?? undefined,
                     npshaM: npsha !== "" ? parseFloat(npsha) : undefined,
+                    isUS,
                   }}
                 />
               </div>

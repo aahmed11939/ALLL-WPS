@@ -11,7 +11,7 @@ import {
 interface Props {
   onOpenProject: (row: ProjectLoadResponse) => void;
   onNewProject: () => void;
-  onImportJSON: () => void;
+  onImportJSON?: () => void;
 }
 
 function formatDate(iso: string): string {
@@ -29,7 +29,7 @@ function formatDate(iso: string): string {
   }
 }
 
-function EmptyState({ onNew, onImport }: { onNew: () => void; onImport: () => void }) {
+function EmptyState({ onNew }: { onNew: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center gap-4">
       <div className="h-16 w-16 rounded-2xl bg-teal-50 flex items-center justify-center">
@@ -40,7 +40,7 @@ function EmptyState({ onNew, onImport }: { onNew: () => void; onImport: () => vo
       </div>
       <div>
         <p className="text-sm font-semibold text-slate-700">No saved projects yet</p>
-        <p className="text-xs text-slate-400 mt-1">Create a new project or import an existing JSON file to get started.</p>
+        <p className="text-xs text-slate-400 mt-1">Create a new project to get started.</p>
       </div>
       <div className="flex items-center gap-3 mt-2">
         <button
@@ -49,13 +49,6 @@ function EmptyState({ onNew, onImport }: { onNew: () => void; onImport: () => vo
           className="rounded-lg bg-teal-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-teal-600 transition-colors shadow-sm"
         >
           New Project
-        </button>
-        <button
-          type="button"
-          onClick={onImport}
-          className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
-        >
-          Import JSON
         </button>
       </div>
     </div>
@@ -125,13 +118,6 @@ export default function ProjectsPage({ onOpenProject, onNewProject, onImportJSON
           <div className="ml-auto flex items-center gap-2">
             <button
               type="button"
-              onClick={onImportJSON}
-              className="rounded border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:border-slate-400 hover:bg-slate-50 transition-colors"
-            >
-              Import JSON
-            </button>
-            <button
-              type="button"
               onClick={onNewProject}
               className="rounded-lg bg-teal-700 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-600 transition-colors shadow-sm"
             >
@@ -174,7 +160,7 @@ export default function ProjectsPage({ onOpenProject, onNewProject, onImportJSON
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
           </div>
         ) : projects.length === 0 ? (
-          <EmptyState onNew={onNewProject} onImport={onImportJSON} />
+          <EmptyState onNew={onNewProject} />
         ) : (
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <table className="w-full text-sm">

@@ -583,7 +583,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
               />
               <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
                 <span>0 °C</span>
-                <span>h_vap = {localVaporPressureHead(parseFloat(temperatureC) || 20, parseFloat(rho) || 1000).toFixed(2)} m gauge</span>
+                <span>h_vap = {fmtH(localVaporPressureHead(parseFloat(temperatureC) || 20, parseFloat(rho) || 1000), us)} gauge</span>
                 <span>50 °C</span>
               </div>
             </div>
@@ -636,7 +636,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
             {activePipeline === "suction" ? "⬆ Suction" : "⬇ Discharge"}
           </span>
           <span className="text-xs text-slate-500 font-mono">
-            L = {pipeLen.toFixed(1)} m
+            L = {fmtH(pipeLen, us)}
           </span>
         </div>
 
@@ -779,7 +779,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
               <span>
                 Temperature: <strong className="font-mono">{temperatureC} °C</strong>
                 {" · "}h<sub>vap</sub>:{" "}
-                <strong className="font-mono">{localVapHead.toFixed(2)} m</strong> gauge
+                <strong className="font-mono">{fmtH(localVapHead, us)}</strong> gauge
               </span>
               <button
                 onClick={() => setShowWaveCalc(true)}
@@ -834,10 +834,10 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 font-sans">
               Live preview (Joukowsky, no reduction)
             </p>
-            <p>ΔH = a·ΔV/g = {previewA.toFixed(0)}·{effectiveV0.toFixed(3)}/{G} = <strong className="text-slate-800">{previewDH.toFixed(3)} m</strong></p>
-            <p>ΔP = ρ·a·ΔV = {previewRho}·{previewA.toFixed(0)}·{effectiveV0.toFixed(3)}/1000 = <strong className="text-slate-800">{previewDP.toFixed(2)} kPa</strong></p>
+            <p>ΔH = a·ΔV/g = {previewA.toFixed(0)}·{effectiveV0.toFixed(3)}/{G} = <strong className="text-slate-800">{fmtH(previewDH, us)}</strong></p>
+            <p>ΔP = ρ·a·ΔV = {previewRho}·{previewA.toFixed(0)}·{effectiveV0.toFixed(3)}/1000 = <strong className="text-slate-800">{fmtP(previewDP, us)}</strong></p>
             <p>T = 2L/a = 2×{pipeLen.toFixed(1)}/{previewA.toFixed(0)} = <strong className="text-slate-800">{previewT.toFixed(3)} s</strong></p>
-            <p>h_vap = <strong className="text-slate-800">{localVapHead.toFixed(2)} m</strong> gauge {validTemp ? `at ${tempCNum} °C` : ""}</p>
+            <p>h_vap = <strong className="text-slate-800">{fmtH(localVapHead, us)}</strong> gauge {validTemp ? `at ${tempCNum} °C` : ""}</p>
           </div>
         )}
 

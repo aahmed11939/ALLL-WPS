@@ -18,6 +18,7 @@ import {
   type LossBreakdownResponse,
 } from "../../utils/api";
 import { buildPumpReqFromConfig } from "../../utils/pumpUtils";
+import { FT_PER_M, GPM_PER_M3H, IN_PER_MM } from "../../utils/units";
 
 function expandKValues(items: { count: number; K_override?: number | null; default_K?: number }[]): number[] {
   const ks: number[] = [];
@@ -31,6 +32,7 @@ function expandKValues(items: { count: number; K_override?: number | null; defau
 export default function StepHydraulics() {
   const { draft, dispatch } = useProject();
   const { unitSystem } = useUnitSystem();
+  const isUS = unitSystem === "US";
 
   const [loading, setLoading] = useState(false);
   const [lastReq, setLastReq] = useState<CalculationRequest | null>(null);
@@ -215,7 +217,7 @@ export default function StepHydraulics() {
               fieldErrors.some(e => e.loc.includes("Q_m3h")) ? "bg-rose-50 outline outline-1 outline-rose-400" : ""
             }`}>
               <span className="text-slate-400">Design flow</span>
-              <span className="font-mono text-slate-700">{draft.designFlow_m3h.toFixed(2)} m³/h</span>
+              <span className="font-mono text-slate-700">{isUS ? (draft.designFlow_m3h * GPM_PER_M3H).toFixed(1) : draft.designFlow_m3h.toFixed(2)} {isUS ? "gpm" : "m³/h"}</span>
             </div>
             <FieldErrorHint fieldPath="Q_m3h" errors={fieldErrors} />
           </div>
@@ -224,7 +226,7 @@ export default function StepHydraulics() {
               fieldErrors.some(e => e.loc.includes("elev_us_m")) ? "bg-rose-50 outline outline-1 outline-rose-400" : ""
             }`}>
               <span className="text-slate-400">Upstream elev.</span>
-              <span className="font-mono text-slate-700">{draft.upstreamNode.elevation_m.toFixed(2)} m</span>
+              <span className="font-mono text-slate-700">{isUS ? (draft.upstreamNode.elevation_m * FT_PER_M).toFixed(2) : draft.upstreamNode.elevation_m.toFixed(2)} {isUS ? "ft" : "m"}</span>
             </div>
             <FieldErrorHint fieldPath="elev_us_m" errors={fieldErrors} />
           </div>
@@ -233,7 +235,7 @@ export default function StepHydraulics() {
               fieldErrors.some(e => e.loc.includes("elev_ds_m")) ? "bg-rose-50 outline outline-1 outline-rose-400" : ""
             }`}>
               <span className="text-slate-400">Downstream elev.</span>
-              <span className="font-mono text-slate-700">{draft.downstreamNode.elevation_m.toFixed(2)} m</span>
+              <span className="font-mono text-slate-700">{isUS ? (draft.downstreamNode.elevation_m * FT_PER_M).toFixed(2) : draft.downstreamNode.elevation_m.toFixed(2)} {isUS ? "ft" : "m"}</span>
             </div>
             <FieldErrorHint fieldPath="elev_ds_m" errors={fieldErrors} />
           </div>
@@ -243,7 +245,13 @@ export default function StepHydraulics() {
             }`}>
               <span className="text-slate-400">Pipe diam. (primary)</span>
               <span className="font-mono text-slate-700">
-                {(draft.discharge.segments[0] ?? draft.suction.segments[0])?.diameter_mm ?? "—"} mm
+                {(() => {
+                  const seg = draft.discharge.segments[0] ?? draft.suction.segments[0];
+                  if (!seg) return "—";
+                  return isUS
+                    ? `${(seg.diameter_mm * IN_PER_MM).toFixed(3)} in`
+                    : `${seg.diameter_mm} mm`;
+                })()}
               </span>
             </div>
             <FieldErrorHint fieldPath="pipe_diameter_mm" errors={fieldErrors} />

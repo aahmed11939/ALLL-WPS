@@ -103,7 +103,7 @@ export default function StepMeta() {
               className={inputCls}
               value={meta.engineer}
               onChange={(e) => setMeta("engineer", e.target.value)}
-              placeholder="Name, P.Eng."
+              placeholder="Name, P.E."
             />
           </div>
           <div className="col-span-2">

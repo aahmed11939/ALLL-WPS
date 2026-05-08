@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { FT_PER_M } from "../utils/units";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -21,6 +22,7 @@ interface ClearWellDiagramProps {
   HHL_m: number;
   pump_stages: PumpStage[];
   max_cycles_per_hour: number;
+  isUS?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,6 +84,8 @@ const V_REQ_COLORS = [
   { fill: "rgba(249,115,22,0.25)", stroke: "#f97316" },
 ];
 
+const FT3_PER_M3 = FT_PER_M * FT_PER_M * FT_PER_M; // 35.3147 ft³/m³
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -97,6 +101,7 @@ export default function ClearWellDiagram({
   HHL_m,
   pump_stages,
   max_cycles_per_hour,
+  isUS = false,
 }: ClearWellDiagramProps) {
   const area = crossSectionArea(shape, diameter_m, length_m, width_m);
 
@@ -172,15 +177,33 @@ export default function ClearWellDiagram({
   const wallLeft  = TANK_X;
   const wallRight = TANK_X + TANK_W;
 
+  const lenUnit  = isUS ? "ft" : "m";
+  const areaUnit = isUS ? "ft²" : "m²";
+
   // Geometry label for subtitle
   let geomLabel = "";
   if (shape === "cylindrical" && diameter_m) {
-    geomLabel = `Ø ${diameter_m.toFixed(1)} m cylindrical`;
-    if (area !== null) geomLabel += ` · A = ${area.toFixed(2)} m²`;
+    const dDisp = isUS ? (diameter_m * FT_PER_M).toFixed(2) : diameter_m.toFixed(1);
+    geomLabel = `Ø ${dDisp} ${lenUnit} cylindrical`;
+    if (area !== null) {
+      const aDisp = isUS ? (area * FT_PER_M * FT_PER_M).toFixed(2) : area.toFixed(2);
+      geomLabel += ` · A = ${aDisp} ${areaUnit}`;
+    }
   } else if (shape === "rectangular" && length_m && width_m) {
-    geomLabel = `${length_m.toFixed(1)} × ${width_m.toFixed(1)} m rectangular`;
-    if (area !== null) geomLabel += ` · A = ${area.toFixed(2)} m²`;
+    const lDisp = isUS ? (length_m * FT_PER_M).toFixed(2) : length_m.toFixed(1);
+    const wDisp = isUS ? (width_m * FT_PER_M).toFixed(2) : width_m.toFixed(1);
+    geomLabel = `${lDisp} × ${wDisp} ${lenUnit} rectangular`;
+    if (area !== null) {
+      const aDisp = isUS ? (area * FT_PER_M * FT_PER_M).toFixed(2) : area.toFixed(2);
+      geomLabel += ` · A = ${aDisp} ${areaUnit}`;
+    }
   }
+
+  const fmtLevel = (m: number) =>
+    isUS ? `${(m * FT_PER_M).toFixed(2)} ft` : `${m.toFixed(2)} m`;
+
+  const fmtVol = (m3: number) =>
+    isUS ? `${(m3 * FT3_PER_M3).toFixed(1)} ft³` : `${m3.toFixed(1)} m³`;
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
@@ -293,7 +316,7 @@ export default function ClearWellDiagram({
                   fill={col.text}
                   opacity={0.75}
                 >
-                  {level.toFixed(2)} m
+                  {fmtLevel(level)}
                 </text>
                 {/* Right-side description badge */}
                 <text
@@ -373,7 +396,7 @@ export default function ClearWellDiagram({
                 fill={b.color.stroke}
                 opacity={0.9}
               >
-                {`${b.label} V_req=${b.V_req.toFixed(1)} m³`}
+                {`${b.label} V_req=${fmtVol(b.V_req)}`}
               </text>
             );
           })}
@@ -433,7 +456,7 @@ export default function ClearWellDiagram({
             .map((b) => (
               <p key={b.key}>
                 <span className="font-semibold">{b.label}:</span> V_req{" "}
-                {b.V_req.toFixed(1)} m³ exceeds the operating band — operating
+                {fmtVol(b.V_req)} exceeds the operating band — operating
                 volume is insufficient for the motor start limit.
               </p>
             ))}

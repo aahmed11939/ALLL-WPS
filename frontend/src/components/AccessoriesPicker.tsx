@@ -145,56 +145,48 @@ export default function AccessoriesPicker({ segment, onChange, initialItems }: P
   );
 
   const add = (acc: AccessoryRecord) => {
-    setSelected((prev) => {
-      const next = { ...prev };
-      if (next[acc.id]) {
-        next[acc.id] = { ...next[acc.id], count: next[acc.id].count + 1 };
-      } else {
-        next[acc.id] = { ...acc, count: 1, K_override: null, expanded: false };
-      }
-      notify(next);
-      return next;
-    });
+    const next = { ...selected };
+    if (next[acc.id]) {
+      next[acc.id] = { ...next[acc.id], count: next[acc.id].count + 1 };
+    } else {
+      next[acc.id] = { ...acc, count: 1, K_override: null, expanded: false };
+    }
+    setSelected(next);
+    notify(next);
   };
 
   const remove = (id: string) => {
-    setSelected((prev) => {
-      const next = { ...prev };
-      if (!next[id]) return prev;
-      if (next[id].count > 1) {
-        next[id] = { ...next[id], count: next[id].count - 1 };
-      } else {
-        delete next[id];
-      }
-      notify(next);
-      return next;
-    });
+    const next = { ...selected };
+    if (!next[id]) return;
+    if (next[id].count > 1) {
+      next[id] = { ...next[id], count: next[id].count - 1 };
+    } else {
+      delete next[id];
+    }
+    setSelected(next);
+    notify(next);
   };
 
   const setCount = (id: string, val: number) => {
-    setSelected((prev) => {
-      const next = { ...prev };
-      if (val <= 0) {
-        delete next[id];
-      } else {
-        next[id] = { ...next[id], count: val };
-      }
-      notify(next);
-      return next;
-    });
+    const next = { ...selected };
+    if (val <= 0) {
+      delete next[id];
+    } else {
+      next[id] = { ...next[id], count: val };
+    }
+    setSelected(next);
+    notify(next);
   };
 
   const setKOverride = (id: string, val: string) => {
-    setSelected((prev) => {
-      const next = { ...prev };
-      const parsed = parseFloat(val);
-      next[id] = {
-        ...next[id],
-        K_override: val === "" || isNaN(parsed) ? null : parsed,
-      };
-      notify(next);
-      return next;
-    });
+    const next = { ...selected };
+    const parsed = parseFloat(val);
+    next[id] = {
+      ...next[id],
+      K_override: val === "" || isNaN(parsed) ? null : parsed,
+    };
+    setSelected(next);
+    notify(next);
   };
 
   const toggleExpanded = (id: string) => {
@@ -307,7 +299,7 @@ export default function AccessoriesPicker({ segment, onChange, initialItems }: P
               >
                 {CATEGORY_LABELS[cat] ?? cat}
                 {hasSelected && (
-                  <span className="ml-1 rounded-full bg-white/30 px-1 text-[9px]">
+                  <span className="ml-1 rounded-full bg-white/30 px-1.5 py-px text-[11px] font-bold">
                     {Object.values(selected)
                       .filter((s) => s.category === cat)
                       .reduce((n, s) => n + s.count, 0)}

@@ -509,7 +509,9 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
           <div className="flex items-center gap-3">
             {!showWaveCalc && waveCalcResult && (
               <span className="text-xs font-mono text-blue-700 font-semibold">
-                a = {waveCalcResult.wave_speed_ms} m/s
+                a = {us
+                  ? `${(waveCalcResult.wave_speed_ms * FPS_PER_MS).toFixed(1)} ft/s`
+                  : `${waveCalcResult.wave_speed_ms.toFixed(1)} m/s`}
               </span>
             )}
             <span className="text-blue-400 text-xs">{showWaveCalc ? "▲ collapse" : "▼ expand"}</span>
@@ -647,7 +649,13 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
             {waveCalcResult && (
               <div className="space-y-3">
                 <div className="grid grid-cols-3 gap-2">
-                  <KpiCard label="Wave speed a" value={`${waveCalcResult.wave_speed_ms} m/s`} highlight="blue" />
+                  <KpiCard
+                    label="Wave speed a"
+                    value={us
+                      ? `${(waveCalcResult.wave_speed_ms * FPS_PER_MS).toFixed(1)} ft/s`
+                      : `${waveCalcResult.wave_speed_ms.toFixed(1)} m/s`}
+                    highlight="blue"
+                  />
                   <KpiCard
                     label="Inner diameter Dᵢ"
                     value={us

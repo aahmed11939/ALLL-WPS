@@ -560,30 +560,18 @@ export default function AdminPage() {
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const isAdmin = email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
-  if (!isLoaded) return null;
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (!isAdmin) {
+      setLocation("/");
+      return;
+    }
+    // Log admin login event (fire-and-forget)
+    void adminFetch("/login-event", { method: "POST" });
+  }, [isLoaded, isAdmin, setLocation]);
 
-  if (!isAdmin) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="text-center max-w-sm px-6">
-          <div className="h-12 w-12 rounded-full bg-rose-100 flex items-center justify-center mx-auto mb-4">
-            <svg className="h-6 w-6 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-            </svg>
-          </div>
-          <h2 className="text-lg font-bold text-slate-900 mb-2">Not authorised</h2>
-          <p className="text-sm text-slate-500 mb-4">You don't have permission to access the admin panel.</p>
-          <button
-            type="button"
-            onClick={() => setLocation("/")}
-            className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-600 transition-colors"
-          >
-            Go home
-          </button>
-        </div>
-      </div>
-    );
-  }
+  if (!isLoaded) return null;
+  if (!isAdmin) return null;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">

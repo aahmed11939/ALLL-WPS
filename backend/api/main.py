@@ -2756,21 +2756,8 @@ class ProjectLoadResponse(BaseModel):
     tags=["projects"],
     summary="List all saved projects",
 )
-def api_list_projects(request: Request) -> ProjectListResponse:
-    """Return all persisted projects ordered by last-modified descending.
-
-    When called with a valid ``X-Admin-Secret`` header (matching the
-    ``ADMIN_SECRET`` environment variable), all projects are returned for the
-    admin panel proxy. Otherwise the same full list is returned — access
-    restriction is enforced at the api-server layer.
-    """
-    import os
-    admin_secret = os.environ.get("ADMIN_SECRET", "")
-    request_secret = request.headers.get("x-admin-secret", "")
-    # Only serve all projects when the shared secret matches (or is empty during dev)
-    if admin_secret and request_secret != admin_secret:
-        from fastapi import HTTPException as _HTTPException
-        raise _HTTPException(status_code=403, detail="Forbidden")
+def api_list_projects() -> ProjectListResponse:
+    """Return all persisted projects ordered by last-modified descending."""
     rows = list_projects()
     return ProjectListResponse(
         projects=[ProjectMeta(**r) for r in rows],

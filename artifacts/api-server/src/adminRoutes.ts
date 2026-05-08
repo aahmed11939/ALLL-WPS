@@ -155,9 +155,26 @@ router.post("/users/invite", async (req: Request, res: Response) => {
     const invitation = await clerkClient.invitations.createInvitation({
       emailAddress: email,
     });
+    // Pre-create user record so admin can manage it before first login
+    await db
+      .insert(users)
+      .values({ id: `invited_${email}`, email, clerkUserId: null })
+      .onConflictDoNothing();
     const actor = await getActorEmail(req);
     await writeAuditLog(actor, "user_invite", email);
     res.status(201).json({ invitation });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Internal error" });
+  }
+});
+
+// ── Admin login event ─────────────────────────────────────────────────────────
+
+router.post("/login-event", async (req: Request, res: Response) => {
+  try {
+    const actor = await getActorEmail(req);
+    await writeAuditLog(actor, "admin_login", "admin_panel");
+    res.json({ logged: true });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Internal error" });
   }

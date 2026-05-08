@@ -141,6 +141,13 @@ router.get("/status", requireAuth(), async (req: Request, res: Response) => {
     }
 
     const user = await getOrCreateUser(userId, email);
+
+    // Deactivated accounts are always blocked regardless of subscription
+    if (user.active === false) {
+      res.json({ active: false, reason: "account_disabled" });
+      return;
+    }
+
     if (!user.stripeCustomerId) {
       res.json({ active: false });
       return;

@@ -184,6 +184,11 @@ router.patch("/users/:id", async (req: Request, res: Response) => {
   const id = Array.isArray(req.params.id) ? (req.params.id[0] ?? "") : (req.params.id ?? "");
   const body = req.body as { role?: string; active?: boolean };
 
+  if (typeof body.role === "string" && body.role !== "admin" && body.role !== "user") {
+    res.status(400).json({ error: "role must be 'admin' or 'user'" });
+    return;
+  }
+
   const updates: Partial<{ role: string; active: boolean }> = {};
   if (typeof body.role === "string") updates.role = body.role;
   if (typeof body.active === "boolean") updates.active = body.active;
@@ -223,8 +228,7 @@ router.get("/projects", async (_req: Request, res: Response) => {
   try {
     const secret = process.env.ADMIN_SECRET ?? "";
     if (!secret) {
-      // No shared secret configured — warn and return empty rather than an unprotected call
-      res.json({ projects: [], count: 0, warning: "ADMIN_SECRET env var not set" });
+      res.status(503).json({ error: "ADMIN_SECRET is not configured on this server" });
       return;
     }
     const response = await fetch("http://localhost:8000/api/v1/admin/projects", {

@@ -297,7 +297,8 @@ export default function StepCurves() {
 function Metric({ label, value, highlight }: { label: React.ReactNode; value: string; highlight?: boolean }) {
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-wide text-slate-400">{label}</p>
+      {/* span+block avoids <p>-inside-<p> when label contains a TermTip tooltip */}
+      <span className="block text-[10px] uppercase tracking-wide text-slate-400">{label}</span>
       <p className={`font-mono text-sm font-bold ${highlight ? "text-teal-800" : "text-slate-700"}`}>
         {value}
       </p>

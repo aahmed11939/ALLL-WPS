@@ -274,15 +274,29 @@ export default function ClearWellDiagram({
           <rect x={wallLeft - 5} y={TANK_BOT} width={TANK_W + 11} height={6} fill="#cbd5e1" rx={2} />
 
           {/* ---- Level lines + labels ---- */}
+          {/*
+            Label placement alternates above/below the level line so that
+            adjacent levels' label clusters always diverge — preventing
+            overlap when LLL≈LWL or HWL≈HHL (common in pump stations).
+
+            Above cluster: name at y-9, value at y-1  (cluster spans y-9..y-1)
+            Below cluster: name at y+3, value at y+11 (cluster spans y+3..y+11)
+
+            Proof: adjacent levels have opposite above/below, and since their
+            SVG y values are strictly ordered, cluster end < next cluster start.
+          */}
           {(
             [
-              { key: "LLL", y: yLLL, level: LLL_m, label: "LLL", desc: "Low-Low" },
-              { key: "LWL", y: yLWL, level: LWL_m, label: "LWL", desc: "Pump start" },
-              { key: "HWL", y: yHWL, level: HWL_m, label: "HWL", desc: "Pump stop" },
-              { key: "HHL", y: yHHL, level: HHL_m, label: "HHL", desc: "Overflow" },
+              { key: "HHL", y: yHHL, level: HHL_m, label: "HHL", desc: "Overflow",   above: true  },
+              { key: "HWL", y: yHWL, level: HWL_m, label: "HWL", desc: "Pump stop",  above: false },
+              { key: "LWL", y: yLWL, level: LWL_m, label: "LWL", desc: "Pump start", above: true  },
+              { key: "LLL", y: yLLL, level: LLL_m, label: "LLL", desc: "Low-Low",    above: false },
             ] as const
-          ).map(({ key, y, level, label, desc }) => {
+          ).map(({ key, y, level, label, desc, above }) => {
             const col = LEVEL_COLORS[key];
+            const yName  = above ? y - 9 : y + 3;
+            const yValue = above ? y - 1 : y + 11;
+            const yDesc  = above ? y - 4 : y + 9;
             return (
               <g key={key}>
                 {/* Dashed level line */}
@@ -295,10 +309,10 @@ export default function ClearWellDiagram({
                   strokeWidth={1.5}
                   strokeDasharray="4 3"
                 />
-                {/* Left-side label group */}
+                {/* Left-side label — both lines on same side, no straddle */}
                 <text
                   x={LABEL_LEFT}
-                  y={y - 2}
+                  y={yName}
                   textAnchor="end"
                   fontSize={9}
                   fontWeight="700"
@@ -309,7 +323,7 @@ export default function ClearWellDiagram({
                 </text>
                 <text
                   x={LABEL_LEFT}
-                  y={y + 8}
+                  y={yValue}
                   textAnchor="end"
                   fontSize={8}
                   fontFamily="ui-monospace, monospace"
@@ -318,10 +332,10 @@ export default function ClearWellDiagram({
                 >
                   {fmtLevel(level)}
                 </text>
-                {/* Right-side description badge */}
+                {/* Right-side description — same side as left labels */}
                 <text
                   x={BADGE_RIGHT}
-                  y={y + 3}
+                  y={yDesc}
                   textAnchor="start"
                   fontSize={8}
                   fontFamily="ui-sans-serif, system-ui, sans-serif"

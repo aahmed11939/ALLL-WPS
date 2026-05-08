@@ -11,9 +11,13 @@ import SubscriptionGate from "./components/SubscriptionGate";
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 const clerkPubKey = (import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string) || "";
 
-const clerkProxyUrl =
-  (import.meta.env.VITE_CLERK_PROXY_URL as string) ||
-  `${window.location.origin}/api/__clerk`;
+// Only use the proxy in production — the api-server proxy middleware is
+// disabled in dev mode, so passing proxyUrl in dev causes a 404 for clerk.browser.js.
+const clerkProxyUrl: string | undefined =
+  import.meta.env.PROD
+    ? ((import.meta.env.VITE_CLERK_PROXY_URL as string) ||
+       `${window.location.origin}/api/__clerk`)
+    : undefined;
 
 function stripBase(path: string): string {
   return basePath && path.startsWith(basePath)

@@ -18,3 +18,11 @@ body {
 .font-mono {
   font-family: var(--mono);
 }
+
+/* Prevent Recharts SVG viewport AND its wrapper div from clipping axis
+   labels, tick text, and reference-line labels (position:"top"/"right")
+   that sit just outside the plot area. */
+.recharts-wrapper,
+.recharts-surface {
+  overflow: visible !important;
+}

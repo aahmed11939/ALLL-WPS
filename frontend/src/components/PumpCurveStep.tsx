@@ -163,7 +163,7 @@ function PumpChart({ cfg }: { cfg: ChartConfig }) {
       <ResponsiveContainer width="100%" height={220}>
         <LineChart
           data={renderData}
-          margin={{ top: 8, right: 16, bottom: 24, left: 16 }}
+          margin={{ top: 20, right: 56, bottom: 24, left: 16 }}
         >
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
           <XAxis

@@ -84,7 +84,7 @@ export default function SystemCurveChart({ results }: Props) {
       </div>
 
       <ResponsiveContainer width="100%" height={300}>
-        <LineChart data={data} margin={{ top: 10, right: 20, bottom: 30, left: 16 }}>
+        <LineChart data={data} margin={{ top: 20, right: 90, bottom: 30, left: 16 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
 
           <XAxis

@@ -1112,6 +1112,31 @@ def _surge_section(doc: Document, draft: dict) -> None:
             _para(doc, f"  • {n}")
         doc.add_paragraph()
 
+        # 8.3.1 Solver Grid Parameters (audit trail)
+        _heading(doc, "8.3.1 Solver Grid Parameters", level=3)
+        _para(doc, (
+            "The following MOC computational grid parameters apply to each scenario. "
+            "Courant = 1 is enforced (Δt = Δx / a). These values form part of the "
+            "required audit trail for regulatory submission."
+        ))
+        doc.add_paragraph()
+        grid_headers = [
+            "Scenario", "Wave speed a (m/s)", "Courant", "Δx (m)", "Δt (s)", "T_char (s)",
+        ]
+        grid_rows = []
+        for r in [baseline] + runs:
+            grid_rows.append([
+                r.get("label", "Baseline"),
+                _fmt(r.get("wave_speed_ms"), 1),
+                _fmt(r.get("courant"), 4),
+                _fmt(r.get("dx_m"), 2),
+                _fmt(r.get("dt_s"), 4),
+                _fmt(r.get("T_char_s"), 3),
+            ])
+        _col_table(doc, grid_headers, grid_rows,
+                   col_widths=[2.0, 1.4, 0.8, 0.8, 0.8, 0.8])
+        doc.add_paragraph()
+
 
 # ---------------------------------------------------------------------------
 # Appendix A — Complete Input Parameters

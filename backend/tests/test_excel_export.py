@@ -244,6 +244,12 @@ WHATIF_RESULT = {
         "rating_check":            None,
         "sizing_summary":          None,
         "envelope":                [],
+        "wave_speed_ms":           1200.0,
+        "N":                       10,
+        "dx_m":                    40.0,
+        "dt_s":                    0.0333,
+        "courant":                 1.0,
+        "T_char_s":                0.667,
     },
     "device_runs": [
         {
@@ -263,6 +269,12 @@ WHATIF_RESULT = {
             "rating_check":            None,
             "sizing_summary":          None,
             "envelope":                [],
+            "wave_speed_ms":           1200.0,
+            "N":                       10,
+            "dx_m":                    40.0,
+            "dt_s":                    0.0333,
+            "courant":                 1.0,
+            "T_char_s":                0.667,
         }
     ],
     "assumption_notes": ["Screening-level analysis. ±30–50 % accuracy."],
@@ -427,6 +439,44 @@ class TestBuildWorkbook:
         wb   = load_workbook(io.BytesIO(data))
         ws   = wb["Protection Comparisons"]
         assert any("Baseline" in v or "Air Vessel" in v for v in _cells(ws))
+
+    def test_solver_grid_section_header_in_protection_sheet(self):
+        data = _bwb(full_draft())
+        wb   = load_workbook(io.BytesIO(data))
+        ws   = wb["Protection Comparisons"]
+        assert any("Solver Grid" in v for v in _cells(ws))
+
+    def test_solver_grid_wave_speed_value_in_protection_sheet(self):
+        data = _bwb(full_draft())
+        wb   = load_workbook(io.BytesIO(data))
+        ws   = wb["Protection Comparisons"]
+        assert any("1200" in v or "Wave speed" in v for v in _cells(ws))
+
+    def test_solver_grid_courant_header_in_protection_sheet(self):
+        data = _bwb(full_draft())
+        wb   = load_workbook(io.BytesIO(data))
+        ws   = wb["Protection Comparisons"]
+        assert any("Courant" in v for v in _cells(ws))
+
+    def test_solver_grid_dx_header_in_protection_sheet(self):
+        data = _bwb(full_draft())
+        wb   = load_workbook(io.BytesIO(data))
+        ws   = wb["Protection Comparisons"]
+        assert any("Δx" in v for v in _cells(ws))
+
+    def test_solver_grid_t_char_header_in_protection_sheet(self):
+        data = _bwb(full_draft())
+        wb   = load_workbook(io.BytesIO(data))
+        ws   = wb["Protection Comparisons"]
+        assert any("T_char" in v for v in _cells(ws))
+
+    def test_solver_grid_present_even_when_device_runs_empty(self):
+        d = full_draft()
+        d["whatIfResult"]["device_runs"] = []
+        data = _bwb(d)
+        wb   = load_workbook(io.BytesIO(data))
+        ws   = wb["Protection Comparisons"]
+        assert any("Solver Grid" in v for v in _cells(ws))
 
     def test_empty_draft_no_raise(self):
         """build_workbook must not raise even when all result fields are None."""

@@ -1353,6 +1353,26 @@ def _sh_protection(wb: Workbook, draft: dict) -> None:
             _dat(ws, row, 1, f"• {note}")
             row += 1
 
+    # Solver Grid Parameters — audit trail for regulatory submittal
+    row += 1
+    _section_hdr(ws, row, "Solver Grid Parameters (MOC audit trail)", 6)
+    row += 1
+    grid_hdrs = [
+        "Scenario", "Wave speed a (m/s)", "Courant", "Δx (m)", "Δt (s)", "T_char (s)",
+    ]
+    for ci, h in enumerate(grid_hdrs, 1):
+        _hdr(ws, row, ci, h, BLUE_MID)
+    row += 1
+    for i, run in enumerate(all_runs):
+        alt = (i % 2 == 1)
+        _dat(ws, row, 1, run.get("label", "Baseline"),   bold=True, alt=alt)
+        _dat(ws, row, 2, run.get("wave_speed_ms", 0),    fmt="#,##0.0",    align="right", alt=alt)
+        _dat(ws, row, 3, run.get("courant",       0),    fmt="#,##0.0000", align="right", alt=alt)
+        _dat(ws, row, 4, run.get("dx_m",          0),    fmt="#,##0.00",   align="right", alt=alt)
+        _dat(ws, row, 5, run.get("dt_s",          0),    fmt="#,##0.0000", align="right", alt=alt)
+        _dat(ws, row, 6, run.get("T_char_s",      0),    fmt="#,##0.000",  align="right", alt=alt)
+        row += 1
+
     _col_widths(ws, [28, 14, 14, 14, 14, 16, 12, 12, 12, 10, 12])
 
 

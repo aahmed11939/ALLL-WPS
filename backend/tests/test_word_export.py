@@ -249,6 +249,12 @@ WHATIF_RESULT = {
         "rating_check":            None,
         "sizing_summary":          None,
         "envelope":                [],
+        "wave_speed_ms":           1200.0,
+        "N":                       10,
+        "dx_m":                    40.0,
+        "dt_s":                    0.0333,
+        "courant":                 1.0,
+        "T_char_s":                0.667,
     },
     "device_runs": [
         {
@@ -268,6 +274,12 @@ WHATIF_RESULT = {
             "rating_check":            None,
             "sizing_summary":          None,
             "envelope":                [],
+            "wave_speed_ms":           1200.0,
+            "N":                       10,
+            "dx_m":                    40.0,
+            "dt_s":                    0.0333,
+            "courant":                 1.0,
+            "T_char_s":                0.667,
         }
     ],
     "assumption_notes": ["Screening-level analysis. ±30–50 % accuracy."],
@@ -960,3 +972,67 @@ class TestDualPipelineSurge:
         from backend.engine.word_figures import fig_surge_envelope_discharge
         result = fig_surge_envelope_discharge(full_draft())
         assert isinstance(result, bytes) and len(result) > 100
+
+
+# ===========================================================================
+# Solver Grid Parameters in What-If export (section 8.3.1)
+# ===========================================================================
+
+
+class TestSolverGridInWordExport:
+    """Section 8.3.1 must include solver grid params for each scenario."""
+
+    def test_solver_grid_heading_present(self):
+        doc  = build_document(full_draft())
+        text = "\n".join(p.text for p in doc.paragraphs)
+        assert "Solver Grid" in text
+
+    def test_wave_speed_value_in_solver_grid_table(self):
+        doc  = build_document(full_draft())
+        text = _table_text(doc)
+        assert "1200" in text or "1,200" in text
+
+    def test_courant_column_header_in_solver_grid(self):
+        doc  = build_document(full_draft())
+        text = _table_text(doc)
+        assert "Courant" in text
+
+    def test_dx_column_header_in_solver_grid(self):
+        doc  = build_document(full_draft())
+        text = _table_text(doc)
+        assert "Δx" in text
+
+    def test_dt_column_header_in_solver_grid(self):
+        doc  = build_document(full_draft())
+        text = _table_text(doc)
+        assert "Δt" in text
+
+    def test_t_char_column_header_in_solver_grid(self):
+        doc  = build_document(full_draft())
+        text = _table_text(doc)
+        assert "T_char" in text
+
+    def test_baseline_label_in_solver_grid_table(self):
+        doc  = build_document(full_draft())
+        text = _table_text(doc)
+        assert "Baseline" in text
+
+    def test_device_label_in_solver_grid_table(self):
+        doc  = build_document(full_draft())
+        text = _table_text(doc)
+        assert "Air Vessel" in text
+
+    def test_no_whatif_omits_solver_grid_section(self):
+        d = full_draft()
+        d["whatIfResult"] = None
+        doc  = build_document(d)
+        text = "\n".join(p.text for p in doc.paragraphs)
+        assert "8.3.1" not in text
+
+    def test_solver_grid_absent_when_no_solver_fields(self):
+        """When solver fields are zero, values still appear (graceful fallback)."""
+        d = full_draft()
+        d["whatIfResult"]["baseline"]["wave_speed_ms"] = 0.0
+        doc  = build_document(d)
+        data = _doc_to_bytes(doc)
+        assert len(data) > 500

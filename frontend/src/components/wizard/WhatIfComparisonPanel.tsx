@@ -12,6 +12,8 @@ import {
   ReferenceLine,
 } from "recharts";
 import type { WhatIfResponse, WhatIfRunMetrics } from "../../utils/api";
+import { useProject } from "../../contexts/ProjectContext";
+import { FT_PER_M, PSI_PER_KPA } from "../../utils/units";
 
 // ---------------------------------------------------------------------------
 // Colour palette — one per scenario
@@ -30,8 +32,12 @@ const PALETTE = [
 // Helpers
 // ---------------------------------------------------------------------------
 
-function fmtH(m: number) { return m.toFixed(2) + " m"; }
-function fmtP(kPa: number) { return kPa.toFixed(1) + " kPa"; }
+function fmtH(m: number, isUS: boolean): string {
+  return isUS ? `${(m * FT_PER_M).toFixed(2)} ft` : `${m.toFixed(2)} m`;
+}
+function fmtP(kPa: number, isUS: boolean): string {
+  return isUS ? `${(kPa * PSI_PER_KPA).toFixed(2)} psi` : `${kPa.toFixed(1)} kPa`;
+}
 
 function Badge({ ok }: { ok: boolean }) {
   return (
@@ -43,12 +49,15 @@ function Badge({ ok }: { ok: boolean }) {
   );
 }
 
-function ReductionBadge({ val }: { val: number | null }) {
+function ReductionBadge({ val, isUS }: { val: number | null; isUS: boolean }) {
   if (val === null) return <span className="text-slate-400">—</span>;
   const good = val >= 0;
+  const display = isUS
+    ? `${(Math.abs(val) * FT_PER_M).toFixed(2)} ft`
+    : `${Math.abs(val).toFixed(2)} m`;
   return (
     <span className={`font-mono font-semibold ${good ? "text-emerald-700" : "text-red-600"}`}>
-      {good ? "▼" : "▲"} {Math.abs(val).toFixed(2)} m
+      {good ? "▼" : "▲"} {display}
     </span>
   );
 }
@@ -76,15 +85,12 @@ function RiskDeltaBadge({
   const vacuumImproved   = run.global_min_H_m > baseline.global_min_H_m + 0.5;
   const anyPressureImproved = pressureImproved || vacuumImproved;
 
-  // Green: both pressure and cavitation improve
   if ((cavImproved || cavNeutral) && anyPressureImproved) {
     return <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold bg-emerald-100 text-emerald-700">✓ Better</span>;
   }
-  // Yellow: at least one dimension improves
   if (cavImproved || anyPressureImproved) {
     return <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold bg-amber-100 text-amber-700">~ Mixed</span>;
   }
-  // Grey: no meaningful improvement
   return <span className="text-slate-400 text-[9px]">— No change</span>;
 }
 
@@ -146,30 +152,41 @@ export interface WhatIfComparisonPanelProps {
 // ---------------------------------------------------------------------------
 
 export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIfComparisonPanelProps) {
+  const { draft } = useProject();
+  const us = draft.unitSystem === "US";
+  const displayFactor = us ? FT_PER_M : 1;
+
   // ── Separate valid runs from failed runs ──────────────────────────────────
   const errorRuns = result.device_runs.filter(r => r.run_error);
   const validRuns = result.device_runs.filter(r => !r.run_error);
   const all       = [result.baseline, ...validRuns];
 
-  // ── Build overlay chart data (using valid runs only) ─────────────────────
+  // ── Build overlay chart data (using valid runs only, converted to display units) ──
   const chartData = useMemo(() => {
     if (!result.baseline.envelope.length) return [];
     const ref = result.baseline.envelope;
     return ref.map((pt, i) => {
-      const row: Record<string, number> = { x_m: pt.x_m, elev_m: pt.elev_m };
+      const row: Record<string, number> = {
+        x_m:    pt.x_m    * displayFactor,
+        elev_m: pt.elev_m * displayFactor,
+      };
       all.forEach((run, ri) => {
         const e = run.envelope[i];
         if (e) {
-          row[`max_${ri}`] = e.H_max_m;
-          row[`min_${ri}`] = e.H_min_m;
+          row[`max_${ri}`] = e.H_max_m * displayFactor;
+          row[`min_${ri}`] = e.H_min_m * displayFactor;
         }
       });
       return row;
     });
-  }, [result]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [result, displayFactor]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const [showMin, setShowMin] = useState(false);
   const [savedOk, setSavedOk] = useState(false);
+
+  const distUnit = us ? "ft" : "m";
+  const headUnit = us ? "ft" : "m";
+  const minPUnit = us ? "psi" : "kPa";
 
   function handleSave() {
     onSaveToReport?.(result);
@@ -234,7 +251,7 @@ export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIf
               <th className="px-3 py-2 font-semibold text-slate-600 text-right">Surge Reduction</th>
               <th className="px-3 py-2 font-semibold text-slate-600 text-right">Envelope Δ%</th>
               <th className="px-3 py-2 font-semibold text-slate-600 text-center">Cavitation</th>
-              <th className="px-3 py-2 font-semibold text-slate-600 text-right">Min P (kPa)</th>
+              <th className="px-3 py-2 font-semibold text-slate-600 text-right">Min P ({minPUnit})</th>
               <th className="px-3 py-2 font-semibold text-slate-600 text-right">Risk Duration</th>
               <th className="px-3 py-2 font-semibold text-slate-600 text-center">Risk Δ</th>
               <th className="px-3 py-2 font-semibold text-slate-600">Sizing</th>
@@ -255,13 +272,13 @@ export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIf
                   </td>
                   <td className="px-3 py-2 text-right font-mono">
                     <span className={run.global_max_H_m > (result.baseline.global_max_H_m * 1.05) ? "text-red-600" : ""}>
-                      {fmtH(run.global_max_H_m)}
+                      {fmtH(run.global_max_H_m, us)}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-right font-mono text-slate-500">{fmtP(run.global_max_P_kPa)}</td>
-                  <td className="px-3 py-2 text-right font-mono text-slate-600">{fmtH(run.global_min_H_m)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-slate-500">{fmtP(run.global_max_P_kPa, us)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-slate-600">{fmtH(run.global_min_H_m, us)}</td>
                   <td className="px-3 py-2 text-right">
-                    {isBase ? <span className="text-slate-400">—</span> : <ReductionBadge val={run.max_surge_reduction_m} />}
+                    {isBase ? <span className="text-slate-400">—</span> : <ReductionBadge val={run.max_surge_reduction_m} isUS={us} />}
                   </td>
                   <td className="px-3 py-2 text-right">
                     {isBase
@@ -273,7 +290,7 @@ export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIf
                   </td>
                   <td className="px-3 py-2 text-right font-mono text-[9px]">
                     <span className={run.global_min_P_kPa < 0 ? "text-red-600 font-semibold" : "text-slate-600"}>
-                      {fmtP(run.global_min_P_kPa)}
+                      {fmtP(run.global_min_P_kPa, us)}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-right font-mono text-[9px]">
@@ -325,16 +342,24 @@ export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIf
         <ResponsiveContainer width="100%" height={280}>
           <LineChart data={chartData} margin={{ top: 4, right: 16, bottom: 4, left: 16 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey="x_m" tick={{ fontSize: 9 }} tickFormatter={v => `${v} m`} label={{ value: "Distance (m)", position: "insideBottomRight", offset: -4, fontSize: 9 }} />
-            <YAxis tick={{ fontSize: 9 }} tickFormatter={v => `${v.toFixed(0)}`}
-              label={{ value: "Head (m)", angle: -90, position: "insideLeft", offset: 10, fontSize: 9 }} />
+            <XAxis
+              dataKey="x_m"
+              tick={{ fontSize: 9 }}
+              tickFormatter={v => `${Number(v).toFixed(0)} ${distUnit}`}
+              label={{ value: `Distance (${distUnit})`, position: "insideBottomRight", offset: -4, fontSize: 9 }}
+            />
+            <YAxis
+              tick={{ fontSize: 9 }}
+              tickFormatter={v => `${Number(v).toFixed(0)}`}
+              label={{ value: `Head (${headUnit})`, angle: -90, position: "insideLeft", offset: 10, fontSize: 9 }}
+            />
             <Tooltip
               content={({ active, payload, label }) => {
                 if (!active || !payload?.length) return null;
                 return (
                   <div className="rounded-xl border border-slate-200 bg-white shadow-lg px-3 py-2.5 text-xs space-y-1.5 min-w-[200px]">
                     <p className="font-semibold text-slate-500 border-b border-slate-100 pb-1.5 mb-1">
-                      x = {Number(label).toFixed(0)} m
+                      x = {Number(label).toFixed(0)} {distUnit}
                     </p>
                     {payload
                       .filter(p => p.dataKey !== "elev_m")
@@ -348,7 +373,7 @@ export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIf
                               <span className="text-slate-600 truncate max-w-[120px]">{scenLabel}</span>
                             </span>
                             <span className="font-bold font-mono text-slate-800">
-                              {typeof p.value === "number" ? `${p.value.toFixed(2)} m` : "—"}
+                              {typeof p.value === "number" ? `${p.value.toFixed(2)} ${headUnit}` : "—"}
                             </span>
                           </div>
                         );
@@ -378,7 +403,9 @@ export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIf
               />
             ))}
             {/* h=0 reference line */}
-            <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="2 2" />
+            <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="2 2"
+              label={{ value: us ? "0 ft (atm)" : "0 m (atm)", fontSize: 9, fill: "#94a3b8", position: "insideBottomRight" }}
+            />
           </LineChart>
         </ResponsiveContainer>
         </ChartErrorBoundary>

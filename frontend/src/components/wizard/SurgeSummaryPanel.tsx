@@ -1,4 +1,5 @@
 import { useProject } from "../../contexts/ProjectContext";
+import { PSI_PER_KPA } from "../../utils/units";
 
 // ---------------------------------------------------------------------------
 // Risk level helpers
@@ -89,7 +90,7 @@ export default function SurgeSummaryPanel() {
   const suctR = draft.suctionSurgeResult;  // suction MOC + NPSHa
 
   const fmtH = (m: number) => us ? `${(m * 3.28084).toFixed(2)} ft` : `${m.toFixed(2)} m`;
-  const fmtP = (kPa: number) => us ? `${(kPa * 0.14504).toFixed(1)} psi` : `${kPa.toFixed(1)} kPa`;
+  const fmtP = (kPa: number) => us ? `${(kPa * PSI_PER_KPA).toFixed(1)} psi` : `${kPa.toFixed(1)} kPa`;
 
   // ── Build risk items from available results ────────────────────────────────
 

@@ -19,6 +19,7 @@ import type { MOCResponse, MOCBoundaryInput, MOCBoundaryAInput, MOCBoundaryBInpu
 import ProtectionDevicePanel from "./ProtectionDevicePanel";
 import WhatIfComparisonPanel from "./WhatIfComparisonPanel";
 import TermTip from "../TermTip";
+import { FT_PER_M, M_PER_FT, PSI_PER_KPA } from "../../utils/units";
 
 // ---------------------------------------------------------------------------
 // Collapsible solver notes banner
@@ -163,7 +164,7 @@ function SummaryCard({
 
 function MOCRatingPanel({ rc, us }: { rc: PressureRatingCheck; us: boolean }) {
   const fmtP2 = (kPa: number) =>
-    us ? `${(kPa * 0.14504).toFixed(1)} psi` : `${kPa.toFixed(1)} kPa`;
+    us ? `${(kPa * PSI_PER_KPA).toFixed(1)} psi` : `${kPa.toFixed(1)} kPa`;
 
   const statusCfg = {
     pass:    { bg: "bg-emerald-50 border-emerald-200", badge: "bg-emerald-100 text-emerald-700", icon: "✓", text: "PASS" },
@@ -247,12 +248,15 @@ function BCPanel({
   typeOptions,
   state,
   handlers,
+  us,
 }: {
   panelLabel: string;
   typeOptions: { value: string; label: string; desc: string }[];
   state: BCPanelState;
   handlers: BCPanelHandlers;
+  us: boolean;
 }) {
+  const headUnit = us ? "ft" : "m";
   const inp =
     "w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400";
 
@@ -276,7 +280,7 @@ function BCPanel({
 
       {state.type === "reservoir" && (
         <div>
-          <Label>Reservoir total head H [m]</Label>
+          <Label>Reservoir total head H [{headUnit}]</Label>
           <input
             type="number" step={0.5}
             value={state.H_m}
@@ -292,7 +296,7 @@ function BCPanel({
         <>
           <Grid2>
             <div>
-              <Label>Pump head H_pump [m]</Label>
+              <Label>Pump head H_pump [{headUnit}]</Label>
               <input type="number" step={0.5} value={state.H_pump_m}
                 onChange={e => handlers.setH_pump_m(e.target.value)}
                 placeholder="e.g. 40" className={inp} />
@@ -314,7 +318,7 @@ function BCPanel({
               <Hint>Pump coast-down inertia time</Hint>
             </div>
             <div>
-              <Label>Suction reservoir head [m]</Label>
+              <Label>Suction reservoir head [{headUnit}]</Label>
               <input type="number" step={0.5} value={state.H_reservoir_m}
                 onChange={e => handlers.setH_reservoir_m(e.target.value)}
                 placeholder="e.g. 5" className={inp} />
@@ -369,7 +373,7 @@ function BCPanel({
         <>
           <Grid2>
             <div>
-              <Label>Sump head H_sump [m]</Label>
+              <Label>Sump head H_sump [{headUnit}]</Label>
               <input type="number" step={0.5} value={state.H_sump_m}
                 onChange={e => handlers.setH_sump_m(e.target.value)}
                 placeholder="e.g. 5" className={inp} />
@@ -403,6 +407,7 @@ function ObsSlider({
   frac,
   label,
   pipeLen,
+  us,
   onFrac,
   onLabel,
 }: {
@@ -410,11 +415,14 @@ function ObsSlider({
   frac: string;
   label: string;
   pipeLen: number;
+  us: boolean;
   onFrac: (v: string) => void;
   onLabel: (v: string) => void;
 }) {
   const f = parseFloat(frac);
-  const x = isNaN(f) ? 0 : f * pipeLen;
+  const x_m = isNaN(f) ? 0 : f * pipeLen;
+  const xDisplay = us ? (x_m * FT_PER_M).toFixed(0) : x_m.toFixed(0);
+  const distUnit = us ? "ft" : "m";
   return (
     <div className="grid grid-cols-[1fr_56px_1fr] gap-3 items-center">
       <div>
@@ -428,7 +436,7 @@ function ObsSlider({
       </div>
       <div className="text-center">
         <p className="text-[10px] font-mono font-semibold text-slate-700">{(isNaN(f) ? 0 : f).toFixed(2)}</p>
-        <p className="text-[9px] text-slate-400">{x.toFixed(0)} m</p>
+        <p className="text-[9px] text-slate-400">{xDisplay} {distUnit}</p>
       </div>
       <div>
         <input
@@ -450,6 +458,8 @@ export default function StepWaterHammerModeB() {
   const { draft, dispatch } = useProject();
   const us  = draft.unitSystem === "US";
   const cfg = draft.mocConfig;
+  const displayFactor = us ? FT_PER_M : 1;
+  const headUnit = us ? "ft" : "m";
 
   const autoQ0_m3s = (draft.hydraulicsResult?.design_Q_m3h ?? draft.designFlow_m3h) / 3600;
   const autoH0_m   = draft.hydraulicsResult?.tdh_m
@@ -461,40 +471,56 @@ export default function StepWaterHammerModeB() {
   const pipelineLen = (segs: typeof dischSegs) =>
     segs.reduce((s, sg) => s + sg.length_m, 0);
 
+  // ── BC head display factor (SI seeds → display on mount) ─────────────────
+  const df = us ? FT_PER_M : 1;
+
   // ── Form state ────────────────────────────────────────────────────────────
   const [pipeline,    setPipeline]    = useState<"suction" | "discharge">(cfg?.pipeline ?? "discharge");
   const [waveSpeed,   setWaveSpeed]   = useState(String(cfg?.wave_speed_ms ?? waveSpeedFromA));
   const [q0Str,       setQ0Str]       = useState(cfg?.Q_0_m3s_override ?? "");
-  const [h0Str,       setH0Str]       = useState(cfg?.H_0_m_override ?? "");
+  // Seeded from SI config; converted to display units on mount (same pattern as BC heads)
+  const [h0Str,       setH0Str]       = useState(() => {
+    const s = cfg?.H_0_m_override ?? "";
+    if (!s) return "";
+    const v = parseFloat(s);
+    return isNaN(v) ? "" : (us ? String((v * FT_PER_M).toFixed(2)) : s);
+  });
   const [rhoStr,      setRhoStr]      = useState(cfg?.rho_kg_m3 ?? "1000");
   const [tempStr,     setTempStr]     = useState(cfg?.temperature_C ?? "20");
   const [pressRating, setPressRating] = useState(cfg?.pressure_rating_kPa ?? "");
   const [nReaches,    setNReaches]    = useState(cfg?.n_reaches ?? "");
   const [tTotalStr,   setTTotalStr]   = useState(cfg?.t_total_s ?? "");
 
-  // Boundary A — typed as `string` so state setters match BCPanelHandlers.(v: string) => void
+  // Boundary A — head states stored in DISPLAY units; seeded from SI config.
+  // seedH converts a persisted SI string to display units; empty/NaN strings
+  // fall back to the optional fallbackSI default (or "" for optional fields).
+  const seedH = (s: string | undefined, fallbackSI?: number): string => {
+    const v = parseFloat(s ?? "");
+    if (isNaN(v)) return fallbackSI !== undefined ? String(fallbackSI * df) : "";
+    return String(v * df);
+  };
   const initA = cfg?.boundary_A;
   const [bcAType,    setBcAType]    = useState<string>(initA?.type ?? "pump_trip");
-  const [bcA_H_m,    setBcA_H_m]    = useState<string>(initA?.H_m ?? "5");
-  const [bcA_Hpump,  setBcA_Hpump]  = useState<string>(initA?.H_pump_m ?? "");
+  const [bcA_H_m,    setBcA_H_m]    = useState<string>(seedH(initA?.H_m, 5));
+  const [bcA_Hpump,  setBcA_Hpump]  = useState<string>(seedH(initA?.H_pump_m));   // optional — no fallback
   const [bcA_Q,      setBcA_Q]      = useState<string>(initA?.Q_m3s ?? "");
   const [bcA_tTrip,  setBcA_tTrip]  = useState<string>(initA?.t_trip_s ?? "2");
-  const [bcA_Hres,   setBcA_Hres]   = useState<string>(initA?.H_reservoir_m ?? "5");
+  const [bcA_Hres,   setBcA_Hres]   = useState<string>(seedH(initA?.H_reservoir_m, 5));
   const [bcA_tClose, setBcA_tClose] = useState<string>(initA?.t_close_s ?? "10");
   const [bcA_prof,   setBcA_prof]   = useState<string>(initA?.profile ?? "linear");
-  const [bcA_Hsump,  setBcA_Hsump]  = useState<string>(initA?.H_sump_m ?? "5");
+  const [bcA_Hsump,  setBcA_Hsump]  = useState<string>(seedH(initA?.H_sump_m, 5));
 
-  // Boundary B — typed as `string` so state setters match BCPanelHandlers.(v: string) => void
+  // Boundary B — head states stored in DISPLAY units; seeded from SI config
   const initB = cfg?.boundary_B;
   const [bcBType,    setBcBType]    = useState<string>(initB?.type ?? "reservoir");
-  const [bcB_H_m,    setBcB_H_m]    = useState<string>(initB?.H_m ?? "35");
-  const [bcB_Hpump,  setBcB_Hpump]  = useState<string>(initB?.H_pump_m ?? "");
+  const [bcB_H_m,    setBcB_H_m]    = useState<string>(seedH(initB?.H_m, 35));
+  const [bcB_Hpump,  setBcB_Hpump]  = useState<string>(seedH(initB?.H_pump_m));   // optional — no fallback
   const [bcB_Q,      setBcB_Q]      = useState<string>(initB?.Q_m3s ?? "");
   const [bcB_tTrip,  setBcB_tTrip]  = useState<string>(initB?.t_trip_s ?? "2");
-  const [bcB_Hres,   setBcB_Hres]   = useState<string>(initB?.H_reservoir_m ?? "5");
+  const [bcB_Hres,   setBcB_Hres]   = useState<string>(seedH(initB?.H_reservoir_m, 5));
   const [bcB_tClose, setBcB_tClose] = useState<string>(initB?.t_close_s ?? "10");
   const [bcB_prof,   setBcB_prof]   = useState<string>(initB?.profile ?? "linear");
-  const [bcB_Hsump,  setBcB_Hsump]  = useState<string>(initB?.H_sump_m ?? "5");
+  const [bcB_Hsump,  setBcB_Hsump]  = useState<string>(seedH(initB?.H_sump_m, 5));
 
   // Observation points
   const [obs0Frac,  setObs0Frac]  = useState(cfg?.obs_points?.[0]?.frac  ?? "0");
@@ -523,36 +549,58 @@ export default function StepWaterHammerModeB() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
   const q0     = parseFloat(q0Str)   || autoQ0_m3s;
-  const h0     = parseFloat(h0Str)   || autoH0_m;
+  // h0Str is stored in display units — convert to SI for all physics/API use
+  const h0_si  = (() => {
+    const ov = parseFloat(h0Str);
+    if (h0Str !== "" && !isNaN(ov)) return us ? ov * M_PER_FT : ov;
+    return autoH0_m;
+  })();
+  const h0     = h0_si;   // alias kept for backward compatibility within this component
   const rho    = parseFloat(rhoStr)  || 1000;
   const temp   = parseFloat(tempStr) || 20;
   const a      = parseFloat(waveSpeed) || waveSpeedFromA;
   const segs   = pipeline === "discharge" ? dischSegs : suctSegs;
   const pipeLen = pipelineLen(segs);
 
+  const fmtH = (m: number) =>
+    us ? `${(m * FT_PER_M).toFixed(2)} ft` : `${m.toFixed(2)} m`;
+  const fmtP = (kPa: number) =>
+    us ? `${(kPa * PSI_PER_KPA).toFixed(2)} psi` : `${kPa.toFixed(1)} kPa`;
+
   // ── Persist config ─────────────────────────────────────────────────────────
   const persistConfig = useCallback(() => {
+    // Convert display-unit head values back to SI for storage.
+    // Empty / invalid strings are preserved as-is so optional fields
+    // don't get coerced to "0" and lose their "unset" semantics on remount.
+    const toSI = (s: string) => {
+      const v = parseFloat(s);
+      if (!s || isNaN(v)) return s;
+      return String(v * (us ? M_PER_FT : 1));
+    };
     dispatch({
       type: "SET_MOC_CONFIG",
       config: {
         pipeline,
         wave_speed_ms:     parseFloat(waveSpeed) || 1000,
         Q_0_m3s_override:  q0Str,
-        H_0_m_override:    h0Str,
+        // Persist as SI so it can be correctly re-seeded on mount in any unit mode
+        H_0_m_override: h0Str && !isNaN(parseFloat(h0Str)) && us
+          ? String((parseFloat(h0Str) * M_PER_FT).toFixed(2))
+          : h0Str,
         rho_kg_m3:         rhoStr,
         temperature_C:     tempStr,
         pressure_rating_kPa: pressRating,
         boundary_A: {
           type: bcAType as "reservoir" | "pump_trip" | "valve_closure" | "suction_pump_trip",
-          H_m: bcA_H_m, H_pump_m: bcA_Hpump, Q_m3s: bcA_Q, t_trip_s: bcA_tTrip,
-          H_reservoir_m: bcA_Hres, t_close_s: bcA_tClose,
-          profile: bcA_prof as "linear" | "equal_percentage", H_sump_m: bcA_Hsump,
+          H_m: toSI(bcA_H_m), H_pump_m: toSI(bcA_Hpump), Q_m3s: bcA_Q, t_trip_s: bcA_tTrip,
+          H_reservoir_m: toSI(bcA_Hres), t_close_s: bcA_tClose,
+          profile: bcA_prof as "linear" | "equal_percentage", H_sump_m: toSI(bcA_Hsump),
         },
         boundary_B: {
           type: bcBType as "reservoir" | "pump_trip" | "valve_closure" | "suction_pump_trip",
-          H_m: bcB_H_m, H_pump_m: bcB_Hpump, Q_m3s: bcB_Q, t_trip_s: bcB_tTrip,
-          H_reservoir_m: bcB_Hres, t_close_s: bcB_tClose,
-          profile: bcB_prof as "linear" | "equal_percentage", H_sump_m: bcB_Hsump,
+          H_m: toSI(bcB_H_m), H_pump_m: toSI(bcB_Hpump), Q_m3s: bcB_Q, t_trip_s: bcB_tTrip,
+          H_reservoir_m: toSI(bcB_Hres), t_close_s: bcB_tClose,
+          profile: bcB_prof as "linear" | "equal_percentage", H_sump_m: toSI(bcB_Hsump),
         },
         obs_points: [
           { frac: obs0Frac, label: obs0Label },
@@ -568,8 +616,20 @@ export default function StepWaterHammerModeB() {
     bcAType, bcA_H_m, bcA_Hpump, bcA_Q, bcA_tTrip, bcA_Hres, bcA_tClose, bcA_prof, bcA_Hsump,
     bcBType, bcB_H_m, bcB_Hpump, bcB_Q, bcB_tTrip, bcB_Hres, bcB_tClose, bcB_prof, bcB_Hsump,
     obs0Frac, obs0Label, obs1Frac, obs1Label, obs2Frac, obs2Label,
-    nReaches, tTotalStr, dispatch,
+    nReaches, tTotalStr, dispatch, us,
   ]);
+
+  // Convert manually-typed override and BC head values when unit system is toggled
+  const prevUsRef = useRef(us);
+  useEffect(() => {
+    if (prevUsRef.current === us) return;
+    prevUsRef.current = us;
+    const factor = us ? FT_PER_M : M_PER_FT;
+    const conv = (prev: string) => prev ? String((parseFloat(prev) * factor).toFixed(2)) : prev;
+    setH0Str(conv);
+    setBcA_H_m(conv);   setBcA_Hpump(conv);  setBcA_Hres(conv);  setBcA_Hsump(conv);
+    setBcB_H_m(conv);   setBcB_Hpump(conv);  setBcB_Hres(conv);  setBcB_Hsump(conv);
+  }, [us]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const mocConfigMountedRef = useRef(false);
   useEffect(() => {
@@ -577,27 +637,28 @@ export default function StepWaterHammerModeB() {
     persistConfig();
   }, [persistConfig]);
 
-  // ── Build boundary condition from state ─────────────────────────────────────
+  // ── Build boundary condition from state (display → SI for API) ─────────────
   function buildBC(
     type: string,
     H_m: string, Hpump: string, Q_str: string,
     tTrip: string, Hres: string, tClose: string,
     profile: string, Hsump: string,
   ): MOCBoundaryInput | null {
+    const toSI = (s: string) => (parseFloat(s) || 0) * (us ? M_PER_FT : 1);
     const Q = parseFloat(Q_str) || q0;
     if (type === "reservoir") {
-      const H = parseFloat(H_m);
-      if (isNaN(H)) return null;
+      const H = toSI(H_m);
+      if (isNaN(parseFloat(H_m))) return null;
       return { type: "reservoir", H_m: H };
     }
     if (type === "pump_trip") {
-      const Hp = parseFloat(Hpump) || h0;
+      const Hp = Hpump ? toSI(Hpump) : h0;
       const tt = parseFloat(tTrip);
       if (isNaN(tt) || tt <= 0) return null;
       return {
         type: "pump_trip",
         H_pump_m: Hp, Q_m3s: Q, t_trip_s: tt,
-        H_reservoir_m: parseFloat(Hres) || 0,
+        H_reservoir_m: toSI(Hres),
       };
     }
     if (type === "valve_closure") {
@@ -610,9 +671,9 @@ export default function StepWaterHammerModeB() {
       };
     }
     if (type === "suction_pump_trip") {
-      const Hs = parseFloat(Hsump);
+      const Hs = toSI(Hsump);
       const tt = parseFloat(tTrip);
-      if (isNaN(Hs) || isNaN(tt) || tt <= 0) return null;
+      if (isNaN(parseFloat(Hsump)) || isNaN(tt) || tt <= 0) return null;
       return { type: "suction_pump_trip", H_sump_m: Hs, Q_m3s: Q, t_trip_s: tt };
     }
     return null;
@@ -716,15 +777,15 @@ export default function StepWaterHammerModeB() {
     setWhatIfResult(null);
   }
 
-  // ── Chart data ─────────────────────────────────────────────────────────────
+  // ── Chart data (converted to display units) ─────────────────────────────────
   const envelopeData = useMemo(
     () => result?.envelope.map(pt => ({
-      x:    pt.x_m,
-      elev: pt.elev_m,
-      Hmax: pt.H_max_m,
-      Hmin: pt.H_min_m,
+      x:    pt.x_m    * displayFactor,
+      elev: pt.elev_m * displayFactor,
+      Hmax: pt.H_max_m * displayFactor,
+      Hmin: pt.H_min_m * displayFactor,
     })) ?? [],
-    [result],
+    [result, displayFactor],
   );
 
   const historyData = useMemo(() => {
@@ -733,19 +794,14 @@ export default function StepWaterHammerModeB() {
     const n = obs[0].history.length;
     return Array.from({ length: n }, (_, j) => {
       const pt: Record<string, number> = { t: obs[0].history[j].t_s };
-      obs.forEach((o, ki) => { pt[`obs${ki}`] = o.history[j]?.H_m ?? 0; });
+      obs.forEach((o, ki) => { pt[`obs${ki}`] = (o.history[j]?.H_m ?? 0) * displayFactor; });
       return pt;
     });
-  }, [result]);
+  }, [result, displayFactor]);
 
   const ratingH = result?.rating_check
-    ? result.rating_check.pressure_rating_kPa * 1000 / (rho * G)
+    ? result.rating_check.pressure_rating_kPa * 1000 / (rho * G) * displayFactor
     : null;
-
-  const fmtH = (m: number) =>
-    us ? `${(m * 3.28084).toFixed(2)} ft` : `${m.toFixed(2)} m`;
-  const fmtP = (kPa: number) =>
-    us ? `${(kPa * 0.14504).toFixed(2)} psi` : `${kPa.toFixed(1)} kPa`;
 
   const inp =
     "w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400";
@@ -791,7 +847,9 @@ export default function StepWaterHammerModeB() {
               >
                 {p === "suction" ? "⬆ Suction" : "⬇ Discharge"}
                 <span className="block text-[10px] font-normal text-slate-400 mt-0.5">
-                  L = {pipelineLen(p === "suction" ? suctSegs : dischSegs).toFixed(0)} m
+                  L = {us
+                    ? `${(pipelineLen(p === "suction" ? suctSegs : dischSegs) * FT_PER_M).toFixed(0)} ft`
+                    : `${pipelineLen(p === "suction" ? suctSegs : dischSegs).toFixed(0)} m`}
                 </span>
               </button>
             ))}
@@ -831,12 +889,12 @@ export default function StepWaterHammerModeB() {
             </div>
             <div>
               <Label>
-                H₀ [m]{" "}
+                H₀ [{headUnit}]{" "}
                 {!h0Str && <span className="text-indigo-500 font-normal text-[10px]">(auto)</span>}
               </Label>
               <input
                 type="number" step={0.1}
-                value={h0Str || autoH0_m.toFixed(2)}
+                value={h0Str || (us ? (autoH0_m * FT_PER_M).toFixed(2) : autoH0_m.toFixed(2))}
                 onChange={e => setH0Str(e.target.value)}
                 className={`${inp} ${h0Str ? "border-amber-300 bg-amber-50" : ""}`}
               />
@@ -863,12 +921,18 @@ export default function StepWaterHammerModeB() {
             </div>
             <div>
               <Label>
-                Pressure class [kPa]{" "}
+                Pressure class [kPa{us ? " / psi" : " gauge"}]{" "}
                 <span className="font-normal text-slate-400">(optional)</span>
               </Label>
               <input type="number" min={100} step={50}
                 value={pressRating} onChange={e => setPressRating(e.target.value)}
                 placeholder="e.g. 1600" className={inp} />
+              {pressRating && (
+                <Hint>
+                  {parseFloat(pressRating).toFixed(0)} kPa
+                  {us && ` ≈ ${(parseFloat(pressRating) * PSI_PER_KPA).toFixed(0)} psi`}
+                </Hint>
+              )}
             </div>
           </Grid3>
         </Section>
@@ -878,6 +942,7 @@ export default function StepWaterHammerModeB() {
           <BCPanel
             panelLabel="Boundary A — Upstream (node 0)"
             typeOptions={UPSTREAM_BC_TYPES}
+            us={us}
             state={{
               type: bcAType, H_m: bcA_H_m, H_pump_m: bcA_Hpump, Q_m3s: bcA_Q,
               t_trip_s: bcA_tTrip, H_reservoir_m: bcA_Hres, t_close_s: bcA_tClose,
@@ -892,6 +957,7 @@ export default function StepWaterHammerModeB() {
           <BCPanel
             panelLabel="Boundary B — Downstream (node N)"
             typeOptions={DOWNSTREAM_BC_TYPES}
+            us={us}
             state={{
               type: bcBType, H_m: bcB_H_m, H_pump_m: bcB_Hpump, Q_m3s: bcB_Q,
               t_trip_s: bcB_tTrip, H_reservoir_m: bcB_Hres, t_close_s: bcB_tClose,
@@ -920,6 +986,7 @@ export default function StepWaterHammerModeB() {
                 key={i} idx={i}
                 frac={obs.frac} label={obs.label}
                 pipeLen={pipeLen}
+                us={us}
                 onFrac={obs.setFrac} onLabel={obs.setLabel}
               />
             ))}
@@ -961,7 +1028,7 @@ export default function StepWaterHammerModeB() {
         >
           {computing
             ? "Running MOC simulation…"
-            : `⚡ Run Mode B MOC (${pipeline} pipeline — ${pipeLen.toFixed(0)} m)`}
+            : `⚡ Run Mode B MOC (${pipeline} pipeline — ${us ? (pipeLen * FT_PER_M).toFixed(0) : pipeLen.toFixed(0)} ${headUnit})`}
         </button>
       </div>
 
@@ -992,7 +1059,7 @@ export default function StepWaterHammerModeB() {
               label="First cavitation"
               value={
                 result.cavitation_x_m.length > 0
-                  ? `x = ${result.cavitation_x_m[0].toFixed(0)} m`
+                  ? `x = ${us ? (result.cavitation_x_m[0] * FT_PER_M).toFixed(0) : result.cavitation_x_m[0].toFixed(0)} ${headUnit}`
                   : "None"
               }
               highlight={result.cavitation_x_m.length > 0 ? "red" : "green"}
@@ -1007,15 +1074,16 @@ export default function StepWaterHammerModeB() {
                 <p className="text-sm font-bold text-red-700">Column Separation Detected</p>
                 <p className="text-xs text-red-600 mt-0.5">
                   Head fell to vapour pressure at {result.cavitation_x_m.length} node(s): x ={" "}
-                  {result.cavitation_x_m.slice(0, 5).map(x => `${x.toFixed(0)} m`).join(", ")}
+                  {result.cavitation_x_m.slice(0, 5).map(x =>
+                    us ? `${(x * FT_PER_M).toFixed(0)} ft` : `${x.toFixed(0)} m`
+                  ).join(", ")}
                   {result.cavitation_x_m.length > 5 ? " …" : ""}.{" "}
-                  h_vap = {result.h_vap_m.toFixed(2)} m gauge at {result.temperature_C} °C.
+                  h_vap = {fmtH(result.h_vap_m)} gauge at {result.temperature_C} °C.
                   Vapour pocket formation possible — surge protection required.
                 </p>
               </div>
             </div>
           )}
-
 
           {/* Grid info strip */}
           <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 grid grid-cols-5 gap-3 text-xs font-mono text-slate-700">
@@ -1029,7 +1097,7 @@ export default function StepWaterHammerModeB() {
             </div>
             <div>
               <span className="text-slate-400 font-sans text-[10px] block uppercase tracking-wide mb-0.5">Δx</span>
-              {result.dx_m.toFixed(1)} m
+              {us ? `${(result.dx_m * FT_PER_M).toFixed(1)} ft` : `${result.dx_m.toFixed(1)} m`}
             </div>
             <div>
               <span className="text-slate-400 font-sans text-[10px] block uppercase tracking-wide mb-0.5">Δt</span>
@@ -1053,12 +1121,13 @@ export default function StepWaterHammerModeB() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis
                   dataKey="x"
-                  label={{ value: "Position (m)", position: "insideBottomRight", offset: -4, fontSize: 10 }}
+                  label={{ value: `Position (${headUnit})`, position: "insideBottomRight", offset: -4, fontSize: 10 }}
                   tick={{ fontSize: 10 }}
+                  tickFormatter={v => `${Number(v).toFixed(0)}`}
                 />
                 <YAxis
                   width={56}
-                  label={{ value: "Head (m)", angle: -90, position: "insideLeft", fontSize: 10 }}
+                  label={{ value: `Head (${headUnit})`, angle: -90, position: "insideLeft", fontSize: 10 }}
                   tick={{ fontSize: 10 }}
                 />
                 <Tooltip
@@ -1067,7 +1136,7 @@ export default function StepWaterHammerModeB() {
                     return (
                       <div className="rounded-xl border border-slate-200 bg-white shadow-lg px-3 py-2.5 text-xs space-y-1.5 min-w-[190px]">
                         <p className="font-semibold text-slate-500 border-b border-slate-100 pb-1.5 mb-1">
-                          x = {Number(label).toFixed(0)} m
+                          x = {Number(label).toFixed(0)} {headUnit}
                         </p>
                         {payload.map((p) => {
                           const nameMap: Record<string, string> = { Hmax: "H_max transient", Hmin: "H_min transient", elev: "Elevation" };
@@ -1078,13 +1147,13 @@ export default function StepWaterHammerModeB() {
                                 <span className="text-slate-600">{nameMap[p.dataKey as string] ?? String(p.dataKey)}</span>
                               </span>
                               <span className="font-bold font-mono text-slate-800">
-                                {typeof p.value === "number" ? `${p.value.toFixed(2)} m` : "—"}
+                                {typeof p.value === "number" ? `${p.value.toFixed(2)} ${headUnit}` : "—"}
                               </span>
                             </div>
                           );
                         })}
                         <div className="border-t border-slate-100 pt-1.5 text-[10px] text-amber-600 font-mono">
-                          h_vap = {result.h_vap_m.toFixed(2)} m
+                          h_vap = {fmtH(result.h_vap_m)}
                         </div>
                       </div>
                     );
@@ -1105,22 +1174,22 @@ export default function StepWaterHammerModeB() {
                   stroke="#2563eb" strokeWidth={2} dot={false} isAnimationActive={false}
                 />
                 <ReferenceLine
-                  y={result.h_vap_m}
+                  y={result.h_vap_m * displayFactor}
                   stroke={result.global_min_H_m < result.h_vap_m ? "#dc2626" : "#f59e0b"}
                   strokeDasharray="5 3"
-                  label={{ value: `h_vap = ${result.h_vap_m.toFixed(1)} m`, fontSize: 9, fill: result.global_min_H_m < result.h_vap_m ? "#dc2626" : "#d97706", position: "insideTopLeft" }}
+                  label={{ value: `h_vap = ${fmtH(result.h_vap_m)}`, fontSize: 9, fill: result.global_min_H_m < result.h_vap_m ? "#dc2626" : "#d97706", position: "insideTopLeft" }}
                 />
                 <ReferenceLine
                   y={0}
                   stroke={result.global_min_H_m < 0 ? "#dc2626" : "#94a3b8"}
                   strokeDasharray="2 2"
-                  label={{ value: "0 m (atm)", fontSize: 9, fill: result.global_min_H_m < 0 ? "#dc2626" : "#94a3b8", position: "insideBottomRight" }}
+                  label={{ value: us ? "0 ft (atm)" : "0 m (atm)", fontSize: 9, fill: result.global_min_H_m < 0 ? "#dc2626" : "#94a3b8", position: "insideBottomRight" }}
                 />
                 {ratingH !== null && (
                   <ReferenceLine
                     y={ratingH}
                     stroke="#16a34a" strokeDasharray="5 3"
-                    label={{ value: `PN = ${ratingH.toFixed(0)} m`, fontSize: 9, fill: "#16a34a", position: "insideTopRight" }}
+                    label={{ value: `PN = ${ratingH.toFixed(0)} ${headUnit}`, fontSize: 9, fill: "#16a34a", position: "insideTopRight" }}
                   />
                 )}
               </ComposedChart>
@@ -1142,7 +1211,7 @@ export default function StepWaterHammerModeB() {
                   />
                   <YAxis
                     width={56}
-                    label={{ value: "Head (m)", angle: -90, position: "insideLeft", fontSize: 10 }}
+                    label={{ value: `Head (${headUnit})`, angle: -90, position: "insideLeft", fontSize: 10 }}
                     tick={{ fontSize: 10 }}
                   />
                   <Tooltip
@@ -1160,7 +1229,7 @@ export default function StepWaterHammerModeB() {
                                 <span className="text-slate-600">{String(p.name)}</span>
                               </span>
                               <span className="font-bold font-mono text-slate-800">
-                                {typeof p.value === "number" ? fmtH(p.value) : "—"}
+                                {typeof p.value === "number" ? `${p.value.toFixed(2)} ${headUnit}` : "—"}
                               </span>
                             </div>
                           ))}
@@ -1185,16 +1254,16 @@ export default function StepWaterHammerModeB() {
                     />
                   ))}
                   <ReferenceLine
-                    y={result.h_vap_m}
+                    y={result.h_vap_m * displayFactor}
                     stroke={result.global_min_H_m < result.h_vap_m ? "#dc2626" : "#f59e0b"}
                     strokeDasharray="4 3"
-                    label={{ value: "h_vap", fontSize: 9, fill: result.global_min_H_m < result.h_vap_m ? "#dc2626" : "#d97706" }}
+                    label={{ value: `h_vap = ${fmtH(result.h_vap_m)}`, fontSize: 9, fill: result.global_min_H_m < result.h_vap_m ? "#dc2626" : "#d97706" }}
                   />
                   <ReferenceLine
                     y={0}
                     stroke={result.global_min_H_m < 0 ? "#dc2626" : "#94a3b8"}
                     strokeDasharray="2 2"
-                    label={{ value: "0 m", fontSize: 9, fill: result.global_min_H_m < 0 ? "#dc2626" : "#94a3b8", position: "insideBottomRight" }}
+                    label={{ value: us ? "0 ft" : "0 m", fontSize: 9, fill: result.global_min_H_m < 0 ? "#dc2626" : "#94a3b8", position: "insideBottomRight" }}
                   />
                 </LineChart>
               </ResponsiveContainer>

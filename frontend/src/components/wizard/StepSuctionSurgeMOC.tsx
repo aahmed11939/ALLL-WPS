@@ -27,6 +27,7 @@ import ProtectionDevicePanel from "./ProtectionDevicePanel";
 import WhatIfComparisonPanel from "./WhatIfComparisonPanel";
 import ChartErrorBoundary from "../ChartErrorBoundary";
 import TermTip from "../TermTip";
+import { FT_PER_M, M_PER_FT, PSI_PER_KPA } from "../../utils/units";
 
 // ---------------------------------------------------------------------------
 // Collapsible solver notes banner (default collapsed)
@@ -141,6 +142,9 @@ export default function StepSuctionSurgeMOC() {
   const { draft, dispatch } = useProject();
   const us  = draft.unitSystem === "US";
   const cfg = draft.suctionSurgeConfig;
+  const displayFactor = us ? FT_PER_M : 1;
+  const headUnit = us ? "ft" : "m";
+  const df = us ? FT_PER_M : 1;
 
   const autoQ0_m3s = (draft.hydraulicsResult?.design_Q_m3h ?? draft.designFlow_m3h) / 3600;
   const autoH0_m   = draft.hydraulicsResult?.friction_head_m
@@ -152,32 +156,60 @@ export default function StepSuctionSurgeMOC() {
 
   // Wet well levels (upstream node)
   const wetWellLWL  = draft.upstreamNode.elevation_m;   // worst case — lowest draw-down
+  const wetWellLWLDisplay = wetWellLWL * df;
 
   // ── Form state ─────────────────────────────────────────────────────────────
   const [waveSpeed,    setWaveSpeed]    = useState(String(cfg?.wave_speed_ms ?? waveSpeedFromA));
   const [q0Str,        setQ0Str]        = useState(cfg?.Q_0_m3s_override ?? "");
-  const [h0Str,        setH0Str]        = useState(cfg?.H_0_m_override ?? "");
+  // Seeded from SI config; converted to display units on mount (same pattern as BC heads)
+  const [h0Str,        setH0Str]        = useState(() => {
+    const s = cfg?.H_0_m_override ?? "";
+    if (!s) return "";
+    const v = parseFloat(s);
+    return isNaN(v) ? "" : (us ? String((v * FT_PER_M).toFixed(2)) : s);
+  });
   const [rhoStr,       setRhoStr]       = useState(cfg?.rho_kg_m3 ?? "1000");
   const [tempStr,      setTempStr]      = useState(cfg?.temperature_C ?? "20");
   const [pressRating,  setPressRating]  = useState(cfg?.pressure_rating_kPa ?? "");
-  const [npshrStr,     setNpshrStr]     = useState(cfg?.NPSHr_m_override ?? "");
+  const [npshrStr,     setNpshrStr]     = useState(() => {
+    const s = cfg?.NPSHr_m_override ?? "";
+    if (!s) return "";
+    const v = parseFloat(s);
+    return isNaN(v) ? "" : (us ? String((v * FT_PER_M).toFixed(2)) : s);
+  });
   const [nReaches,     setNReaches]     = useState(cfg?.n_reaches ?? "");
   const [tTotalStr,    setTTotalStr]    = useState(cfg?.t_total_s ?? "");
   const [pumpNodeFrac, setPumpNodeFrac] = useState(String(cfg?.pump_node_frac ?? 1.0));
 
-  // Boundary A — wet well / suction source (upstream end of suction pipe)
+  // Boundary A — head states in DISPLAY units, seeded from SI config
   const [bcAType,   setBcAType]   = useState(cfg?.boundary_A?.type ?? "reservoir");
-  const [bcA_H_m,   setBcA_H_m]   = useState(cfg?.boundary_A?.H_m ?? String(wetWellLWL));
-  const [bcA_Hsump, setBcA_Hsump] = useState(cfg?.boundary_A?.H_sump_m ?? String(wetWellLWL));
+  const [bcA_H_m,   setBcA_H_m]   = useState(
+    cfg?.boundary_A?.H_m !== undefined
+      ? String((isNaN(parseFloat(cfg.boundary_A.H_m)) ? wetWellLWL : parseFloat(cfg.boundary_A.H_m)) * df)
+      : String(wetWellLWLDisplay)
+  );
+  const [bcA_Hsump, setBcA_Hsump] = useState(
+    cfg?.boundary_A?.H_sump_m !== undefined
+      ? String((isNaN(parseFloat(cfg.boundary_A.H_sump_m)) ? wetWellLWL : parseFloat(cfg.boundary_A.H_sump_m)) * df)
+      : String(wetWellLWLDisplay)
+  );
   const [bcA_Q,     setBcA_Q]     = useState(cfg?.boundary_A?.Q_m3s ?? "");
   const [bcA_tTrip, setBcA_tTrip] = useState(cfg?.boundary_A?.t_trip_s ?? "2");
 
-  // Boundary B — pump (downstream end of suction pipe)
+  // Boundary B — head states in DISPLAY units, seeded from SI config
   const [bcBType,   setBcBType]   = useState(cfg?.boundary_B?.type ?? "suction_pump_trip");
-  const [bcB_Hsump, setBcB_Hsump] = useState(cfg?.boundary_B?.H_sump_m ?? String(wetWellLWL));
+  const [bcB_Hsump, setBcB_Hsump] = useState(
+    cfg?.boundary_B?.H_sump_m !== undefined
+      ? String((isNaN(parseFloat(cfg.boundary_B.H_sump_m)) ? wetWellLWL : parseFloat(cfg.boundary_B.H_sump_m)) * df)
+      : String(wetWellLWLDisplay)
+  );
   const [bcB_Q,     setBcB_Q]     = useState(cfg?.boundary_B?.Q_m3s ?? "");
   const [bcB_tTrip, setBcB_tTrip] = useState(cfg?.boundary_B?.t_trip_s ?? "2");
-  const [bcB_H_m,   setBcB_H_m]   = useState(cfg?.boundary_B?.H_m ?? String(wetWellLWL));
+  const [bcB_H_m,   setBcB_H_m]   = useState(
+    cfg?.boundary_B?.H_m !== undefined
+      ? String((isNaN(parseFloat(cfg.boundary_B.H_m)) ? wetWellLWL : parseFloat(cfg.boundary_B.H_m)) * df)
+      : String(wetWellLWLDisplay)
+  );
 
   // Observation points
   const [obs0Frac,  setObs0Frac]  = useState(cfg?.obs_points?.[0]?.frac  ?? "0");
@@ -208,42 +240,68 @@ export default function StepSuctionSurgeMOC() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
   const q0   = parseFloat(q0Str)   || autoQ0_m3s;
-  const h0   = parseFloat(h0Str)   || autoH0_m;
+  // h0Str and npshrStr are stored in display units — convert to SI for physics/API
+  const h0_si = (() => {
+    const ov = parseFloat(h0Str);
+    if (h0Str !== "" && !isNaN(ov)) return us ? ov * M_PER_FT : ov;
+    return autoH0_m;
+  })();
+  const h0   = h0_si;   // alias kept for backward compatibility
   const rho  = parseFloat(rhoStr)  || 1000;
   const temp = parseFloat(tempStr) || 20;
   const a    = parseFloat(waveSpeed) || waveSpeedFromA;
-  const NPSHr = parseFloat(npshrStr) || null;
+  // NPSHr entered in display units (ft in US) — convert to SI
+  const NPSHr_si = (() => {
+    const ov = parseFloat(npshrStr);
+    if (npshrStr !== "" && !isNaN(ov)) return us ? ov * M_PER_FT : ov;
+    return null;
+  })();
+  const NPSHr = NPSHr_si;
 
   const fmtH = (m: number) =>
-    us ? `${(m * 3.28084).toFixed(2)} ft` : `${m.toFixed(2)} m`;
+    us ? `${(m * FT_PER_M).toFixed(2)} ft` : `${m.toFixed(2)} m`;
+  const fmtP_local = (kPa: number) =>
+    us ? `${(kPa * PSI_PER_KPA).toFixed(2)} psi` : `${kPa.toFixed(1)} kPa`;
 
   const inp =
     "w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-400";
 
   // ── Persist config ──────────────────────────────────────────────────────────
   const persistConfig = useCallback(() => {
+    // Preserve empty / invalid strings so optional fields don't get
+    // coerced to "0" and lose their "unset" semantics on remount.
+    const toSI = (s: string) => {
+      const v = parseFloat(s);
+      if (!s || isNaN(v)) return s;
+      return String(v * (us ? M_PER_FT : 1));
+    };
     dispatch({
       type: "SET_SUCTION_SURGE_CONFIG",
       config: {
         wave_speed_ms:        parseFloat(waveSpeed) || 1000,
         Q_0_m3s_override:     q0Str,
-        H_0_m_override:       h0Str,
+        // Persist as SI so values re-seed correctly in any unit mode on remount
+        H_0_m_override: h0Str && !isNaN(parseFloat(h0Str)) && us
+          ? String((parseFloat(h0Str) * M_PER_FT).toFixed(2))
+          : h0Str,
         rho_kg_m3:            rhoStr,
         temperature_C:        tempStr,
         pressure_rating_kPa:  pressRating,
-        NPSHr_m_override:     npshrStr,
+        NPSHr_m_override: npshrStr && !isNaN(parseFloat(npshrStr)) && us
+          ? String((parseFloat(npshrStr) * M_PER_FT).toFixed(2))
+          : npshrStr,
         pump_node_frac:       parseFloat(pumpNodeFrac) || 1.0,
         boundary_A: {
           type: bcAType as "reservoir" | "suction_pump_trip",
-          H_m: bcA_H_m, H_sump_m: bcA_Hsump,
+          H_m: toSI(bcA_H_m), H_sump_m: toSI(bcA_Hsump),
           Q_m3s: bcA_Q, t_trip_s: bcA_tTrip,
-          H_pump_m: "", H_reservoir_m: bcA_H_m, t_close_s: "", profile: "linear" as const,
+          H_pump_m: "", H_reservoir_m: toSI(bcA_H_m), t_close_s: "", profile: "linear" as const,
         },
         boundary_B: {
           type: bcBType as "reservoir" | "suction_pump_trip",
-          H_m: bcB_H_m, H_sump_m: bcB_Hsump,
+          H_m: toSI(bcB_H_m), H_sump_m: toSI(bcB_Hsump),
           Q_m3s: bcB_Q, t_trip_s: bcB_tTrip,
-          H_pump_m: "", H_reservoir_m: bcB_H_m, t_close_s: "", profile: "linear" as const,
+          H_pump_m: "", H_reservoir_m: toSI(bcB_H_m), t_close_s: "", profile: "linear" as const,
         },
         atm_pressure_kPa: "101.325",
         obs_points: [
@@ -260,8 +318,21 @@ export default function StepSuctionSurgeMOC() {
     bcAType, bcA_H_m, bcA_Hsump, bcA_Q, bcA_tTrip,
     bcBType, bcB_H_m, bcB_Hsump, bcB_Q, bcB_tTrip,
     obs0Frac, obs0Label, obs1Frac, obs1Label, obs2Frac, obs2Label,
-    nReaches, tTotalStr, dispatch,
+    nReaches, tTotalStr, dispatch, us,
   ]);
+
+  // Convert manually-typed override and BC head values when unit system is toggled
+  const prevUsRef = useRef(us);
+  useEffect(() => {
+    if (prevUsRef.current === us) return;
+    prevUsRef.current = us;
+    const factor = us ? FT_PER_M : M_PER_FT;
+    const conv = (prev: string) => prev ? String((parseFloat(prev) * factor).toFixed(2)) : prev;
+    setH0Str(conv);
+    setNpshrStr(conv);
+    setBcA_H_m(conv);   setBcA_Hsump(conv);
+    setBcB_H_m(conv);   setBcB_Hsump(conv);
+  }, [us]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const suctionConfigMountedRef = useRef(false);
   useEffect(() => {
@@ -269,21 +340,22 @@ export default function StepSuctionSurgeMOC() {
     persistConfig();
   }, [persistConfig]);
 
-  // ── Build boundary condition ─────────────────────────────────────────────
+  // ── Build boundary condition (display → SI for API) ─────────────────────
   function buildBC(
     type: string,
     H_m: string, Hsump: string, Q_str: string, tTrip: string,
   ): MOCBoundaryInput | null {
+    const toSI = (s: string) => (parseFloat(s) || 0) * (us ? M_PER_FT : 1);
     const Q = parseFloat(Q_str) || q0;
     if (type === "reservoir") {
-      const H = parseFloat(H_m);
-      if (isNaN(H)) return null;
+      const H = toSI(H_m);
+      if (isNaN(parseFloat(H_m))) return null;
       return { type: "reservoir", H_m: H };
     }
     if (type === "suction_pump_trip") {
-      const Hs = parseFloat(Hsump);
+      const Hs = toSI(Hsump);
       const tt = parseFloat(tTrip);
-      if (isNaN(Hs) || isNaN(tt) || tt <= 0) return null;
+      if (isNaN(parseFloat(Hsump)) || isNaN(tt) || tt <= 0) return null;
       return { type: "suction_pump_trip", H_sump_m: Hs, Q_m3s: Q, t_trip_s: tt };
     }
     return null;
@@ -390,25 +462,25 @@ export default function StepSuctionSurgeMOC() {
     setWhatIfResult(null);
   }
 
-  // ── Chart data ────────────────────────────────────────────────────────────
+  // ── Chart data (converted to display units) ────────────────────────────────
   const npshaData = useMemo(
     () => result?.npsha_series.map(pt => ({
       t:       pt.t_s,
-      NPSHa:   pt.NPSHa_m,
-      H_suct:  pt.H_suction_m,
-      margin:  pt.margin_m ?? null,
+      NPSHa:   pt.NPSHa_m    * displayFactor,
+      H_suct:  pt.H_suction_m * displayFactor,
+      margin:  pt.margin_m !== null ? pt.margin_m * displayFactor : null,
     })) ?? [],
-    [result],
+    [result, displayFactor],
   );
 
   const envelopeData = useMemo(
     () => result?.envelope.map(pt => ({
-      x:    pt.x_m,
-      elev: pt.elev_m,
-      Hmax: pt.H_max_m,
-      Hmin: pt.H_min_m,
+      x:    pt.x_m    * displayFactor,
+      elev: pt.elev_m * displayFactor,
+      Hmax: pt.H_max_m * displayFactor,
+      Hmin: pt.H_min_m * displayFactor,
     })) ?? [],
-    [result],
+    [result, displayFactor],
   );
 
   const historyData = useMemo(() => {
@@ -417,10 +489,10 @@ export default function StepSuctionSurgeMOC() {
     const n = obs[0].history.length;
     return Array.from({ length: n }, (_, j) => {
       const pt: Record<string, number> = { t: obs[0].history[j].t_s };
-      obs.forEach((o, ki) => { pt[`obs${ki}`] = o.history[j]?.H_m ?? 0; });
+      obs.forEach((o, ki) => { pt[`obs${ki}`] = (o.history[j]?.H_m ?? 0) * displayFactor; });
       return pt;
     });
-  }, [result]);
+  }, [result, displayFactor]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -448,7 +520,7 @@ export default function StepSuctionSurgeMOC() {
       {/* ── Input form ─────────────────────────────────────────────────────────── */}
       <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-5 shadow-sm">
 
-        <Section title="Flow & Operating Conditions">
+        <Section title="Flow &amp; Operating Conditions">
           <Grid3>
             <div>
               <Label>Wave speed a <TermTip term="a" /> [m/s]</Label>
@@ -480,12 +552,12 @@ export default function StepSuctionSurgeMOC() {
             </div>
             <div>
               <Label>
-                H₀ [m]{" "}
+                H₀ [{headUnit}]{" "}
                 {!h0Str && <span className="text-violet-500 font-normal text-[10px]">(auto)</span>}
               </Label>
               <input
                 type="number" step={0.1}
-                value={h0Str || autoH0_m.toFixed(2)}
+                value={h0Str || (us ? (autoH0_m * FT_PER_M).toFixed(2) : autoH0_m.toFixed(2))}
                 onChange={e => setH0Str(e.target.value)}
                 className={`${inp} ${h0Str ? "border-amber-300 bg-amber-50" : ""}`}
               />
@@ -510,21 +582,30 @@ export default function StepSuctionSurgeMOC() {
             </div>
             <div>
               <Label>
-                NPSHr <TermTip term="NPSHr" /> [m]{" "}
+                NPSHr <TermTip term="NPSHr" /> [{headUnit}]{" "}
                 <span className="font-normal text-slate-400">(optional)</span>
               </Label>
               <input type="number" min={0} step={0.1}
                 value={npshrStr} onChange={e => setNpshrStr(e.target.value)}
-                placeholder="e.g. 4.5" className={inp} />
+                placeholder={us ? "e.g. 14.8" : "e.g. 4.5"} className={inp} />
               <Hint>Pump minimum required NPSH from curve</Hint>
             </div>
           </Grid3>
           <Grid2>
             <div>
-              <Label>Pressure class [kPa] <span className="font-normal text-slate-400">(optional)</span></Label>
+              <Label>
+                Pressure class [kPa{us ? " / psi" : " gauge"}]{" "}
+                <span className="font-normal text-slate-400">(optional)</span>
+              </Label>
               <input type="number" min={100} step={50}
                 value={pressRating} onChange={e => setPressRating(e.target.value)}
                 placeholder="e.g. 1000 (PN 10)" className={inp} />
+              {pressRating && (
+                <Hint>
+                  {parseFloat(pressRating).toFixed(0)} kPa
+                  {us && ` ≈ ${(parseFloat(pressRating) * PSI_PER_KPA).toFixed(0)} psi`}
+                </Hint>
+              )}
             </div>
             <div>
               <Label>Pump node position (fractional)</Label>
@@ -553,18 +634,21 @@ export default function StepSuctionSurgeMOC() {
             </div>
             {bcAType === "reservoir" && (
               <div>
-                <Label>Wet well LWL / HGL [m above datum]</Label>
+                <Label>Wet well LWL / HGL [{headUnit} above datum]</Label>
                 <input type="number" step={0.1}
                   value={bcA_H_m} onChange={e => setBcA_H_m(e.target.value)}
-                  placeholder={`e.g. ${wetWellLWL.toFixed(1)} (upstream node elevation)`}
+                  placeholder={`e.g. ${wetWellLWLDisplay.toFixed(1)} (upstream node elevation)`}
                   className={inp} />
-                <Hint>Use Low Water Level for worst-case NPSHa. Upstream node elevation = {wetWellLWL.toFixed(2)} m</Hint>
+                <Hint>
+                  Use Low Water Level for worst-case NPSHa.
+                  Upstream node elevation = {fmtH(wetWellLWL)}
+                </Hint>
               </div>
             )}
             {bcAType === "suction_pump_trip" && (
               <Grid2>
                 <div>
-                  <Label>Sump head H_sump [m]</Label>
+                  <Label>Sump head H_sump [{headUnit}]</Label>
                   <input type="number" step={0.5} value={bcA_Hsump}
                     onChange={e => setBcA_Hsump(e.target.value)} className={inp} />
                 </div>
@@ -600,10 +684,10 @@ export default function StepSuctionSurgeMOC() {
             {bcBType === "suction_pump_trip" && (
               <Grid2>
                 <div>
-                  <Label>Sump head H_sump [m]</Label>
+                  <Label>Sump head H_sump [{headUnit}]</Label>
                   <input type="number" step={0.5} value={bcB_Hsump}
                     onChange={e => setBcB_Hsump(e.target.value)}
-                    placeholder={wetWellLWL.toFixed(1)} className={inp} />
+                    placeholder={wetWellLWLDisplay.toFixed(1)} className={inp} />
                   <Hint>Total piezometric head at pump inlet — use wet well LWL</Hint>
                 </div>
                 <div>
@@ -623,7 +707,7 @@ export default function StepSuctionSurgeMOC() {
             )}
             {bcBType === "reservoir" && (
               <div>
-                <Label>Reservoir head [m]</Label>
+                <Label>Reservoir head [{headUnit}]</Label>
                 <input type="number" step={0.5} value={bcB_H_m}
                   onChange={e => setBcB_H_m(e.target.value)} className={inp} />
               </div>
@@ -665,7 +749,8 @@ export default function StepSuctionSurgeMOC() {
               { frac: obs2Frac, label: obs2Label, setFrac: setObs2Frac, setLabel: setObs2Label },
             ].map((obs, i) => {
               const f = parseFloat(obs.frac as string);
-              const x = isNaN(f) ? 0 : f * pipeLen;
+              const x_m = isNaN(f) ? 0 : f * pipeLen;
+              const xDisplay = us ? (x_m * FT_PER_M).toFixed(0) : x_m.toFixed(0);
               return (
                 <div key={i} className="grid grid-cols-[1fr_56px_1fr] gap-3 items-center">
                   <div>
@@ -679,7 +764,7 @@ export default function StepSuctionSurgeMOC() {
                   </div>
                   <div className="text-center">
                     <p className="text-[10px] font-mono font-semibold text-slate-700">{(isNaN(f) ? 0 : f).toFixed(2)}</p>
-                    <p className="text-[9px] text-slate-400">{x.toFixed(0)} m</p>
+                    <p className="text-[9px] text-slate-400">{xDisplay} {headUnit}</p>
                   </div>
                   <div>
                     <input
@@ -708,7 +793,7 @@ export default function StepSuctionSurgeMOC() {
         >
           {computing
             ? "Running suction MOC + NPSHa analysis…"
-            : `⚡ Run Suction MOC — NPSHa Transient (${pipeLen.toFixed(0)} m)`}
+            : `⚡ Run Suction MOC — NPSHa Transient (${us ? (pipeLen * FT_PER_M).toFixed(0) : pipeLen.toFixed(0)} ${headUnit})`}
         </button>
       </div>
 
@@ -730,14 +815,14 @@ export default function StepSuctionSurgeMOC() {
               <KpiCard
                 label="NPSHa Steady"
                 value={fmtH(result.npsha_steady_m)}
-                value2={`(${result.npsha_steady_m.toFixed(2)} m)`}
+                value2={us ? undefined : `(${result.npsha_steady_m.toFixed(2)} m)`}
                 highlight="blue"
                 sub="At t = 0, before trip"
               />
               <KpiCard
                 label="NPSHa Minimum"
                 value={fmtH(result.npsha_min_m)}
-                value2={`(${result.npsha_min_m.toFixed(2)} m)`}
+                value2={us ? undefined : `(${result.npsha_min_m.toFixed(2)} m)`}
                 highlight={result.transient_npsh_risk ? "red" : "green"}
                 sub="Worst-case transient"
               />
@@ -745,13 +830,13 @@ export default function StepSuctionSurgeMOC() {
                 <KpiCard
                   label="Min NPSHa Margin"
                   value={fmtH(result.npsha_margin_min_m)}
-                  value2={`(${result.npsha_margin_min_m.toFixed(2)} m)`}
+                  value2={us ? undefined : `(${result.npsha_margin_min_m.toFixed(2)} m)`}
                   highlight={
                     result.npsha_margin_min_m < 0 ? "red"
                     : result.npsha_margin_min_m < 0.5 ? "amber"
                     : "green"
                   }
-                  sub={`NPSHa_min − NPSHr (${result.NPSHr_m?.toFixed(1)} m)`}
+                  sub={`NPSHa_min − NPSHr (${fmtH(result.NPSHr_m ?? 0)})`}
                 />
               )}
               <KpiCard
@@ -775,7 +860,7 @@ export default function StepSuctionSurgeMOC() {
                 <p className="text-sm font-bold text-red-700">Transient Cavitation Risk at Pump Inlet</p>
                 <p className="text-xs text-red-600 mt-0.5">
                   NPSHa falls below NPSHr for {result.npsha_risk_duration_s.toFixed(2)} s during the transient.
-                  Min NPSHa = {result.npsha_min_m.toFixed(2)} m, NPSHr = {result.NPSHr_m?.toFixed(2) ?? "N/A"} m.
+                  Min NPSHa = {fmtH(result.npsha_min_m)}, NPSHr = {result.NPSHr_m !== null ? fmtH(result.NPSHr_m) : "N/A"}.
                   Consider: increasing wet well LWL, reducing pipe losses, adding surge vessel, or extending pump trip time.
                 </p>
               </div>
@@ -790,8 +875,10 @@ export default function StepSuctionSurgeMOC() {
                 <p className="text-sm font-bold text-red-700">Column Separation in Suction Pipeline</p>
                 <p className="text-xs text-red-600 mt-0.5">
                   Head fell to vapour pressure at {result.cavitation_x_m.length} node(s): x ={" "}
-                  {result.cavitation_x_m.slice(0, 5).map(x => `${x.toFixed(0)} m`).join(", ")}
-                  {result.cavitation_x_m.length > 5 ? " …" : ""}. h_vap = {result.h_vap_m.toFixed(2)} m gauge.
+                  {result.cavitation_x_m.slice(0, 5).map(x =>
+                    us ? `${(x * FT_PER_M).toFixed(0)} ft` : `${x.toFixed(0)} m`
+                  ).join(", ")}
+                  {result.cavitation_x_m.length > 5 ? " …" : ""}. h_vap = {fmtH(result.h_vap_m)} gauge.
                 </p>
               </div>
             </div>
@@ -802,7 +889,7 @@ export default function StepSuctionSurgeMOC() {
             {[
               { label: "N reaches", val: String(result.N) },
               { label: "Courant",   val: result.courant.toFixed(3) },
-              { label: "Δx",        val: `${result.dx_m.toFixed(1)} m` },
+              { label: "Δx",        val: us ? `${(result.dx_m * FT_PER_M).toFixed(1)} ft` : `${result.dx_m.toFixed(1)} m` },
               { label: "Δt",        val: `${result.dt_s.toFixed(4)} s` },
               { label: "T_char",    val: `${result.T_char_s.toFixed(3)} s` },
             ].map(c => (
@@ -832,7 +919,7 @@ export default function StepSuctionSurgeMOC() {
                   />
                   <YAxis
                     width={56}
-                    label={{ value: "NPSH (m)", angle: -90, position: "insideLeft", fontSize: 10 }}
+                    label={{ value: `NPSH (${headUnit})`, angle: -90, position: "insideLeft", fontSize: 10 }}
                     tick={{ fontSize: 10 }}
                   />
                   <Tooltip
@@ -850,16 +937,16 @@ export default function StepSuctionSurgeMOC() {
                                 <span className="text-slate-600">{String(p.name)}</span>
                               </span>
                               <span className={`font-bold font-mono ${
-                                typeof p.value === "number" && result?.h_vap_m !== undefined && p.value < result.h_vap_m
+                                typeof p.value === "number" && result?.h_vap_m !== undefined && p.value < result.h_vap_m * displayFactor
                                   ? "text-red-700" : "text-slate-800"
                               }`}>
-                                {typeof p.value === "number" ? `${p.value.toFixed(3)} m` : "—"}
+                                {typeof p.value === "number" ? `${p.value.toFixed(3)} ${headUnit}` : "—"}
                               </span>
                             </div>
                           ))}
                           {result?.h_vap_m !== undefined && (
                             <div className="border-t border-slate-100 pt-1.5 text-[10px] text-amber-600 font-mono">
-                              h_vap = {result.h_vap_m.toFixed(3)} m (cavitation limit)
+                              h_vap = {fmtH(result.h_vap_m)} (cavitation limit)
                             </div>
                           )}
                         </div>
@@ -879,15 +966,15 @@ export default function StepSuctionSurgeMOC() {
                     />
                   )}
                   <ReferenceLine
-                    y={result.h_vap_m}
+                    y={result.h_vap_m * displayFactor}
                     stroke="#f59e0b" strokeDasharray="5 3"
-                    label={{ value: `h_vap = ${result.h_vap_m.toFixed(1)} m`, fontSize: 9, fill: "#d97706", position: "insideTopLeft" }}
+                    label={{ value: `h_vap = ${fmtH(result.h_vap_m)}`, fontSize: 9, fill: "#d97706", position: "insideTopLeft" }}
                   />
                   {result.NPSHr_m !== null && (
                     <ReferenceLine
-                      y={result.NPSHr_m}
+                      y={result.NPSHr_m * displayFactor}
                       stroke="#ea580c" strokeDasharray="6 3" strokeWidth={1.5}
-                      label={{ value: `NPSHr = ${result.NPSHr_m.toFixed(1)} m`, fontSize: 9, fill: "#ea580c", position: "insideTopRight" }}
+                      label={{ value: `NPSHr = ${fmtH(result.NPSHr_m)}`, fontSize: 9, fill: "#ea580c", position: "insideTopRight" }}
                     />
                   )}
                 </LineChart>
@@ -908,12 +995,13 @@ export default function StepSuctionSurgeMOC() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis
                     dataKey="x"
-                    label={{ value: "Position (m)", position: "insideBottomRight", offset: -4, fontSize: 10 }}
+                    label={{ value: `Position (${headUnit})`, position: "insideBottomRight", offset: -4, fontSize: 10 }}
                     tick={{ fontSize: 10 }}
+                    tickFormatter={v => `${Number(v).toFixed(0)}`}
                   />
                   <YAxis
                     width={56}
-                    label={{ value: "Head (m)", angle: -90, position: "insideLeft", fontSize: 10 }}
+                    label={{ value: `Head (${headUnit})`, angle: -90, position: "insideLeft", fontSize: 10 }}
                     tick={{ fontSize: 10 }}
                   />
                   <Tooltip
@@ -922,7 +1010,7 @@ export default function StepSuctionSurgeMOC() {
                       return (
                         <div className="rounded-xl border border-slate-200 bg-white shadow-lg px-3 py-2.5 text-xs space-y-1.5 min-w-[190px]">
                           <p className="font-semibold text-slate-500 border-b border-slate-100 pb-1.5 mb-1">
-                            x = {Number(label).toFixed(0)} m
+                            x = {Number(label).toFixed(0)} {headUnit}
                           </p>
                           {payload.map((p) => {
                             const nameMap: Record<string, string> = { Hmax: "H_max transient", Hmin: "H_min transient", elev: "Elevation" };
@@ -933,14 +1021,14 @@ export default function StepSuctionSurgeMOC() {
                                   <span className="text-slate-600">{nameMap[p.dataKey as string] ?? String(p.dataKey)}</span>
                                 </span>
                                 <span className="font-bold font-mono text-slate-800">
-                                  {typeof p.value === "number" ? `${p.value.toFixed(2)} m` : "—"}
+                                  {typeof p.value === "number" ? `${p.value.toFixed(2)} ${headUnit}` : "—"}
                                 </span>
                               </div>
                             );
                           })}
                           {result?.h_vap_m !== undefined && (
                             <div className="border-t border-slate-100 pt-1.5 text-[10px] text-amber-600 font-mono">
-                              h_vap = {result.h_vap_m.toFixed(2)} m
+                              h_vap = {fmtH(result.h_vap_m)}
                             </div>
                           )}
                         </div>
@@ -962,16 +1050,16 @@ export default function StepSuctionSurgeMOC() {
                     stroke="#2563eb" strokeWidth={2} dot={false} isAnimationActive={false}
                   />
                   <ReferenceLine
-                    y={result.h_vap_m}
+                    y={result.h_vap_m * displayFactor}
                     stroke={result.global_min_H_m < result.h_vap_m ? "#dc2626" : "#f59e0b"}
                     strokeDasharray="5 3"
-                    label={{ value: `h_vap = ${result.h_vap_m.toFixed(1)} m`, fontSize: 9, fill: result.global_min_H_m < result.h_vap_m ? "#dc2626" : "#d97706", position: "insideTopLeft" }}
+                    label={{ value: `h_vap = ${fmtH(result.h_vap_m)}`, fontSize: 9, fill: result.global_min_H_m < result.h_vap_m ? "#dc2626" : "#d97706", position: "insideTopLeft" }}
                   />
                   <ReferenceLine
                     y={0}
                     stroke={result.global_min_H_m < 0 ? "#dc2626" : "#94a3b8"}
                     strokeDasharray="2 2"
-                    label={{ value: "0 m (atm)", fontSize: 9, fill: result.global_min_H_m < 0 ? "#dc2626" : "#94a3b8", position: "insideBottomRight" }}
+                    label={{ value: us ? "0 ft (atm)" : "0 m (atm)", fontSize: 9, fill: result.global_min_H_m < 0 ? "#dc2626" : "#94a3b8", position: "insideBottomRight" }}
                   />
                 </ComposedChart>
               </ResponsiveContainer>
@@ -987,7 +1075,7 @@ export default function StepSuctionSurgeMOC() {
                 <LineChart data={historyData} margin={{ top: 4, right: 20, left: 8, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="t" label={{ value: "Time (s)", position: "insideBottomRight", offset: -4, fontSize: 10 }} tick={{ fontSize: 10 }} />
-                  <YAxis width={56} label={{ value: "Head (m)", angle: -90, position: "insideLeft", fontSize: 10 }} tick={{ fontSize: 10 }} />
+                  <YAxis width={56} label={{ value: `Head (${headUnit})`, angle: -90, position: "insideLeft", fontSize: 10 }} tick={{ fontSize: 10 }} />
                   <Tooltip
                     content={({ active, payload, label }) => {
                       if (!active || !payload?.length) return null;
@@ -1003,12 +1091,12 @@ export default function StepSuctionSurgeMOC() {
                                 <span className="text-slate-600">{String(p.name)}</span>
                               </span>
                               <span className="font-bold font-mono text-slate-800">
-                                {typeof p.value === "number" ? `${p.value.toFixed(2)} m` : "—"}
+                                {typeof p.value === "number" ? `${p.value.toFixed(2)} ${headUnit}` : "—"}
                               </span>
                             </div>
                           ))}
                           <div className="border-t border-slate-100 pt-1.5 text-[10px] text-amber-600 font-mono">
-                            h_vap = {result.h_vap_m.toFixed(2)} m
+                            h_vap = {fmtH(result.h_vap_m)}
                           </div>
                         </div>
                       );
@@ -1028,16 +1116,16 @@ export default function StepSuctionSurgeMOC() {
                     />
                   ))}
                   <ReferenceLine
-                    y={result.h_vap_m}
+                    y={result.h_vap_m * displayFactor}
                     stroke={result.global_min_H_m < result.h_vap_m ? "#dc2626" : "#f59e0b"}
                     strokeDasharray="4 3"
-                    label={{ value: "h_vap", fontSize: 9, fill: result.global_min_H_m < result.h_vap_m ? "#dc2626" : "#d97706" }}
+                    label={{ value: `h_vap = ${fmtH(result.h_vap_m)}`, fontSize: 9, fill: result.global_min_H_m < result.h_vap_m ? "#dc2626" : "#d97706" }}
                   />
                   <ReferenceLine
                     y={0}
                     stroke={result.global_min_H_m < 0 ? "#dc2626" : "#94a3b8"}
                     strokeDasharray="2 2"
-                    label={{ value: "0 m", fontSize: 9, fill: result.global_min_H_m < 0 ? "#dc2626" : "#94a3b8", position: "insideBottomRight" }}
+                    label={{ value: us ? "0 ft" : "0 m", fontSize: 9, fill: result.global_min_H_m < 0 ? "#dc2626" : "#94a3b8", position: "insideBottomRight" }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -1048,14 +1136,14 @@ export default function StepSuctionSurgeMOC() {
           {/* Atm pressure + NPSHr summary */}
           <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-[11px] font-mono text-slate-600 space-y-1.5">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 font-sans">Fluid Properties</p>
-            <p>h_vap ({result.temperature_C} °C) = <strong className="text-slate-800">{result.h_vap_m.toFixed(3)} m</strong> gauge</p>
-            <p>Atmospheric pressure = <strong className="text-slate-800">{result.atm_pressure_kPa.toFixed(1)} kPa</strong>
-               {" "}= {(result.atm_pressure_kPa * 1000 / (parseFloat(rhoStr) * G)).toFixed(2)} m head</p>
+            <p>h_vap ({result.temperature_C} °C) = <strong className="text-slate-800">{fmtH(result.h_vap_m)}</strong> gauge</p>
+            <p>Atmospheric pressure = <strong className="text-slate-800">{fmtP_local(result.atm_pressure_kPa)}</strong>
+               {" "}= {fmtH(result.atm_pressure_kPa * 1000 / (parseFloat(rhoStr) * G))} head</p>
             {result.NPSHr_m !== null && (
-              <p>NPSHr (pump curve) = <strong className="text-slate-800">{result.NPSHr_m.toFixed(2)} m</strong></p>
+              <p>NPSHr (pump curve) = <strong className="text-slate-800">{fmtH(result.NPSHr_m)}</strong></p>
             )}
-            <p>NPSHa steady = <strong className="text-slate-800">{result.npsha_steady_m.toFixed(3)} m</strong>
-               {"  "}|{"  "}NPSHa min = <strong className={result.transient_npsh_risk ? "text-red-700" : "text-emerald-700"}>{result.npsha_min_m.toFixed(3)} m</strong></p>
+            <p>NPSHa steady = <strong className="text-slate-800">{fmtH(result.npsha_steady_m)}</strong>
+               {"  "}|{"  "}NPSHa min = <strong className={result.transient_npsh_risk ? "text-red-700" : "text-emerald-700"}>{fmtH(result.npsha_min_m)}</strong></p>
           </div>
 
           {/* ── What-If Surge Protection ─────────────────────────────────── */}

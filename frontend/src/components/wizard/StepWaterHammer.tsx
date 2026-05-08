@@ -17,6 +17,7 @@ import StepWaterHammerModeB  from "./StepWaterHammerModeB";
 import StepSuctionSurgeMOC   from "./StepSuctionSurgeMOC";
 import SurgeSummaryPanel      from "./SurgeSummaryPanel";
 import ChartErrorBoundary     from "../ChartErrorBoundary";
+import { FT_PER_M, M_PER_FT, FPS_PER_MS, IN_PER_MM, PSI_PER_KPA } from "../../utils/units";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -108,7 +109,7 @@ function fmtH(m: number, us: boolean): string {
   return us ? `${(m * 3.28084).toFixed(2)} ft` : `${m.toFixed(2)} m`;
 }
 function fmtP(kPa: number, us: boolean): string {
-  return us ? `${(kPa * 0.14504).toFixed(2)} psi` : `${kPa.toFixed(1)} kPa`;
+  return us ? `${(kPa * PSI_PER_KPA).toFixed(2)} psi` : `${kPa.toFixed(1)} kPa`;
 }
 function fmtV(ms: number, us: boolean): string {
   return us ? `${(ms * 3.28084).toFixed(3)} ft/s` : `${ms.toFixed(3)} m/s`;
@@ -177,7 +178,7 @@ function KpiCard({
 
 function RatingCheckPanel({ rc, us }: { rc: PressureRatingCheck; us: boolean }) {
   const fmtP2 = (kPa: number) =>
-    us ? `${(kPa * 0.14504).toFixed(1)} psi` : `${kPa.toFixed(1)} kPa`;
+    us ? `${(kPa * PSI_PER_KPA).toFixed(1)} psi` : `${kPa.toFixed(1)} kPa`;
 
   const statusCfg = {
     pass:    { bg: "bg-emerald-50 border-emerald-200", badge: "bg-emerald-100 text-emerald-700", icon: "✓", text: "PASS" },
@@ -233,6 +234,9 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
   const { draft, dispatch } = useProject();
   const us  = draft.unitSystem === "US";
   const cfg = draft.waterHammerConfig;
+  const displayFactor = us ? FT_PER_M : 1;
+  const headUnit = us ? "ft" : "m";
+  const velUnit  = us ? "ft/s" : "m/s";
 
   const autoV0  = draft.hydraulicsResult?.velocity_ms ?? null;
   const autoTDH = draft.hydraulicsResult?.tdh_m ?? null;
@@ -243,9 +247,20 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
   // Shared form state
   const [wavespeed,      setWavespeed]      = useState<string>(String(cfg?.wave_speed_ms ?? 400));
   const [eventType,      setEventType]      = useState<SurgeEventType>(cfg?.event_type ?? "pump_trip");
-  const [v0Override,     setV0Override]     = useState<string>(cfg?.V0_override ?? "");
+  // Override seeds are persisted in SI; convert to display units on mount
+  const [v0Override,     setV0Override]     = useState<string>(() => {
+    const s = cfg?.V0_override ?? "";
+    if (!s) return "";
+    const v = parseFloat(s);
+    return isNaN(v) ? "" : (us ? String((v * FPS_PER_MS).toFixed(4)) : s);
+  });
   const [closureTime,    setClosureTime]    = useState<string>(cfg?.closure_time_s ?? "");
-  const [hOpOverride,    setHOpOverride]    = useState<string>(cfg?.H_operating_override ?? "");
+  const [hOpOverride,    setHOpOverride]    = useState<string>(() => {
+    const s = cfg?.H_operating_override ?? "";
+    if (!s) return "";
+    const v = parseFloat(s);
+    return isNaN(v) ? "" : (us ? String((v * FT_PER_M).toFixed(2)) : s);
+  });
   const [rho,            setRho]            = useState<string>(String(cfg?.rho_kg_m3 ?? 1000));
   const [temperatureC,   setTemperatureC]   = useState<string>(cfg?.temperature_C ?? "20");
   const [pressRatingKPa, setPressRatingKPa] = useState<string>(cfg?.pressure_rating_kPa ?? "");
@@ -268,24 +283,29 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
     draft.waterHammerResult ?? null
   );
 
-  const effectiveV0: number = (() => {
+  // SI values for calculations (v0Override and hOpOverride are stored in display units)
+  const effectiveV0_si: number = (() => {
     const ov = parseFloat(v0Override);
-    if (!isNaN(ov) && ov >= 0) return ov;
+    if (!isNaN(ov) && ov >= 0) return us ? ov * M_PER_FT : ov;
     return autoV0 ?? 0;
   })();
 
-  const effectiveH: number = (() => {
+  const effectiveH_si: number = (() => {
     const ov = parseFloat(hOpOverride);
-    if (!isNaN(ov)) return ov;
+    if (!isNaN(ov)) return us ? ov * M_PER_FT : ov;
     return autoTDH ?? 0;
   })();
+
+  // Display values for the inputs
+  const autoV0Display  = autoV0  !== null ? (us ? autoV0  * FPS_PER_MS : autoV0)  : null;
+  const autoTDHDisplay = autoTDH !== null ? (us ? autoTDH * FT_PER_M   : autoTDH) : null;
 
   const selectedEvent  = EVENT_TYPES.find(e => e.value === eventType)!;
   const needsClosure   = selectedEvent?.needsClosure ?? false;
   const previewA       = parseFloat(wavespeed) || 400;
   const previewRho     = parseFloat(rho) || 1000;
-  const previewDH      = (previewA * effectiveV0) / G;
-  const previewDP      = previewRho * previewA * effectiveV0 / 1000;
+  const previewDH      = (previewA * effectiveV0_si) / G;
+  const previewDP      = previewRho * previewA * effectiveV0_si / 1000;
   const previewT       = pipeLen > 0 ? (2 * pipeLen / previewA) : 0;
   const tempCNum       = parseFloat(temperatureC);
   const validTemp      = !isNaN(tempCNum) && tempCNum >= -10 && tempCNum <= 100;
@@ -317,10 +337,16 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
     const config: WaterHammerConfig = {
       pipeline:             activePipeline,
       wave_speed_ms:        parseFloat(wavespeed) || 400,
-      V0_override:          v0Override,
+      // Store overrides in SI so they can be correctly converted to display
+      // units on mount, regardless of which unit system was active when saved.
+      V0_override: v0Override && !isNaN(parseFloat(v0Override)) && us
+        ? String((parseFloat(v0Override) * M_PER_FT).toFixed(4))
+        : v0Override,
       event_type:           eventType,
       closure_time_s:       closureTime,
-      H_operating_override: hOpOverride,
+      H_operating_override: hOpOverride && !isNaN(parseFloat(hOpOverride)) && us
+        ? String((parseFloat(hOpOverride) * M_PER_FT).toFixed(2))
+        : hOpOverride,
       rho_kg_m3:            parseFloat(rho) || 1000,
       temperature_C:        temperatureC,
       pressure_rating_kPa:  pressRatingKPa,
@@ -337,6 +363,22 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
     rho, temperatureC, pressRatingKPa, waveMat, waveDoMm, waveWallMm,
     waveSdr, useSDR, waveRestraint, dispatch,
   ]);
+
+  // Convert manually-typed override values when unit system is toggled mid-session
+  const prevUsRef = useRef(us);
+  useEffect(() => {
+    if (prevUsRef.current === us) return;
+    prevUsRef.current = us;
+    if (us) {
+      // SI → US
+      setV0Override(prev => prev ? String((parseFloat(prev) * FPS_PER_MS).toFixed(4)) : prev);
+      setHOpOverride(prev => prev ? String((parseFloat(prev) * FT_PER_M).toFixed(2)) : prev);
+    } else {
+      // US → SI
+      setV0Override(prev => prev ? String((parseFloat(prev) * M_PER_FT).toFixed(4)) : prev);
+      setHOpOverride(prev => prev ? String((parseFloat(prev) * M_PER_FT).toFixed(2)) : prev);
+    }
+  }, [us]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const whConfigMountedRef = useRef(false);
   useEffect(() => {
@@ -355,7 +397,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
     if (isNaN(a) || a <= 0)    { setError("Wave speed must be a positive number."); return; }
     if (isNaN(rhoV) || rhoV <= 0) { setError("Fluid density must be positive."); return; }
     if (pipeLen <= 0)          { setError("Pipe length is zero — configure pipeline segments first."); return; }
-    if (effectiveV0 <= 0 && !v0Override) {
+    if (effectiveV0_si <= 0 && !v0Override) {
       setError("Run Hydraulics first (Step 6) to get flow velocity, or enter V₀ manually.");
       return;
     }
@@ -368,12 +410,12 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
       const res = await computeSurgeQuick({
         pipeline:            activePipeline,
         wave_speed_ms:       a,
-        V0_ms:               effectiveV0,
+        V0_ms:               effectiveV0_si,
         event_type:          eventType,
         pipe_length_m:       pipeLen,
         closure_time_s:      tc ?? null,
         rho_kg_m3:           rhoV,
-        H_operating_m:       effectiveH,
+        H_operating_m:       effectiveH_si,
         temperature_C:       isNaN(tempV) ? 20 : tempV,
         pressure_rating_kPa: (!isNaN(ratingV) && ratingV > 0) ? ratingV : null,
         unit_system:         draft.unitSystem,
@@ -606,8 +648,15 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
               <div className="space-y-3">
                 <div className="grid grid-cols-3 gap-2">
                   <KpiCard label="Wave speed a" value={`${waveCalcResult.wave_speed_ms} m/s`} highlight="blue" />
-                  <KpiCard label="Inner diameter Dᵢ" value={`${waveCalcResult.D_i_mm.toFixed(2)} mm`}
-                    sub={`Wall = ${waveCalcResult.wall_mm.toFixed(2)} mm  SDR ${waveCalcResult.sdr_used.toFixed(1)}`} />
+                  <KpiCard
+                    label="Inner diameter Dᵢ"
+                    value={us
+                      ? `${(waveCalcResult.D_i_mm * IN_PER_MM).toFixed(3)} in`
+                      : `${waveCalcResult.D_i_mm.toFixed(2)} mm`}
+                    sub={us
+                      ? `Wall = ${(waveCalcResult.wall_mm * IN_PER_MM).toFixed(3)} in  SDR ${waveCalcResult.sdr_used.toFixed(1)}`
+                      : `Wall = ${waveCalcResult.wall_mm.toFixed(2)} mm  SDR ${waveCalcResult.sdr_used.toFixed(1)}`}
+                  />
                   <KpiCard label="Restraint C" value={waveCalcResult.C.toFixed(4)} sub={waveCalcResult.restraint} />
                 </div>
                 <div className="rounded-lg bg-slate-900 border border-slate-700 px-4 py-3 overflow-x-auto">
@@ -675,7 +724,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
           )}
         </Section>
 
-        <Section title="Pipe & Fluid">
+        <Section title="Pipe &amp; Fluid">
           <FieldRow>
             <div>
               <Label>Wave speed <TermTip term="a" /> [m/s]</Label>
@@ -708,26 +757,26 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
 
           <FieldRow cols={3}>
             <div>
-              <Label>Pipe length L [m]</Label>
+              <Label>Pipe length L [{headUnit}]</Label>
               <input
                 type="number" readOnly
-                value={pipeLen.toFixed(1)}
+                value={us ? (pipeLen * FT_PER_M).toFixed(1) : pipeLen.toFixed(1)}
                 className="w-full rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs font-mono text-slate-500 cursor-default"
               />
               <Hint>Auto from {activePipeline} segments</Hint>
             </div>
             <div>
               <Label>
-                V₀ [m/s]{" "}
+                V₀ [{velUnit}]{" "}
                 {autoV0 !== null && !v0Override && (
                   <span className="text-blue-500 font-normal">(auto)</span>
                 )}
               </Label>
               <input
                 type="number" min={0} step={0.01}
-                value={v0Override !== "" ? v0Override : (autoV0 ?? "")}
+                value={v0Override !== "" ? v0Override : (autoV0Display !== null ? autoV0Display.toFixed(3) : "")}
                 onChange={e => setV0Override(e.target.value)}
-                placeholder={autoV0 !== null ? String(autoV0.toFixed(3)) : "run hydraulics"}
+                placeholder={autoV0Display !== null ? autoV0Display.toFixed(3) : "run hydraulics"}
                 className={`w-full rounded-lg border px-3 py-2 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400 ${
                   v0Override ? "border-amber-300 bg-amber-50" : "border-slate-200"
                 }`}
@@ -754,16 +803,16 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
           <FieldRow>
             <div>
               <Label>
-                Operating head H₀ [m gauge]{" "}
+                Operating head H₀ [{headUnit} gauge]{" "}
                 {autoTDH !== null && !hOpOverride && (
                   <span className="text-blue-500 font-normal">(auto from TDH)</span>
                 )}
               </Label>
               <input
                 type="number" step={0.1}
-                value={hOpOverride !== "" ? hOpOverride : (autoTDH ?? "")}
+                value={hOpOverride !== "" ? hOpOverride : (autoTDHDisplay !== null ? autoTDHDisplay.toFixed(2) : "")}
                 onChange={e => setHOpOverride(e.target.value)}
-                placeholder={autoTDH !== null ? String(autoTDH.toFixed(2)) : "e.g. 35"}
+                placeholder={autoTDHDisplay !== null ? autoTDHDisplay.toFixed(2) : "e.g. 35"}
                 className={`w-full rounded-lg border px-3 py-2 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400 ${
                   hOpOverride ? "border-amber-300 bg-amber-50" : "border-slate-200"
                 }`}
@@ -793,7 +842,9 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
 
         <Section title="Pressure Rating (optional)">
           <div>
-            <Label>Pipe pressure class [kPa gauge]</Label>
+            <Label>
+              Pipe pressure class [{us ? "kPa gauge  (psi shown on presets)" : "kPa gauge"}]
+            </Label>
             <div className="flex gap-2 flex-wrap mb-2">
               {PN_PRESETS.map(pn => (
                 <button
@@ -805,7 +856,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
                       : "bg-white text-slate-600 border-slate-200 hover:border-blue-400 hover:text-blue-600"
                   }`}
                 >
-                  {pn.label}
+                  {pn.label}{us ? ` ≈ ${(pn.kPa * PSI_PER_KPA).toFixed(0)} psi` : ""}
                 </button>
               ))}
               {pressRatingKPa && (
@@ -824,18 +875,21 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
               placeholder="e.g. 1600  (PN 16)"
               className={inp}
             />
-            <Hint>PN 10 = 1000 kPa · PN 16 = 1600 kPa · PN 25 = 2500 kPa</Hint>
+            <Hint>
+              PN 10 = 1000 kPa · PN 16 = 1600 kPa · PN 25 = 2500 kPa
+              {us && " · 1 kPa ≈ 0.145 psi"}
+            </Hint>
           </div>
         </Section>
 
         {/* Live equation preview */}
-        {effectiveV0 > 0 && previewA > 0 && pipeLen > 0 && (
+        {effectiveV0_si > 0 && previewA > 0 && pipeLen > 0 && (
           <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-[11px] font-mono text-slate-600 space-y-1">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 font-sans">
               Live preview (Joukowsky, no reduction)
             </p>
-            <p>ΔH = a·ΔV/g = {previewA.toFixed(0)}·{effectiveV0.toFixed(3)}/{G} = <strong className="text-slate-800">{fmtH(previewDH, us)}</strong></p>
-            <p>ΔP = ρ·a·ΔV = {previewRho}·{previewA.toFixed(0)}·{effectiveV0.toFixed(3)}/1000 = <strong className="text-slate-800">{fmtP(previewDP, us)}</strong></p>
+            <p>ΔH = a·ΔV/g = {previewA.toFixed(0)}·{effectiveV0_si.toFixed(3)}/{G} = <strong className="text-slate-800">{fmtH(previewDH, us)}</strong></p>
+            <p>ΔP = ρ·a·ΔV = {previewRho}·{previewA.toFixed(0)}·{effectiveV0_si.toFixed(3)}/1000 = <strong className="text-slate-800">{fmtP(previewDP, us)}</strong></p>
             <p>T = 2L/a = 2×{pipeLen.toFixed(1)}/{previewA.toFixed(0)} = <strong className="text-slate-800">{previewT.toFixed(3)} s</strong></p>
             <p>h_vap = <strong className="text-slate-800">{fmtH(localVapHead, us)}</strong> gauge {validTemp ? `at ${tempCNum} °C` : ""}</p>
           </div>
@@ -854,7 +908,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
         >
           {computing
             ? "Computing surge…"
-            : `⚡ Run Quick Surge Analysis — ${activePipeline} (${pipeLen.toFixed(0)} m)`}
+            : `⚡ Run Quick Surge Analysis — ${activePipeline} (${us ? (pipeLen * FT_PER_M).toFixed(0) : pipeLen.toFixed(0)} ${headUnit})`}
         </button>
       </div>
 
@@ -970,22 +1024,22 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
             </div>
             <p className="text-[10px] text-slate-400 leading-tight">
               Simplified Mode A envelope. Max = H₀ + ΔH_eff; Min = H₀ − ΔH_eff.
-              Vapour pressure = {displayVapHead.toFixed(2)} m gauge at {result.temperature_C} °C.
+              Vapour pressure = {fmtH(displayVapHead, us)} gauge at {result.temperature_C} °C.
             </p>
           </Section>
 
           <Section title="Pressure Envelope — Head Chart">
             <p className="text-[10px] text-slate-400 -mt-2 mb-2 leading-relaxed">
               Red bars = max transient head; blue bars = min transient head (red when below h_vap, amber when sub-atmospheric).
-              Dashed amber = vapour pressure threshold. Dashed grey = 0 m (atmospheric).
+              Dashed amber = vapour pressure threshold. Dashed grey = 0 {headUnit} (atmospheric).
             </p>
             <ChartErrorBoundary label="Mode A Envelope Chart">
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart
                   data={result.envelope.map(pt => ({
                     name: pt.location,
-                    max: pt.max_head_m,
-                    min: pt.min_head_m,
+                    max:  pt.max_head_m * displayFactor,
+                    min:  pt.min_head_m * displayFactor,
                   }))}
                   margin={{ top: 8, right: 24, left: 8, bottom: 4 }}
                 >
@@ -994,7 +1048,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
                   <YAxis
                     width={56}
                     tick={{ fontSize: 10 }}
-                    label={{ value: "Head (m)", angle: -90, position: "insideLeft", fontSize: 10 }}
+                    label={{ value: `Head (${headUnit})`, angle: -90, position: "insideLeft", fontSize: 10 }}
                   />
                   <Tooltip
                     content={({ active, payload, label }) => {
@@ -1009,12 +1063,12 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
                                 <span className="text-slate-600">{p.name}</span>
                               </span>
                               <span className="font-bold font-mono text-slate-800">
-                                {typeof p.value === "number" ? `${(p.value as number).toFixed(2)} m` : "—"}
+                                {typeof p.value === "number" ? `${(p.value as number).toFixed(2)} ${headUnit}` : "—"}
                               </span>
                             </div>
                           ))}
                           <div className="border-t border-slate-100 pt-1.5 text-[10px] text-amber-600 font-mono">
-                            h_vap = {result.vapor_pressure_head_m.toFixed(2)} m
+                            h_vap = {fmtH(result.vapor_pressure_head_m, us)}
                           </div>
                         </div>
                       );
@@ -1041,11 +1095,11 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
                     ))}
                   </Bar>
                   <ReferenceLine
-                    y={result.vapor_pressure_head_m}
+                    y={result.vapor_pressure_head_m * displayFactor}
                     stroke={result.min_pressure_head_m < result.vapor_pressure_head_m ? "#dc2626" : "#f59e0b"}
                     strokeDasharray="5 3"
                     label={{
-                      value: `h_vap = ${result.vapor_pressure_head_m.toFixed(1)} m`,
+                      value: `h_vap = ${fmtH(result.vapor_pressure_head_m, us)}`,
                       fontSize: 9,
                       fill: result.min_pressure_head_m < result.vapor_pressure_head_m ? "#dc2626" : "#d97706",
                       position: "insideTopLeft",
@@ -1056,7 +1110,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
                     stroke={result.min_pressure_head_m < 0 ? "#dc2626" : "#94a3b8"}
                     strokeDasharray="2 2"
                     label={{
-                      value: "0 m (atm)",
+                      value: us ? "0 ft (atm)" : "0 m (atm)",
                       fontSize: 9,
                       fill: result.min_pressure_head_m < 0 ? "#dc2626" : "#94a3b8",
                       position: "insideBottomRight",
@@ -1064,7 +1118,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
                   />
                   {result.rating_check && (
                     <ReferenceLine
-                      y={result.rating_check.pressure_rating_kPa / (result.rho_kg_m3 * 9.81 / 1000)}
+                      y={result.rating_check.pressure_rating_kPa / (result.rho_kg_m3 * 9.81 / 1000) * displayFactor}
                       stroke="#16a34a"
                       strokeDasharray="5 3"
                       label={{
@@ -1090,11 +1144,13 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
             <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-[11px] font-mono text-slate-700 space-y-2">
               <p>
                 ΔH_Joukowsky = a·ΔV/g = {result.wave_speed_ms.toFixed(0)}·{result.delta_V_ms.toFixed(4)}/{G}
-                {" = "}<strong className="text-slate-900">{result.delta_H_joukowsky_m.toFixed(4)} m</strong>
+                {" = "}<strong className="text-slate-900">{fmtH(result.delta_H_joukowsky_m, us)}</strong>
+                {us && <span className="text-slate-400"> ({result.delta_H_joukowsky_m.toFixed(4)} m)</span>}
               </p>
               <p>
                 ΔP_Joukowsky = ρ·a·ΔV = {result.rho_kg_m3}·{result.wave_speed_ms.toFixed(0)}·{result.delta_V_ms.toFixed(4)}/1000
-                {" = "}<strong className="text-slate-900">{result.delta_P_joukowsky_kPa.toFixed(3)} kPa</strong>
+                {" = "}<strong className="text-slate-900">{fmtP(result.delta_P_joukowsky_kPa, us)}</strong>
+                {us && <span className="text-slate-400"> ({result.delta_P_joukowsky_kPa.toFixed(3)} kPa)</span>}
               </p>
               <p>
                 T (char.) = 2L/a = 2×{result.pipe_length_m.toFixed(1)}/{result.wave_speed_ms.toFixed(0)}
@@ -1102,7 +1158,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
               </p>
               <p>
                 h_vap ({result.temperature_C} °C)
-                {" = "}<strong className="text-slate-900">{result.vapor_pressure_head_m.toFixed(3)} m</strong> gauge
+                {" = "}<strong className="text-slate-900">{fmtH(result.vapor_pressure_head_m, us)}</strong> gauge
               </p>
               <p>
                 V₀ = <strong className="text-slate-900">{fmtV(result.delta_V_ms, us)}</strong>

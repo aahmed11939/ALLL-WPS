@@ -133,7 +133,7 @@ export default function ProjectsPage({ onOpenProject, onNewProject, onImportJSON
             </button>
             <button
               type="button"
-              onClick={() => signOut({ redirectUrl: "/" })}
+              onClick={() => signOut({ redirectUrl: `${window.location.origin}/sign-in` })}
               className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700 hover:border-slate-300 transition-colors"
               title="Sign out"
             >

@@ -69,6 +69,15 @@ function SolverNotesBanner({ notes }: { notes: string[] }) {
 const G = 9.81;
 const OBS_COLORS = ["#7c3aed", "#dc2626", "#16a34a"];
 
+const PN_PRESETS = [
+  { label: "PN 10",   kPa: 1000 },
+  { label: "PN 12.5", kPa: 1250 },
+  { label: "PN 16",   kPa: 1600 },
+  { label: "PN 20",   kPa: 2000 },
+  { label: "PN 25",   kPa: 2500 },
+  { label: "PN 32",   kPa: 3200 },
+];
+
 const MATERIAL_ROUGHNESS: Record<string, number> = {
   dicl: 0.00012,
   grey_cast_iron: 0.00025,
@@ -597,6 +606,29 @@ export default function StepSuctionSurgeMOC() {
                 Pressure class [kPa{us ? " / psi" : " gauge"}]{" "}
                 <span className="font-normal text-slate-400">(optional)</span>
               </Label>
+              <div className="flex gap-2 flex-wrap mb-2">
+                {PN_PRESETS.map(pn => (
+                  <button
+                    key={pn.label}
+                    onClick={() => setPressRating(String(pn.kPa))}
+                    className={`text-[10px] px-2 py-1 rounded font-semibold border transition-colors ${
+                      pressRating === String(pn.kPa)
+                        ? "bg-violet-600 text-white border-violet-600"
+                        : "bg-white text-slate-600 border-slate-200 hover:border-violet-400 hover:text-violet-600"
+                    }`}
+                  >
+                    {pn.label}{us ? ` (${(pn.kPa * PSI_PER_KPA).toFixed(0)} psi)` : ""}
+                  </button>
+                ))}
+                {pressRating && (
+                  <button
+                    onClick={() => setPressRating("")}
+                    className="text-[10px] px-2 py-1 rounded text-slate-400 hover:text-slate-600 border border-slate-100"
+                  >
+                    ✕ clear
+                  </button>
+                )}
+              </div>
               <input type="number" min={100} step={50}
                 value={pressRating} onChange={e => setPressRating(e.target.value)}
                 placeholder="e.g. 1000 (PN 10)" className={inp} />

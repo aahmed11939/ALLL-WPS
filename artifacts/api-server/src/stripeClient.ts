@@ -33,7 +33,10 @@ async function getStripeCredentials(): Promise<{
     );
   }
 
-  const data = (await resp.json()) as any;
+  interface ConnectorResponse {
+    items?: Array<{ settings?: { secret_key?: string; webhook_secret?: string } }>;
+  }
+  const data = (await resp.json()) as ConnectorResponse;
   const settings = data.items?.[0]?.settings;
 
   if (!settings?.secret_key) {

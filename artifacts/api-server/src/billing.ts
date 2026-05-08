@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { requireAuth, clerkClient } from "@clerk/express";
+import { requireAuth, clerkClient, getAuth } from "@clerk/express";
 import { eq, sql } from "drizzle-orm";
 import { db, users, whitelistEmails } from "@workspace/db";
 import { getUncachableStripeClient } from "./stripeClient";
@@ -62,10 +62,18 @@ async function hasActiveSubscription(customerId: string): Promise<boolean> {
   }
 }
 
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : "Internal error";
+}
+
 router.get("/status", requireAuth(), async (req: Request, res: Response) => {
   try {
-    const auth = (req as any).auth;
-    const clerkUser = await clerkClient.users.getUser(auth.userId as string);
+    const { userId } = getAuth(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const clerkUser = await clerkClient.users.getUser(userId);
     const email = clerkUser.emailAddresses[0]?.emailAddress ?? "";
 
     if (await isWhitelisted(email)) {
@@ -73,7 +81,7 @@ router.get("/status", requireAuth(), async (req: Request, res: Response) => {
       return;
     }
 
-    const user = await getOrCreateUser(auth.userId as string, email);
+    const user = await getOrCreateUser(userId, email);
     if (!user.stripeCustomerId) {
       res.json({ active: false });
       return;
@@ -81,19 +89,23 @@ router.get("/status", requireAuth(), async (req: Request, res: Response) => {
 
     const active = await hasActiveSubscription(user.stripeCustomerId);
     res.json({ active });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Internal error";
-    res.status(500).json({ error: message });
+  } catch (err) {
+    res.status(500).json({ error: errorMessage(err) });
   }
 });
 
 router.post("/checkout", requireAuth(), async (req: Request, res: Response) => {
   try {
-    const auth = (req as any).auth;
-    const clerkUser = await clerkClient.users.getUser(auth.userId as string);
+    const { userId } = getAuth(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const clerkUser = await clerkClient.users.getUser(userId);
     const email = clerkUser.emailAddresses[0]?.emailAddress ?? "";
 
-    const priceId: string = (req.body as any)?.priceId ?? PRICE_ID;
+    const body = req.body as { priceId?: string } | undefined;
+    const priceId = body?.priceId ?? PRICE_ID;
     if (!priceId) {
       res.status(400).json({
         error:
@@ -102,20 +114,20 @@ router.post("/checkout", requireAuth(), async (req: Request, res: Response) => {
       return;
     }
 
-    const user = await getOrCreateUser(auth.userId as string, email);
+    const user = await getOrCreateUser(userId, email);
     const stripe = await getUncachableStripeClient();
 
     let customerId = user.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
         email,
-        metadata: { clerkUserId: auth.userId as string },
+        metadata: { clerkUserId: userId },
       });
       customerId = customer.id;
       await db
         .update(users)
         .set({ stripeCustomerId: customerId })
-        .where(eq(users.clerkUserId, auth.userId as string));
+        .where(eq(users.clerkUserId, userId));
     }
 
     const origin =
@@ -132,19 +144,23 @@ router.post("/checkout", requireAuth(), async (req: Request, res: Response) => {
     });
 
     res.json({ url: session.url });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Internal error";
-    res.status(500).json({ error: message });
+  } catch (err) {
+    res.status(500).json({ error: errorMessage(err) });
   }
 });
 
 router.post("/portal", requireAuth(), async (req: Request, res: Response) => {
   try {
-    const auth = (req as any).auth;
+    const { userId } = getAuth(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
     const userRows = await db
       .select()
       .from(users)
-      .where(eq(users.clerkUserId, auth.userId as string))
+      .where(eq(users.clerkUserId, userId))
       .limit(1);
 
     if (!userRows[0]?.stripeCustomerId) {
@@ -163,9 +179,8 @@ router.post("/portal", requireAuth(), async (req: Request, res: Response) => {
     });
 
     res.json({ url: session.url });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Internal error";
-    res.status(500).json({ error: message });
+  } catch (err) {
+    res.status(500).json({ error: errorMessage(err) });
   }
 });
 

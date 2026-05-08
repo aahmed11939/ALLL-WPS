@@ -5,7 +5,7 @@ import { useLocation } from "wouter";
 const ADMIN_EMAIL = "azizahmed1234@gmail.com";
 const API_BASE = import.meta.env.VITE_API_SERVER_URL ?? "";
 
-type GateState = "loading" | "allowed" | "blocked";
+type GateState = "loading" | "allowed" | "blocked" | "error";
 
 interface Props {
   children: React.ReactNode;
@@ -29,7 +29,10 @@ export default function SubscriptionGate({ children }: Props) {
     let cancelled = false;
 
     fetch(`${API_BASE}/api/billing/status`, { credentials: "include" })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error(`Status check failed: ${res.status}`);
+        return res.json() as Promise<{ active: boolean; whitelisted?: boolean }>;
+      })
       .then((data) => {
         if (cancelled) return;
         if (data.active) {
@@ -41,10 +44,14 @@ export default function SubscriptionGate({ children }: Props) {
       })
       .catch(() => {
         if (cancelled) return;
-        setGateState("allowed");
+        // Fail-closed: on any network/auth error, block access and send to subscribe
+        setGateState("blocked");
+        setLocation("/subscribe");
       });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [isLoaded, user, setLocation]);
 
   if (gateState === "loading") {
@@ -55,7 +62,7 @@ export default function SubscriptionGate({ children }: Props) {
     );
   }
 
-  if (gateState === "blocked") return null;
+  if (gateState === "blocked" || gateState === "error") return null;
 
   return <>{children}</>;
 }

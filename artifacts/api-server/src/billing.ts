@@ -48,24 +48,46 @@ async function getOrCreateUser(
   clerkUserId: string,
   email: string,
 ): Promise<typeof users.$inferSelect> {
-  const existing = await db
+  // 1. Fast path: row keyed by real Clerk user ID
+  const byClerkId = await db
     .select()
     .from(users)
     .where(eq(users.clerkUserId, clerkUserId))
     .limit(1);
 
-  if (existing[0]) return existing[0];
+  if (byClerkId[0]) return byClerkId[0];
 
+  // 2. Reconciliation path: admin may have pre-created a placeholder via invite
+  //    (clerkUserId = null, id = `invited_${email}`).  Claim that row now.
+  const normalised = email.toLowerCase();
+  const byEmail = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, normalised))
+    .limit(1);
+
+  if (byEmail[0] && byEmail[0].clerkUserId === null) {
+    // Merge: stamp the placeholder with the real Clerk ID so subsequent lookups
+    // use path (1) and all admin-set role/active values are preserved.
+    const [merged] = await db
+      .update(users)
+      .set({ clerkUserId, id: clerkUserId })
+      .where(eq(users.id, byEmail[0].id))
+      .returning();
+    if (merged) return merged;
+  }
+
+  // 3. Brand-new user — create a canonical row
   const [created] = await db
     .insert(users)
-    .values({ id: clerkUserId, email, clerkUserId })
+    .values({ id: clerkUserId, email: normalised, clerkUserId })
     .onConflictDoNothing()
     .returning();
 
   return (
     created ?? {
       id: clerkUserId,
-      email,
+      email: normalised,
       clerkUserId,
       stripeCustomerId: null,
       createdAt: new Date(),

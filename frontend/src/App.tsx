@@ -1,7 +1,11 @@
 import { ClerkProvider, useAuth } from "@clerk/react";
-import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wouter";
+import { Switch, Route, Redirect, useLocation, useSearch, Router as WouterRouter } from "wouter";
 import AuthPage from "./pages/AuthPage";
 import MainApp from "./pages/MainApp";
+import LandingPage from "./pages/LandingPage";
+import SubscribePage from "./pages/SubscribePage";
+import CheckoutSuccess from "./components/CheckoutSuccess";
+import SubscriptionGate from "./components/SubscriptionGate";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 const clerkPubKey = (import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string) || "";
@@ -18,8 +22,24 @@ function stripBase(path: string): string {
 
 function HomeRoute() {
   const { isSignedIn, isLoaded } = useAuth();
+  const search = useSearch();
+  const params = new URLSearchParams(search);
+
+  const checkoutParam = params.get("checkout");
+
   if (!isLoaded) return null;
-  return isSignedIn ? <Redirect to="/app" /> : <Redirect to="/sign-in" />;
+
+  if (checkoutParam === "success") {
+    if (!isSignedIn) return <Redirect to="/sign-in" />;
+    return <CheckoutSuccess />;
+  }
+
+  if (checkoutParam === "cancel") {
+    return <LandingPage checkoutResult="cancel" />;
+  }
+
+  if (isSignedIn) return <Redirect to="/app" />;
+  return <LandingPage />;
 }
 
 function SignInRoute() {
@@ -36,11 +56,19 @@ function SignUpRoute() {
   return <AuthPage defaultTab="sign-up" />;
 }
 
+function SubscribeRoute() {
+  return <SubscribePage />;
+}
+
 function AppRoute() {
   const { isSignedIn, isLoaded } = useAuth();
   if (!isLoaded) return null;
   if (!isSignedIn) return <Redirect to="/sign-in" />;
-  return <MainApp />;
+  return (
+    <SubscriptionGate>
+      <MainApp />
+    </SubscriptionGate>
+  );
 }
 
 function ClerkProviderWithRoutes() {
@@ -58,6 +86,7 @@ function ClerkProviderWithRoutes() {
         <Route path="/" component={HomeRoute} />
         <Route path="/sign-in" component={SignInRoute} />
         <Route path="/sign-up" component={SignUpRoute} />
+        <Route path="/subscribe" component={SubscribeRoute} />
         <Route path="/app" component={AppRoute} />
         <Route path="/app/*" component={AppRoute} />
         <Route>

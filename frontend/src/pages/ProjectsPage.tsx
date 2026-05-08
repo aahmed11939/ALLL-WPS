@@ -65,6 +65,24 @@ export default function ProjectsPage({ onOpenProject, onNewProject, onImportJSON
   const [openingSlug, setOpeningSlug] = useState<string | null>(null);
   const [deletingSlug, setDeletingSlug] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [billingLoading, setBillingLoading] = useState(false);
+
+  const handleBillingPortal = async () => {
+    setBillingLoading(true);
+    try {
+      const res = await fetch("/api/billing/portal", {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not open billing portal.");
+      window.open(data.url, "_blank");
+    } catch (err: any) {
+      setError(err.message ?? "Could not open billing portal.");
+    } finally {
+      setBillingLoading(false);
+    }
+  };
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -130,6 +148,15 @@ export default function ProjectsPage({ onOpenProject, onNewProject, onImportJSON
               className="rounded-lg bg-teal-700 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-600 transition-colors shadow-sm"
             >
               + New Project
+            </button>
+            <button
+              type="button"
+              onClick={handleBillingPortal}
+              disabled={billingLoading}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700 hover:border-slate-300 transition-colors disabled:opacity-50"
+              title="Manage subscription"
+            >
+              {billingLoading ? "…" : "Billing"}
             </button>
             <button
               type="button"

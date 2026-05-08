@@ -1049,7 +1049,7 @@ export default function StepWaterHammerModeB() {
             </p>
             <ChartErrorBoundary label="Pressure Envelope">
             <ResponsiveContainer width="100%" height={290}>
-              <ComposedChart data={envelopeData} margin={{ top: 8, right: 20, left: 0, bottom: 4 }}>
+              <ComposedChart data={envelopeData} margin={{ top: 8, right: 20, left: 8, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis
                   dataKey="x"
@@ -1057,6 +1057,7 @@ export default function StepWaterHammerModeB() {
                   tick={{ fontSize: 10 }}
                 />
                 <YAxis
+                  width={56}
                   label={{ value: "Head (m)", angle: -90, position: "insideLeft", fontSize: 10 }}
                   tick={{ fontSize: 10 }}
                 />
@@ -1132,7 +1133,7 @@ export default function StepWaterHammerModeB() {
             <Section title="Time History — Piezometric Head at Observation Points">
               <ChartErrorBoundary label="Observation Point Histories">
               <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={historyData} margin={{ top: 4, right: 20, left: 0, bottom: 4 }}>
+                <LineChart data={historyData} margin={{ top: 4, right: 20, left: 8, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis
                     dataKey="t"
@@ -1140,6 +1141,7 @@ export default function StepWaterHammerModeB() {
                     tick={{ fontSize: 10 }}
                   />
                   <YAxis
+                    width={56}
                     label={{ value: "Head (m)", angle: -90, position: "insideLeft", fontSize: 10 }}
                     tick={{ fontSize: 10 }}
                   />

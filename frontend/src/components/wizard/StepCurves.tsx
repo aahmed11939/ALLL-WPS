@@ -108,7 +108,7 @@ export default function StepCurves() {
           </p>
           <ChartErrorBoundary label="H-Q Overlay">
           <ResponsiveContainer width="100%" height={320}>
-            <ComposedChart data={chartData} margin={{ top: 4, right: 20, left: 10, bottom: 20 }}>
+            <ComposedChart data={chartData} margin={{ top: 4, right: 20, left: 16, bottom: 20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis
                 dataKey="Q"

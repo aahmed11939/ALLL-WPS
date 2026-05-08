@@ -323,7 +323,7 @@ export default function WhatIfComparisonPanel({ result, onSaveToReport }: WhatIf
         </p>
         <ChartErrorBoundary label="Surge Comparison">
         <ResponsiveContainer width="100%" height={280}>
-          <LineChart data={chartData} margin={{ top: 4, right: 16, bottom: 4, left: 8 }}>
+          <LineChart data={chartData} margin={{ top: 4, right: 16, bottom: 4, left: 16 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
             <XAxis dataKey="x_m" tick={{ fontSize: 9 }} tickFormatter={v => `${v} m`} label={{ value: "Distance (m)", position: "insideBottomRight", offset: -4, fontSize: 9 }} />
             <YAxis tick={{ fontSize: 9 }} tickFormatter={v => `${v.toFixed(0)}`}

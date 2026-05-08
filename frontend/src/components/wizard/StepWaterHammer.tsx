@@ -987,11 +987,12 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
                     max: pt.max_head_m,
                     min: pt.min_head_m,
                   }))}
-                  margin={{ top: 8, right: 24, left: 0, bottom: 4 }}
+                  margin={{ top: 8, right: 24, left: 8, bottom: 4 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                   <YAxis
+                    width={56}
                     tick={{ fontSize: 10 }}
                     label={{ value: "Head (m)", angle: -90, position: "insideLeft", fontSize: 10 }}
                   />

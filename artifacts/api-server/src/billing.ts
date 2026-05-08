@@ -128,7 +128,11 @@ router.get("/status", requireAuth(), async (req: Request, res: Response) => {
       return;
     }
     const clerkUser = await clerkClient.users.getUser(userId);
-    const email = clerkUser.emailAddresses[0]?.emailAddress ?? "";
+    const primaryEmailId = clerkUser.primaryEmailAddressId;
+    const email =
+      clerkUser.emailAddresses.find((e) => e.id === primaryEmailId)?.emailAddress ??
+      clerkUser.emailAddresses[0]?.emailAddress ??
+      "";
 
     if (await isWhitelisted(email)) {
       res.json({ active: true, whitelisted: true });
@@ -166,7 +170,11 @@ router.post("/checkout", requireAuth(), async (req: Request, res: Response) => {
     }
 
     const clerkUser = await clerkClient.users.getUser(userId);
-    const email = clerkUser.emailAddresses[0]?.emailAddress ?? "";
+    const primaryEmailId = clerkUser.primaryEmailAddressId;
+    const email =
+      clerkUser.emailAddresses.find((e) => e.id === primaryEmailId)?.emailAddress ??
+      clerkUser.emailAddresses[0]?.emailAddress ??
+      "";
 
     const user = await getOrCreateUser(userId, email);
     const stripe = await getUncachableStripeClient();

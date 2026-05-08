@@ -27,11 +27,11 @@ export default function SubscribePage() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
       });
-      const data = await res.json();
+      const data = (await res.json()) as { url?: string; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Could not start checkout.");
-      window.location.href = data.url;
-    } catch (err: any) {
-      setError(err.message ?? "An error occurred. Please try again.");
+      window.location.href = data.url ?? "/subscribe";
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred. Please try again.");
       setLoading(false);
     }
   };

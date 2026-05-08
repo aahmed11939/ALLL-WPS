@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useClerk, useUser } from "@clerk/react";
+import { useLocation } from "wouter";
 import wpsLogo from "../assets/WPS_Logo_1778184724504.png";
 import {
   listProjects,
@@ -58,9 +59,12 @@ function EmptyState({ onNew }: { onNew: () => void }) {
 
 const API_BASE = (import.meta.env.VITE_API_SERVER_URL as string | undefined) ?? "";
 
+const ADMIN_EMAIL = "azizahmed1234@gmail.com";
+
 export default function ProjectsPage({ onOpenProject, onNewProject, onImportJSON: _onImportJSON }: Props) {
   const { signOut } = useClerk();
   const { user } = useUser();
+  const [, setLocation] = useLocation();
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -160,6 +164,16 @@ export default function ProjectsPage({ onOpenProject, onNewProject, onImportJSON
             >
               {billingLoading ? "…" : "Billing"}
             </button>
+            {user?.primaryEmailAddress?.emailAddress?.toLowerCase() === ADMIN_EMAIL.toLowerCase() && (
+              <button
+                type="button"
+                onClick={() => setLocation("/admin")}
+                className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-medium text-violet-700 hover:bg-violet-100 transition-colors"
+                title="Admin Panel"
+              >
+                Admin
+              </button>
+            )}
             <button
               type="button"
               onClick={() => signOut({ redirectUrl: `${window.location.origin}/sign-in` })}

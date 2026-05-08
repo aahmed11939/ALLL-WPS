@@ -4,6 +4,7 @@ import AuthPage from "./pages/AuthPage";
 import MainApp from "./pages/MainApp";
 import LandingPage from "./pages/LandingPage";
 import SubscribePage from "./pages/SubscribePage";
+import AdminPage from "./pages/AdminPage";
 import CheckoutSuccess from "./components/CheckoutSuccess";
 import SubscriptionGate from "./components/SubscriptionGate";
 
@@ -89,6 +90,7 @@ function ClerkProviderWithRoutes() {
         <Route path="/subscribe" component={SubscribeRoute} />
         <Route path="/app" component={AppRoute} />
         <Route path="/app/*" component={AppRoute} />
+        <Route path="/admin" component={AdminPage} />
         <Route>
           <Redirect to="/" />
         </Route>

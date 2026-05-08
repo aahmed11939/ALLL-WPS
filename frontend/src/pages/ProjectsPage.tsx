@@ -56,6 +56,8 @@ function EmptyState({ onNew }: { onNew: () => void }) {
   );
 }
 
+const API_BASE = (import.meta.env.VITE_API_SERVER_URL as string | undefined) ?? "";
+
 export default function ProjectsPage({ onOpenProject, onNewProject, onImportJSON: _onImportJSON }: Props) {
   const { signOut } = useClerk();
   const { user } = useUser();
@@ -70,15 +72,15 @@ export default function ProjectsPage({ onOpenProject, onNewProject, onImportJSON
   const handleBillingPortal = async () => {
     setBillingLoading(true);
     try {
-      const res = await fetch("/api/billing/portal", {
+      const res = await fetch(`${API_BASE}/api/billing/portal`, {
         method: "POST",
         credentials: "include",
       });
-      const data = await res.json();
+      const data = (await res.json()) as { url?: string; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Could not open billing portal.");
       window.open(data.url, "_blank");
-    } catch (err: any) {
-      setError(err.message ?? "Could not open billing portal.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not open billing portal.");
     } finally {
       setBillingLoading(false);
     }

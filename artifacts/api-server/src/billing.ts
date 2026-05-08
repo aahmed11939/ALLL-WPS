@@ -9,6 +9,36 @@ const router = Router();
 const ADMIN_EMAIL = "azizahmed1234@gmail.com";
 const PRICE_ID = process.env.STRIPE_PRICE_ID ?? "";
 
+/**
+ * Returns the canonical app origin, validated against the REPLIT_DOMAINS allowlist.
+ * Falls back to the first configured domain — never blindly trusts req.headers.origin.
+ */
+function getTrustedOrigin(req: Request): string {
+  const configuredDomains = (process.env.REPLIT_DOMAINS ?? "")
+    .split(",")
+    .map((d) => d.trim())
+    .filter(Boolean);
+
+  const canonical =
+    configuredDomains.length > 0
+      ? `https://${configuredDomains[0]}`
+      : "http://localhost:5173";
+
+  const requestOrigin = req.headers.origin as string | undefined;
+  if (requestOrigin) {
+    try {
+      const reqHost = new URL(requestOrigin).host;
+      if (configuredDomains.some((d) => reqHost === d || reqHost.endsWith(`.${d}`))) {
+        return requestOrigin;
+      }
+    } catch {
+      // malformed origin — fall through to canonical
+    }
+  }
+
+  return canonical;
+}
+
 async function getOrCreateUser(
   clerkUserId: string,
   email: string,
@@ -130,9 +160,7 @@ router.post("/checkout", requireAuth(), async (req: Request, res: Response) => {
         .where(eq(users.clerkUserId, userId));
     }
 
-    const origin =
-      (req.headers.origin as string | undefined) ??
-      `https://${(process.env.REPLIT_DOMAINS ?? "").split(",")[0]}`;
+    const origin = getTrustedOrigin(req);
 
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
@@ -168,9 +196,7 @@ router.post("/portal", requireAuth(), async (req: Request, res: Response) => {
       return;
     }
 
-    const origin =
-      (req.headers.origin as string | undefined) ??
-      `https://${(process.env.REPLIT_DOMAINS ?? "").split(",")[0]}`;
+    const origin = getTrustedOrigin(req);
 
     const stripe = await getUncachableStripeClient();
     const session = await stripe.billingPortal.sessions.create({

@@ -106,37 +106,54 @@ async function isWhitelisted(email: string): Promise<boolean> {
   return rows.length > 0 && (rows[0].active ?? false);
 }
 
+interface SubscriptionInfo {
+  active: boolean;
+  renewsAt: string | null;
+}
+
 /**
- * Checks for an active subscription scoped to the configured price, if known.
- * Falls back to checking any active subscription on the customer when no
- * STRIPE_PRICE_ID is configured (e.g. during initial setup).
+ * Returns subscription status and next renewal date (ISO string) for a customer.
+ * Scoped to the configured price when STRIPE_PRICE_ID is set.
+ * Falls back to a broad check when no price is configured (setup mode only).
  */
-async function hasActiveSubscription(customerId: string): Promise<boolean> {
+async function getSubscriptionInfo(customerId: string): Promise<SubscriptionInfo> {
   try {
     if (SERVER_PRICE_ID) {
-      // Strict: require an active sub containing the exact configured price
       const result = await db.execute(
-        sql`SELECT s.id
+        sql`SELECT s.id, s.current_period_end
             FROM stripe.subscriptions s
             JOIN stripe.subscription_items si ON si.subscription = s.id
             WHERE s.customer = ${customerId}
               AND s.status IN ('active', 'trialing')
               AND si.price = ${SERVER_PRICE_ID}
+            ORDER BY s.current_period_end DESC
             LIMIT 1`,
       );
-      return result.rows.length > 0;
+      if (result.rows.length === 0) return { active: false, renewsAt: null };
+      const row = result.rows[0] as { current_period_end?: number | string | null };
+      return { active: true, renewsAt: toIso(row.current_period_end) };
     }
-    // No price configured yet — broad check (setup mode only)
     const result = await db.execute(
-      sql`SELECT id FROM stripe.subscriptions
+      sql`SELECT id, current_period_end FROM stripe.subscriptions
           WHERE customer = ${customerId}
             AND status IN ('active', 'trialing')
+          ORDER BY current_period_end DESC
           LIMIT 1`,
     );
-    return result.rows.length > 0;
+    if (result.rows.length === 0) return { active: false, renewsAt: null };
+    const row = result.rows[0] as { current_period_end?: number | string | null };
+    return { active: true, renewsAt: toIso(row.current_period_end) };
   } catch {
-    return false;
+    return { active: false, renewsAt: null };
   }
+}
+
+function toIso(val: number | string | null | undefined): string | null {
+  if (val == null) return null;
+  const n = typeof val === "string" ? Number(val) : val;
+  if (!isFinite(n) || n <= 0) return null;
+  // Stripe stores Unix timestamps in seconds
+  return new Date(n * 1000).toISOString();
 }
 
 function errorMessage(err: unknown): string {
@@ -175,8 +192,8 @@ router.get("/status", requireAuth(), async (req: Request, res: Response) => {
       return;
     }
 
-    const active = await hasActiveSubscription(user.stripeCustomerId);
-    res.json({ active });
+    const info = await getSubscriptionInfo(user.stripeCustomerId);
+    res.json({ active: info.active, renewsAt: info.renewsAt });
   } catch (err) {
     res.status(500).json({ error: errorMessage(err) });
   }

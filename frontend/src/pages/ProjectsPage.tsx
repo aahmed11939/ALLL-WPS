@@ -9,6 +9,7 @@ import {
   type ProjectMeta,
   type ProjectLoadResponse,
 } from "../utils/api";
+import { useBillingStatus, formatRenewalDate } from "../hooks/useBillingStatus";
 
 interface Props {
   onOpenProject: (row: ProjectLoadResponse) => void;
@@ -72,6 +73,8 @@ export default function ProjectsPage({ onOpenProject, onNewProject, onImportJSON
   const [deletingSlug, setDeletingSlug] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [billingLoading, setBillingLoading] = useState(false);
+
+  const { status: billingStatus } = useBillingStatus();
 
   const handleBillingPortal = async () => {
     setBillingLoading(true);
@@ -148,6 +151,33 @@ export default function ProjectsPage({ onOpenProject, onNewProject, onImportJSON
                 {user.primaryEmailAddress.emailAddress}
               </span>
             )}
+
+            {/* Subscription status pill */}
+            {billingStatus && !billingStatus.whitelisted && (
+              <div className="hidden md:flex items-center gap-2">
+                {billingStatus.active ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-[11px] font-medium text-teal-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-teal-500" />
+                    Active
+                    {billingStatus.renewsAt && (
+                      <span className="text-teal-500">
+                        · renews {formatRenewalDate(billingStatus.renewsAt)}
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setLocation("/subscribe")}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700 hover:bg-amber-100 transition-colors"
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                    No active subscription — subscribe
+                  </button>
+                )}
+              </div>
+            )}
+
             <button
               type="button"
               onClick={onNewProject}
@@ -155,15 +185,20 @@ export default function ProjectsPage({ onOpenProject, onNewProject, onImportJSON
             >
               + New Project
             </button>
-            <button
-              type="button"
-              onClick={handleBillingPortal}
-              disabled={billingLoading}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700 hover:border-slate-300 transition-colors disabled:opacity-50"
-              title="Manage subscription"
-            >
-              {billingLoading ? "…" : "Billing"}
-            </button>
+
+            {/* Manage billing — only shown when user has a Stripe customer */}
+            {billingStatus?.active && !billingStatus.whitelisted && (
+              <button
+                type="button"
+                onClick={handleBillingPortal}
+                disabled={billingLoading}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700 hover:border-slate-300 transition-colors disabled:opacity-50"
+                title="Manage subscription"
+              >
+                {billingLoading ? "…" : "Manage billing"}
+              </button>
+            )}
+
             {user?.primaryEmailAddress?.emailAddress?.toLowerCase() === ADMIN_EMAIL.toLowerCase() && (
               <button
                 type="button"

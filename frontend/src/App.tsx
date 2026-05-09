@@ -1,5 +1,6 @@
 import { ClerkProvider, useAuth } from "@clerk/react";
 import { Switch, Route, Redirect, useLocation, useSearch, Router as WouterRouter } from "wouter";
+import { useEffect, useRef } from "react";
 import AuthPage from "./pages/AuthPage";
 import MainApp from "./pages/MainApp";
 import LandingPage from "./pages/LandingPage";
@@ -7,6 +8,7 @@ import SubscribePage from "./pages/SubscribePage";
 import AdminPage from "./pages/AdminPage";
 import CheckoutSuccess from "./components/CheckoutSuccess";
 import SubscriptionGate from "./components/SubscriptionGate";
+import { invalidateBillingCache } from "./hooks/useBillingStatus";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 const clerkPubKey = (import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string) || "";
@@ -76,6 +78,21 @@ function AppRoute() {
   );
 }
 
+function BillingCacheCleaner() {
+  const { isSignedIn, isLoaded } = useAuth();
+  const wasSignedIn = useRef<boolean | null>(null);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (wasSignedIn.current === true && isSignedIn === false) {
+      invalidateBillingCache();
+    }
+    wasSignedIn.current = isSignedIn ?? false;
+  }, [isSignedIn, isLoaded]);
+
+  return null;
+}
+
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
   return (
@@ -87,6 +104,7 @@ function ClerkProviderWithRoutes() {
       routerPush={(to) => setLocation(stripBase(to))}
       routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
     >
+      <BillingCacheCleaner />
       <Switch>
         <Route path="/" component={HomeRoute} />
         <Route path="/sign-in" component={SignInRoute} />

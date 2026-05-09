@@ -51,7 +51,7 @@ export default function SubscribePage() {
       });
       const data = (await res.json()) as { url?: string; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Could not open billing portal.");
-      window.open(data.url, "_blank");
+      window.open(data.url, "_blank", "noopener,noreferrer");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not open billing portal.");
     } finally {

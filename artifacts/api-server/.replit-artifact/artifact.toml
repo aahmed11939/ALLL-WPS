@@ -13,20 +13,8 @@ paths = ["/api", "/compute", "/surge", "/export", "/"]
 run = "pnpm --filter @workspace/api-server run dev"
 
 [services.production]
-
-[services.production.build]
-args = ["bash", "scripts/build-production.sh"]
-
-[services.production.build.env]
-NODE_ENV = "production"
-CI = "true"
-
-[services.production.run]
-args = ["bash", "scripts/start-production.sh"]
-
-[services.production.run.env]
-PORT = "8080"
-NODE_ENV = "production"
+build = ["bash", "scripts/build-production.sh"]
+run = ["bash", "scripts/start-production.sh"]
 
 [services.production.health.startup]
 path = "/api/healthz"

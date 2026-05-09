@@ -26,7 +26,8 @@ export default function SubscriptionGate({ children }: Props) {
     if (loadState === "loading") return; // wait for result
     // Fail-closed: redirect on both "error" and inactive "ready" states
     if (loadState === "error" || !status?.active) {
-      setLocation("/subscribe");
+      const hadPriorSubscription = loadState === "ready" && !!status?.renewsAt;
+      setLocation(hadPriorSubscription ? "/subscribe?lapsed=true" : "/subscribe");
     }
   }, [isLoaded, user, isAdmin, loadState, status, setLocation]);
 

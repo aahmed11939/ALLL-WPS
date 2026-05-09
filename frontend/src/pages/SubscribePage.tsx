@@ -1,17 +1,23 @@
 import { useState } from "react";
 import { useLocation, useSearch } from "wouter";
-import { useAuth } from "@clerk/react";
+import { useAuth, useUser, useClerk } from "@clerk/react";
 import wpsLogo from "../assets/WPS_Logo_1778184724504.png";
+import { useBillingStatus, formatRenewalDate } from "../hooks/useBillingStatus";
 
 const API_BASE = import.meta.env.VITE_API_SERVER_URL ?? "";
 
 export default function SubscribePage() {
   const { isSignedIn } = useAuth();
+  const { user } = useUser();
+  const { signOut } = useClerk();
   const [, setLocation] = useLocation();
   const search = useSearch();
   const cancelled = new URLSearchParams(search).get("cancelled") === "true";
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [portalLoading, setPortalLoading] = useState(false);
+
+  const { status: billingStatus } = useBillingStatus();
 
   const handleSubscribe = async () => {
     if (!isSignedIn) {
@@ -36,6 +42,23 @@ export default function SubscribePage() {
     }
   };
 
+  const handleBillingPortal = async () => {
+    setPortalLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/billing/portal`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Could not open billing portal.");
+      window.open(data.url, "_blank");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not open billing portal.");
+    } finally {
+      setPortalLoading(false);
+    }
+  };
+
   const features = [
     "Full hydraulic system design (Darcy-Weisbach + Hazen-Williams)",
     "Surge/transient analysis using Method of Characteristics",
@@ -53,23 +76,80 @@ export default function SubscribePage() {
         <button
           type="button"
           onClick={() => setLocation("/")}
-          className="flex items-center gap-3"
+          className="flex items-center gap-3 shrink-0"
         >
           <img src={wpsLogo} alt="ALLL WPS Designer" className="h-9 w-auto" />
-          <div className="text-left">
+          <div className="text-left hidden sm:block">
             <p className="text-sm font-bold text-slate-900 leading-tight">ALLL WPS Designer</p>
             <p className="text-[10px] text-slate-400 font-mono">Municipal Drinking-Water Pump Station</p>
           </div>
         </button>
-        <div className="ml-auto">
+
+        <div className="ml-auto flex items-center gap-3">
           {isSignedIn ? (
-            <button
-              type="button"
-              onClick={() => setLocation("/app")}
-              className="text-sm font-medium text-teal-700 hover:text-teal-600 transition-colors"
-            >
-              Go to app →
-            </button>
+            <>
+              {/* User email */}
+              {user?.primaryEmailAddress?.emailAddress && (
+                <span className="hidden sm:block text-[11px] text-slate-400 truncate max-w-[160px]">
+                  {user.primaryEmailAddress.emailAddress}
+                </span>
+              )}
+
+              {/* Subscription status pill */}
+              {billingStatus && !billingStatus.whitelisted && (
+                billingStatus.active ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-[11px] font-medium text-teal-700">
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-teal-500" />
+                    <span className="hidden sm:inline">
+                      Active subscription
+                      {billingStatus.renewsAt && (
+                        <span className="text-teal-500">
+                          {" "}— renews {formatRenewalDate(billingStatus.renewsAt)}
+                        </span>
+                      )}
+                    </span>
+                    <span className="sm:hidden">Active</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700">
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+                    <span className="hidden sm:inline">No active subscription</span>
+                    <span className="sm:hidden">Inactive</span>
+                  </span>
+                )
+              )}
+
+              {/* Manage billing — for users who have already subscribed (even if now inactive) */}
+              {billingStatus?.active && (
+                <button
+                  type="button"
+                  onClick={handleBillingPortal}
+                  disabled={portalLoading}
+                  className="text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors disabled:opacity-50"
+                >
+                  {portalLoading ? "…" : "Manage billing"}
+                </button>
+              )}
+
+              {/* Go to app if active, or sign out */}
+              {billingStatus?.active ? (
+                <button
+                  type="button"
+                  onClick={() => setLocation("/app")}
+                  className="text-sm font-medium text-teal-700 hover:text-teal-600 transition-colors"
+                >
+                  Go to app →
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => signOut({ redirectUrl: `${window.location.origin}/sign-in` })}
+                  className="text-xs font-medium text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  Sign out
+                </button>
+              )}
+            </>
           ) : (
             <button
               type="button"

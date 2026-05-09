@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type Request, type Response } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
@@ -79,43 +79,51 @@ app.use(
 // Billing / Stripe / Clerk API routes (handled by this server)
 app.use("/api", router);
 
-// In production, proxy FastAPI routes and serve the React frontend.
-// In development the Vite dev server handles this via its own proxy config.
 if (process.env.NODE_ENV === "production") {
-  const FASTAPI_URL = "http://localhost:8000";
-
+  // Production: proxy Python engine routes to FastAPI (internal port 8000)
   const fastApiProxy = createProxyMiddleware({
-    target: FASTAPI_URL,
+    target: "http://localhost:8000",
     changeOrigin: true,
     on: {
-      error: (err, _req, res) => {
-        logger.error({ err }, "FastAPI proxy error");
-        if (typeof (res as express.Response).status === "function") {
-          (res as express.Response).status(502).json({ error: "Backend unavailable" });
-        }
+      error: (_err, _req, res) => {
+        (res as Response).status(502).json({ error: "Backend unavailable" });
       },
     },
   });
 
-  // Python engine routes → FastAPI
   app.use("/compute", fastApiProxy);
   app.use("/surge", fastApiProxy);
   app.use("/export", fastApiProxy);
 
-  // Remaining /api/* routes not matched above → FastAPI
+  // Remaining /api/* routes not matched by the billing router → FastAPI
   app.use("/api", fastApiProxy);
 
-  // Serve the built React SPA (must be last so API routes take priority)
+  // Serve the built React SPA (must be last so all API routes take priority)
   const distPath = path.resolve(process.cwd(), "frontend/dist");
   if (fs.existsSync(distPath)) {
     app.use(express.static(distPath));
     // SPA fallback — serve index.html for any unmatched route
-    app.use((_req, res) => {
+    app.use((_req: Request, res: Response) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   } else {
     logger.warn({ distPath }, "frontend/dist not found — React app will not be served");
   }
+} else {
+  // Development: proxy all remaining traffic to the Vite dev server on port 5173.
+  // This lets port 8080 (api-server) act as the single dev entry point,
+  // while the React HMR dev server continues to run on 5173 internally.
+  const viteProxy = createProxyMiddleware({
+    target: "http://localhost:5173",
+    changeOrigin: true,
+    ws: true,
+    on: {
+      error: (_err, _req, res) => {
+        (res as Response).status(502).send("Vite dev server not ready yet");
+      },
+    },
+  });
+  app.use("/", viteProxy);
 }
 
 export default app;

@@ -29,8 +29,11 @@ from typing import Any
 from openpyxl import Workbook
 from openpyxl.chart import LineChart, Reference
 from openpyxl.chart.series import SeriesLabel
+from openpyxl.drawing.image import Image as XLImage
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+
+from backend.engine.word_figures import fig_station_schematic
 
 # ---------------------------------------------------------------------------
 # Number-format policy (per spec: 2 dp heads, 0 dp flows, 1 dp efficiency)
@@ -1380,6 +1383,34 @@ def _sh_protection(wb: Workbook, draft: dict) -> None:
 # Public entry point
 # ---------------------------------------------------------------------------
 
+def _sh_schematic(wb: Workbook, draft: dict) -> None:
+    """Sheet 2 — Station Layout Schematic (embedded PNG)."""
+    ws = wb.create_sheet("Schematic")
+
+    _title_banner(ws, "WPS Designer — Station Layout Schematic",
+                  "Elevation view of the pump station layout")
+
+    png_bytes = fig_station_schematic(draft)
+    if png_bytes is None:
+        ws.row_dimensions[4].height = 20
+        ws.merge_cells("A4:L4")
+        c = ws["A4"]
+        c.value     = "N/A — Complete pipeline and pump data in WPS Designer to generate schematic."
+        c.font      = Font(italic=True, color="888888", size=10)
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        return
+
+    img_stream = io.BytesIO(png_bytes)
+    xl_img = XLImage(img_stream)
+    xl_img.anchor = "A4"
+    ws.add_image(xl_img)
+
+    # Make the sheet rows tall enough to show the image without clipping
+    for r in range(4, 40):
+        ws.row_dimensions[r].height = 15
+    ws.column_dimensions["A"].width = 14
+
+
 def _wb_to_bytes(wb: Workbook) -> bytes:
     """Serialise an openpyxl Workbook to raw .xlsx bytes."""
     buf = io.BytesIO()
@@ -1410,6 +1441,7 @@ def build_workbook(draft: dict) -> Workbook:
     wb.properties.company = meta.get("client", "")
 
     _sh_inputs(wb, draft)
+    _sh_schematic(wb, draft)
     _sh_hydraulics(wb, draft)
     _sh_system_curve(wb, draft)
     _sh_pump_curves(wb, draft)

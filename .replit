@@ -28,13 +28,13 @@ args = "WPS Frontend"
 name = "WPS Backend"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "uvicorn backend.api.main:app --reload --port 8000 --host 0.0.0.0"
 waitForPort = 8000
-
-[workflows.workflow.metadata]
-outputType = "console"
 
 [[workflows.workflow]]
 name = "WPS Frontend"

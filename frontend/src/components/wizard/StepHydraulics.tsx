@@ -8,6 +8,7 @@ import EquationsPanel from "../EquationsPanel";
 import LossBreakdownPanel from "../LossBreakdownPanel";
 import SystemCurveChart from "../SystemCurveChart";
 import ChartErrorBoundary from "../ChartErrorBoundary";
+import PumpStationSchematic from "../PumpStationSchematic";
 import FieldErrorHint, { parseApiErrors } from "../FieldErrorHint";
 import type { FieldError as ApiFieldError } from "../FieldErrorHint";
 import {
@@ -298,6 +299,16 @@ export default function StepHydraulics() {
           </ChartErrorBoundary>
         </div>
       )}
+
+      {/* Station Schematic — always visible, uses live draft data */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">
+          Station Schematic
+        </p>
+        <ChartErrorBoundary label="Station Schematic">
+          <PumpStationSchematic />
+        </ChartErrorBoundary>
+      </div>
 
       {breakdown && (
         <div>

@@ -406,6 +406,51 @@ def _title_page(doc: Document, meta: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Table of Figures (front matter — inserted after title page)
+# ---------------------------------------------------------------------------
+
+def _table_of_figures(doc: Document) -> None:
+    """Insert a Table of Figures page in the front matter."""
+    _heading(doc, "Table of Figures")
+
+    _para(doc, (
+        "The following figures appear in this report. Body figures are numbered "
+        "sequentially (Figure 1 … 8) in the order they appear. Appendix figures use "
+        "a separate lettered scheme (Figure E1, Figure A1, etc.)."
+    ))
+    doc.add_paragraph()
+
+    _para(doc, "Body Figures", bold=True)
+    headers   = ["Figure", "Caption", "Section"]
+    body_data = [
+        ["Figure 1",  "Pump Station Elevation Schematic",                            "Executive Summary"],
+        ["Figure 2",  "Pump H-Q and system curve overlay with duty operating point(s)", "§ 4 Hydraulic Analysis"],
+        ["Figure 3",  "Pump efficiency η (%) and shaft power P (kW) vs flow",        "§ 5 Pump Analysis"],
+        ["Figure 4",  "NPSHr (required) and NPSHa (available) vs flow",              "§ 5 Pump Analysis"],
+        ["Figure 5",  "MOC pressure envelope: suction pipeline",                     "§ 8.2.1 Surge Analysis"],
+        ["Figure 6",  "MOC pressure envelope: discharge pipeline",                   "§ 8.2.2 Surge Analysis"],
+        ["Figure 7",  "MOC head time histories at key observation nodes",            "§ 8.2 Surge Analysis"],
+        ["Figure 8",  "Surge protection: peak pressure comparison by device",        "§ 8.3 Surge Analysis"],
+    ]
+    _col_table(doc, headers, body_data, col_widths=[0.9, 3.6, 1.7])
+    doc.add_paragraph()
+
+    _para(doc, "Appendix Figures", bold=True)
+    app_data = [
+        ["Figure E1", "Pump Station Elevation View Schematic", "Appendix E"],
+    ]
+    _col_table(doc, headers, app_data, col_widths=[0.9, 3.6, 1.7])
+    doc.add_paragraph()
+
+    _para(doc,
+          "Note: figures are generated from the current design inputs. "
+          "Figures whose underlying analysis has not been run are omitted from the report body.",
+          italic=True)
+
+    _page_break(doc)
+
+
+# ---------------------------------------------------------------------------
 # Section 1 — Executive Summary
 # ---------------------------------------------------------------------------
 
@@ -694,7 +739,7 @@ def _hydraulics_section(doc: Document, draft: dict) -> None:
     fig_bytes = fig_system_curve(draft, us=us)
     if fig_bytes:
         _embed_figure(doc, fig_bytes,
-                      "Figure 1 — Pump H-Q and system curve overlay with duty operating point(s)")
+                      "Figure 2 — Pump H-Q and system curve overlay with duty operating point(s)")
     doc.add_paragraph()
 
 
@@ -760,12 +805,12 @@ def _pump_section(doc: Document, draft: dict) -> None:
     fig_eff = fig_efficiency_power(draft)
     if fig_eff:
         _embed_figure(doc, fig_eff,
-                      "Figure 2 — Pump efficiency η (%) and shaft power P (kW) vs flow")
+                      "Figure 3 — Pump efficiency η (%) and shaft power P (kW) vs flow")
 
     fig_npsh_bytes = fig_npsh(draft)
     if fig_npsh_bytes:
         _embed_figure(doc, fig_npsh_bytes,
-                      "Figure 3 — NPSHr (required) and NPSHa (available) vs flow")
+                      "Figure 4 — NPSHr (required) and NPSHa (available) vs flow")
     doc.add_paragraph()
 
     warnings = list(pump.get("warnings", []) or [])
@@ -1077,7 +1122,7 @@ def _surge_section(doc: Document, draft: dict) -> None:
             doc, draft, "suction", suct_moc,
             fig_suct_bytes=suct_env_bytes,
             fig_disc_bytes=None,
-            fig_label_suct="Figure 4a — MOC pressure envelope: suction pipeline",
+            fig_label_suct="Figure 5 — MOC pressure envelope: suction pipeline",
             fig_label_disc="",
         )
 
@@ -1087,13 +1132,13 @@ def _surge_section(doc: Document, draft: dict) -> None:
             fig_suct_bytes=None,
             fig_disc_bytes=disc_env_bytes,
             fig_label_suct="",
-            fig_label_disc="Figure 4b — MOC pressure envelope: discharge pipeline",
+            fig_label_disc="Figure 6 — MOC pressure envelope: discharge pipeline",
         )
 
         fig_hist = fig_moc_histories(draft)
         if fig_hist:
             _embed_figure(doc, fig_hist,
-                          "Figure 5 — MOC head time histories at key observation nodes")
+                          "Figure 7 — MOC head time histories at key observation nodes")
         doc.add_paragraph()
 
     # 8.3 Protection comparison
@@ -1118,7 +1163,7 @@ def _surge_section(doc: Document, draft: dict) -> None:
         fig_prot = fig_protection_comparison(draft)
         if fig_prot:
             _embed_figure(doc, fig_prot,
-                          "Figure 6 — Surge protection: peak pressure comparison by device")
+                          "Figure 8 — Surge protection: peak pressure comparison by device")
 
         for n in wi.get("assumption_notes", []) or []:
             _para(doc, f"  • {n}")
@@ -1416,6 +1461,7 @@ def build_document(draft: dict) -> Document:
 
     _add_page_numbers(doc)
     _title_page(doc, meta)
+    _table_of_figures(doc)
 
     _executive_summary(doc, draft)
     _schematic_figure(doc, draft)

@@ -1201,3 +1201,134 @@ class TestMainBodySchematicFigure:
         assert idx_fig != -1, "Figure 1 caption not found in document"
         assert idx_sys != -1, "System Description section not found in document"
         assert idx_fig < idx_sys, "Figure 1 must appear before Section 2 (System Description)"
+
+
+# ===========================================================================
+# Figure numbering consistency (Task #129)
+# ===========================================================================
+
+
+class TestFigureNumbering:
+    """All body figure captions must be sequential and non-overlapping."""
+
+    def test_figure2_system_curve_caption_present(self):
+        doc  = build_document(full_draft())
+        text = _all_text(doc)
+        assert "Figure 2" in text
+        assert "system curve" in text.lower()
+
+    def test_figure3_efficiency_power_caption_present(self):
+        doc  = build_document(full_draft())
+        text = _all_text(doc)
+        assert "Figure 3" in text
+        assert "efficiency" in text.lower()
+
+    def test_figure4_npsh_caption_present(self):
+        doc  = build_document(full_draft())
+        text = _all_text(doc)
+        assert "Figure 4" in text
+        assert "NPSHr" in text or "NPSH" in text
+
+    def test_figure5_moc_suction_caption_present(self):
+        doc  = build_document(full_draft())
+        text = _all_text(doc)
+        assert "Figure 5" in text
+        assert "suction" in text.lower()
+
+    def test_figure6_moc_discharge_caption_present(self):
+        doc  = build_document(full_draft())
+        text = _all_text(doc)
+        assert "Figure 6" in text
+        assert "discharge" in text.lower()
+
+    def test_figure7_moc_histories_caption_present(self):
+        doc  = build_document(full_draft())
+        text = _all_text(doc)
+        assert "Figure 7" in text
+        assert "time histories" in text.lower() or "observation" in text.lower()
+
+    def test_figure8_surge_protection_caption_present(self):
+        doc  = build_document(full_draft())
+        text = _all_text(doc)
+        assert "Figure 8" in text
+        assert "protection" in text.lower() or "comparison" in text.lower()
+
+    def test_no_figure_4a_or_4b_labels(self):
+        """Old 4a/4b labels must be gone."""
+        doc  = build_document(full_draft())
+        text = _all_text(doc)
+        assert "Figure 4a" not in text
+        assert "Figure 4b" not in text
+
+    def test_figures_appear_in_numeric_order(self):
+        """Figure N must always appear before Figure N+1 in the document body."""
+        doc  = build_document(full_draft())
+        text = _all_text(doc)
+        positions = {}
+        for n in range(1, 9):
+            idx = text.find(f"Figure {n} \u2014")
+            if idx != -1:
+                positions[n] = idx
+        ordered = sorted(positions.keys())
+        for i in range(len(ordered) - 1):
+            a, b = ordered[i], ordered[i + 1]
+            assert positions[a] < positions[b], (
+                f"Figure {a} appears after Figure {b} in the document"
+            )
+
+
+# ===========================================================================
+# Table of Figures (front matter) — Task #129
+# ===========================================================================
+
+
+class TestTableOfFigures:
+    """Table of Figures page must appear in the front matter."""
+
+    def test_table_of_figures_heading_present(self):
+        doc  = build_document(EMPTY_DRAFT)
+        text = _all_text(doc)
+        assert "Table of Figures" in text
+
+    def test_table_of_figures_lists_figure_1(self):
+        doc  = build_document(EMPTY_DRAFT)
+        text = _full_text(doc)
+        assert "Figure 1" in text
+
+    def test_table_of_figures_lists_figure_2(self):
+        doc  = build_document(EMPTY_DRAFT)
+        text = _full_text(doc)
+        assert "Figure 2" in text
+
+    def test_table_of_figures_lists_figure_e1(self):
+        doc  = build_document(EMPTY_DRAFT)
+        text = _full_text(doc)
+        assert "Figure E1" in text
+
+    def test_table_of_figures_has_section_column(self):
+        """Table must include a 'Section' column header."""
+        doc  = build_document(EMPTY_DRAFT)
+        found = any(
+            "Section" in cell.text
+            for tbl in doc.tables
+            for row in tbl.rows
+            for cell in row.cells
+        )
+        assert found, "No 'Section' column found in any table"
+
+    def test_table_of_figures_appears_before_executive_summary(self):
+        """Table of Figures page must come before Section 1."""
+        doc  = build_document(EMPTY_DRAFT)
+        text = _all_text(doc)
+        idx_tof = text.find("Table of Figures")
+        idx_es  = text.find("1. Executive Summary")
+        assert idx_tof != -1, "Table of Figures heading not found"
+        assert idx_es  != -1, "Executive Summary heading not found"
+        assert idx_tof < idx_es, "Table of Figures must precede the Executive Summary"
+
+    def test_table_of_figures_body_data_in_tables(self):
+        """Body-figures sub-table must list captions."""
+        doc  = build_document(EMPTY_DRAFT)
+        text = _table_text(doc)
+        assert "Pump Station Elevation Schematic" in text
+        assert "system curve" in text.lower() or "H-Q" in text

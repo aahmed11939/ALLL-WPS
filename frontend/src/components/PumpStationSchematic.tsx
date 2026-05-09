@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useProject } from "../contexts/ProjectContext";
 import { useUnitSystem } from "../contexts/UnitSystemContext";
 import { FT_PER_M, IN_PER_MM } from "../utils/units";
@@ -434,6 +434,35 @@ export default function PumpStationSchematic() {
   const { draft } = useProject();
   const { unitSystem } = useUnitSystem();
   const isUS = unitSystem === "US";
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  const handleExportPng = useCallback(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const scale = 2;
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const blob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width  = SVG_W * scale;
+      canvas.height = SVG_H * scale;
+      const ctx = canvas.getContext("2d")!;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      const link = document.createElement("a");
+      const safeName = (draft.meta.name || "project")
+        .replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
+      link.download = `${safeName}_schematic.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    };
+    img.src = url;
+  }, [draft.meta.name]);
 
   const { clearwellConfig, pumpSelectionConfig, suction, discharge, upstreamNode, downstreamNode } = draft;
 
@@ -534,9 +563,23 @@ export default function PumpStationSchematic() {
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 px-4 pt-3 pb-0.5">
-        Pump Station Schematic — Elevation View
-      </p>
+      <div className="flex items-center justify-between px-4 pt-3 pb-0.5">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Pump Station Schematic — Elevation View
+        </p>
+        <button
+          type="button"
+          onClick={handleExportPng}
+          className="flex items-center gap-1.5 rounded border border-slate-300 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 hover:border-slate-400 transition-colors"
+          title="Download schematic as PNG"
+        >
+          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          PNG
+        </button>
+      </div>
       <p className="text-[10px] text-slate-400 font-mono px-4 pb-2">
         {isUS ? "US customary" : "SI"} units ·{" "}
         {nDuty}D + {nStandby}S ·{" "}
@@ -548,6 +591,7 @@ export default function PumpStationSchematic() {
 
       <div className="overflow-x-auto">
         <svg
+          ref={svgRef}
           width={SVG_W}
           height={SVG_H}
           viewBox={`0 0 ${SVG_W} ${SVG_H}`}

@@ -384,8 +384,8 @@ function ClearwellSection({
 // Pump symbol — centrifugal (circle + triangle)
 // ---------------------------------------------------------------------------
 
-function PumpSymbol({ cx, cy, r, label, standby = false }: {
-  cx: number; cy: number; r: number; label: string; standby?: boolean;
+function PumpSymbol({ cx, cy, r, label, standby = false, hasOperatingPoint = false }: {
+  cx: number; cy: number; r: number; label: string; standby?: boolean; hasOperatingPoint?: boolean;
 }) {
   const fill   = standby ? "#f1f5f9" : TEAL_LIGHT;
   const stroke = standby ? "#94a3b8" : TEAL;
@@ -394,12 +394,78 @@ function PumpSymbol({ cx, cy, r, label, standby = false }: {
   const triPts  = `${cx + triSize},${cy} ${cx - triSize * 0.5},${cy - triSize * 0.9} ${cx - triSize * 0.5},${cy + triSize * 0.9}`;
   return (
     <g opacity={standby ? 0.55 : 1}>
+      {/* Glowing ring when operating point is active on duty pump */}
+      {hasOperatingPoint && !standby && (
+        <circle cx={cx} cy={cy} r={r + 5} fill="none" stroke={TEAL} strokeWidth={1.5}
+          strokeDasharray="4 3" opacity={0.5} />
+      )}
       <circle cx={cx} cy={cy} r={r} fill={fill} stroke={stroke} strokeWidth={2} />
       <polygon points={triPts} fill={stroke} opacity={0.7} />
       <text x={cx} y={cy + r + 12} textAnchor="middle"
         fontSize={8} fontWeight="600" fontFamily="ui-sans-serif,sans-serif" fill={textFill}>
         {label}
       </text>
+    </g>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Operating point callout — shown on the pump block when pumpResult is set
+// ---------------------------------------------------------------------------
+
+const OP_COLOR = "#7c3aed"; // violet
+
+function OperatingPointCallout({ cx, cy, r, Q_m3h, H_m, eta_pct, isUS }: {
+  cx: number; cy: number; r: number;
+  Q_m3h: number; H_m: number; eta_pct: number | null; isUS: boolean;
+}) {
+  const boxW = 108;
+  const boxH = eta_pct != null ? 40 : 30;
+  const boxX = cx - boxW / 2;
+  const boxY = cy + r + 18;
+  const leaderY = cy + r + 2;
+
+  const qLabel = isUS
+    ? `Q = ${(Q_m3h * 4.40287).toFixed(1)} gpm`
+    : `Q = ${Q_m3h.toFixed(2)} m³/h`;
+  const hLabel = isUS
+    ? `H = ${(H_m * 3.28084).toFixed(1)} ft`
+    : `H = ${H_m.toFixed(2)} m`;
+  const etaLabel = eta_pct != null ? `η = ${eta_pct.toFixed(1)}%` : null;
+
+  return (
+    <g>
+      {/* Leader line from pump bottom to callout box */}
+      <line x1={cx} y1={leaderY} x2={cx} y2={boxY}
+        stroke={OP_COLOR} strokeWidth={1} strokeDasharray="3 2" />
+      {/* Callout box */}
+      <rect x={boxX} y={boxY} width={boxW} height={boxH} rx={4}
+        fill="#faf5ff" stroke={OP_COLOR} strokeWidth={1.2} />
+      {/* Badge label */}
+      <rect x={boxX} y={boxY} width={boxW} height={11} rx={4} fill={OP_COLOR} />
+      <rect x={boxX} y={boxY + 7} width={boxW} height={4} fill={OP_COLOR} />
+      <text x={cx} y={boxY + 8.5} textAnchor="middle"
+        fontSize={6.5} fontWeight="700" fontFamily="ui-sans-serif,sans-serif" fill="white"
+        letterSpacing="0.5">
+        OPERATING POINT
+      </text>
+      {/* Q and H values */}
+      <text x={cx} y={boxY + 20} textAnchor="middle"
+        fontSize={7.5} fontWeight="600" fontFamily="ui-monospace,monospace" fill={OP_COLOR}>
+        {qLabel}  ·  {hLabel}
+      </text>
+      {/* Efficiency badge */}
+      {etaLabel && (
+        <text x={cx} y={boxY + 32} textAnchor="middle"
+          fontSize={7.5} fontWeight="600" fontFamily="ui-monospace,monospace" fill="#6d28d9">
+          {etaLabel}
+        </text>
+      )}
+      {/* Small diamond marker at pump connection point */}
+      <polygon
+        points={`${cx},${leaderY - 4} ${cx + 4},${leaderY} ${cx},${leaderY + 4} ${cx - 4},${leaderY}`}
+        fill={OP_COLOR}
+      />
     </g>
   );
 }
@@ -466,7 +532,17 @@ export default function PumpStationSchematic() {
     img.src = url;
   }, [draft.meta.name]);
 
-  const { clearwellConfig, pumpSelectionConfig, suction, discharge, upstreamNode, downstreamNode } = draft;
+  const { clearwellConfig, pumpSelectionConfig, pumpResult, suction, discharge, upstreamNode, downstreamNode } = draft;
+
+  // Pick the primary operating point: prefer the one matching nDuty pumps, else first
+  const primaryOp = useMemo(() => {
+    if (!pumpResult?.operating_points?.length) return null;
+    const nDutyPumps = pumpSelectionConfig?.nDuty ?? 1;
+    return (
+      pumpResult.operating_points.find((op) => op.n_pumps === nDutyPumps) ??
+      pumpResult.operating_points[0]
+    );
+  }, [pumpResult, pumpSelectionConfig?.nDuty]);
 
   const hasClearwell = !!(
     clearwellConfig &&
@@ -698,8 +774,22 @@ export default function PumpStationSchematic() {
           </text>
 
           {pumpSymbols.map((ps, i) => (
-            <PumpSymbol key={i} cx={ps.cx} cy={ps.cy} r={PUMP_R} label={ps.label} standby={ps.standby} />
+            <PumpSymbol key={i} cx={ps.cx} cy={ps.cy} r={PUMP_R} label={ps.label} standby={ps.standby}
+              hasOperatingPoint={!!primaryOp && !ps.standby} />
           ))}
+
+          {/* ---- Operating point callout on pump assembly ---- */}
+          {primaryOp && (
+            <OperatingPointCallout
+              cx={PUMP_CX}
+              cy={upY}
+              r={PUMP_R}
+              Q_m3h={primaryOp.Q_m3h}
+              H_m={primaryOp.H_m}
+              eta_pct={primaryOp.eta_pct}
+              isUS={isUS}
+            />
+          )}
 
           {/* Pipe stubs into/out of pump */}
           <line x1={SUCTION_X2} y1={upY} x2={pumpInletX} y2={upY} stroke={PIPE_STR} strokeWidth={1.5} />

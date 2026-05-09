@@ -119,7 +119,7 @@ export default function SubscribePage() {
                 )
               )}
 
-              {/* Manage billing — for users who have already subscribed (even if now inactive) */}
+              {/* Manage billing — only for users with an active subscription */}
               {billingStatus?.active && (
                 <button
                   type="button"

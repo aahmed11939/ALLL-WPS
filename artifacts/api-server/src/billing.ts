@@ -175,7 +175,7 @@ router.get("/status", requireAuth(), async (req: Request, res: Response) => {
       "";
 
     if (await isWhitelisted(email)) {
-      res.json({ active: true, whitelisted: true });
+      res.json({ active: true, whitelisted: true, renewsAt: null });
       return;
     }
 
@@ -183,12 +183,12 @@ router.get("/status", requireAuth(), async (req: Request, res: Response) => {
 
     // Deactivated accounts are always blocked regardless of subscription
     if (user.active === false) {
-      res.json({ active: false, reason: "account_disabled" });
+      res.json({ active: false, reason: "account_disabled", renewsAt: null });
       return;
     }
 
     if (!user.stripeCustomerId) {
-      res.json({ active: false });
+      res.json({ active: false, renewsAt: null });
       return;
     }
 

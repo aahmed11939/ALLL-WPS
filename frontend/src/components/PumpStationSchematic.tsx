@@ -453,14 +453,16 @@ export default function PumpStationSchematic() {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.scale(scale, scale);
       ctx.drawImage(img, 0, 0);
-      URL.revokeObjectURL(url);
       const link = document.createElement("a");
       const safeName = (draft.meta.name || "project")
         .replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
-      link.download = `${safeName}_schematic.png`;
+      const ts = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15).replace("T", "_");
+      link.download = `${safeName}_schematic_${ts}.png`;
       link.href = canvas.toDataURL("image/png");
       link.click();
+      URL.revokeObjectURL(url);
     };
+    img.onerror = () => URL.revokeObjectURL(url);
     img.src = url;
   }, [draft.meta.name]);
 
@@ -577,7 +579,7 @@ export default function PumpStationSchematic() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
           </svg>
-          PNG
+          Export PNG
         </button>
       </div>
       <p className="text-[10px] text-slate-400 font-mono px-4 pb-2">

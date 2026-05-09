@@ -119,8 +119,8 @@ export default function SubscribePage() {
                 )
               )}
 
-              {/* Manage billing — only for users with an active subscription */}
-              {billingStatus?.active && (
+              {/* Manage billing — only for active, non-whitelisted subscribers */}
+              {billingStatus?.active && !billingStatus.whitelisted && (
                 <button
                   type="button"
                   onClick={handleBillingPortal}

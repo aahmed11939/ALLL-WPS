@@ -52,13 +52,11 @@ export function useBillingStatus(): UseBillingStatusResult {
 
 export function formatRenewalDate(isoDate: string | null | undefined): string {
   if (!isoDate) return "";
-  try {
-    return new Date(isoDate).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return "";
-  }
+  const d = new Date(isoDate);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }

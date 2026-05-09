@@ -154,16 +154,19 @@ export default function ProjectsPage({ onOpenProject, onNewProject, onImportJSON
 
             {/* Subscription status pill */}
             {billingStatus && !billingStatus.whitelisted && (
-              <div className="hidden md:flex items-center gap-2">
+              <div className="flex items-center gap-2">
                 {billingStatus.active ? (
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-[11px] font-medium text-teal-700">
-                    <span className="h-1.5 w-1.5 rounded-full bg-teal-500" />
-                    Active
-                    {billingStatus.renewsAt && (
-                      <span className="text-teal-500">
-                        · renews {formatRenewalDate(billingStatus.renewsAt)}
-                      </span>
-                    )}
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-teal-500" />
+                    <span className="hidden sm:inline">
+                      Active subscription
+                      {billingStatus.renewsAt && (
+                        <span className="text-teal-500">
+                          {" "}— renews {formatRenewalDate(billingStatus.renewsAt)}
+                        </span>
+                      )}
+                    </span>
+                    <span className="sm:hidden">Active</span>
                   </span>
                 ) : (
                   <button
@@ -171,8 +174,9 @@ export default function ProjectsPage({ onOpenProject, onNewProject, onImportJSON
                     onClick={() => setLocation("/subscribe")}
                     className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700 hover:bg-amber-100 transition-colors"
                   >
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                    No active subscription — subscribe
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+                    <span className="hidden sm:inline">No active subscription — subscribe</span>
+                    <span className="sm:hidden">Subscribe</span>
                   </button>
                 )}
               </div>

@@ -83,6 +83,16 @@ export async function getStripeSync(): Promise<StripeSync> {
   }
 
   const { secretKey, webhookSecret } = await getStripeCredentials();
+
+  const isProduction = process.env.REPLIT_DEPLOYMENT === "1";
+  if (isProduction && !webhookSecret) {
+    throw new Error(
+      "Stripe webhook secret is not configured. " +
+        "Set STRIPE_LIVE_WEBHOOK_SECRET as a Replit secret so webhook " +
+        "signature verification is enforced in production.",
+    );
+  }
+
   return new StripeSync({
     poolConfig: { connectionString: databaseUrl },
     stripeSecretKey: secretKey,

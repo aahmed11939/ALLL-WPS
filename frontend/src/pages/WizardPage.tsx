@@ -321,21 +321,6 @@ export default function WizardPage({
     if (currentStep > 0) goToStep(currentStep - 1);
   };
 
-  // ---------- Export JSON (download) ----------
-  const handleExportJSON = () => {
-    const blob = new Blob([JSON.stringify(draft, null, 2)], { type: "application/json" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    const safeName = (draft.meta.name || "project")
-      .replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
-    a.href     = url;
-    a.download = `${safeName}.wps.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
   // ---------- Save to server ----------
   const handleSaveToServer = async () => {
     if (saving) return;
@@ -525,20 +510,6 @@ export default function WizardPage({
             {loadError && (
               <span className="text-xs text-rose-600 font-medium">{loadError}</span>
             )}
-
-            {/* Export JSON */}
-            <button
-              type="button"
-              onClick={handleExportJSON}
-              className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-slate-400 hover:bg-slate-50 transition-colors flex items-center gap-1.5"
-              title="Download project as JSON"
-            >
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              JSON
-            </button>
 
             {/* Open Project (back to landing page) */}
             {onGoToLanding && (

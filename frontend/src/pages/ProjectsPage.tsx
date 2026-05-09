@@ -349,7 +349,7 @@ export default function ProjectsPage({ onOpenProject, onNewProject, onImportJSON
       </main>
 
       <footer className="border-t border-slate-200 py-4 text-center text-[10px] text-slate-400 font-mono">
-        ALLL WPS Designer · Projects are saved server-side. Export JSON for offline backups.
+        ALLL WPS Designer · Projects are saved server-side.
       </footer>
     </div>
   );

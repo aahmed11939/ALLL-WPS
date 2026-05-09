@@ -210,26 +210,6 @@ export default function StepExports() {
     URL.revokeObjectURL(url);
   };
 
-  const handleDownloadJson = () => {
-    // Export full project state + derived engineering checks so the file is
-    // a complete record of the design session and can be reloaded with results.
-    const payload = {
-      ...draft,
-      engineeringChecks: checks,
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    const safeName = (draft.meta.name || "project")
-      .replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
-    a.href     = url;
-    a.download = `${safeName}.wps.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
   const r = draft.hydraulicsResult;
 
   return (
@@ -430,21 +410,6 @@ export default function StepExports() {
               className="shrink-0 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
             >
               Download TXT
-            </button>
-          </div>
-
-          {/* JSON export */}
-          <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-            <div>
-              <p className="text-sm font-semibold text-slate-700">Full Project (.json)</p>
-              <p className="text-xs text-slate-500 mt-0.5">Complete project data including engineering checks for archiving.</p>
-            </div>
-            <button
-              type="button"
-              onClick={handleDownloadJson}
-              className="shrink-0 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
-            >
-              Download JSON
             </button>
           </div>
 

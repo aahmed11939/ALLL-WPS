@@ -3,6 +3,9 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
+import fs from "fs";
+import path from "path";
+import { createProxyMiddleware } from "http-proxy-middleware";
 import {
   CLERK_PROXY_PATH,
   clerkProxyMiddleware,
@@ -73,6 +76,46 @@ app.use(
   })),
 );
 
+// Billing / Stripe / Clerk API routes (handled by this server)
 app.use("/api", router);
+
+// In production, proxy FastAPI routes and serve the React frontend.
+// In development the Vite dev server handles this via its own proxy config.
+if (process.env.NODE_ENV === "production") {
+  const FASTAPI_URL = "http://localhost:8000";
+
+  const fastApiProxy = createProxyMiddleware({
+    target: FASTAPI_URL,
+    changeOrigin: true,
+    on: {
+      error: (err, _req, res) => {
+        logger.error({ err }, "FastAPI proxy error");
+        if (typeof (res as express.Response).status === "function") {
+          (res as express.Response).status(502).json({ error: "Backend unavailable" });
+        }
+      },
+    },
+  });
+
+  // Python engine routes → FastAPI
+  app.use("/compute", fastApiProxy);
+  app.use("/surge", fastApiProxy);
+  app.use("/export", fastApiProxy);
+
+  // Remaining /api/* routes not matched above → FastAPI
+  app.use("/api", fastApiProxy);
+
+  // Serve the built React SPA (must be last so API routes take priority)
+  const distPath = path.resolve(process.cwd(), "frontend/dist");
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    // SPA fallback — serve index.html for any unmatched route
+    app.use((_req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  } else {
+    logger.warn({ distPath }, "frontend/dist not found — React app will not be served");
+  }
+}
 
 export default app;

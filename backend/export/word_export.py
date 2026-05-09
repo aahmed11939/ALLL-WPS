@@ -1366,6 +1366,22 @@ def _appendix_roughness_ref(doc: Document) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Schematic figure — embedded after the executive summary
+# ---------------------------------------------------------------------------
+
+def _schematic_figure(doc: Document, draft: dict) -> None:
+    """Embed the pump station elevation schematic directly after the executive summary."""
+    fig_bytes = fig_station_schematic(draft)
+    if fig_bytes:
+        _embed_figure(
+            doc, fig_bytes,
+            caption="Figure 1 — Pump Station Elevation Schematic",
+            width_in=6.2,
+        )
+        doc.add_paragraph()
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -1402,6 +1418,7 @@ def build_document(draft: dict) -> Document:
     _title_page(doc, meta)
 
     _executive_summary(doc, draft)
+    _schematic_figure(doc, draft)
     _system_description(doc, draft)
     _basis_of_design(doc, draft)
     _hydraulics_section(doc, draft)

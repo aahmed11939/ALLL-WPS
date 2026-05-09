@@ -1163,3 +1163,41 @@ class TestAppendixEInDocument:
         doc  = build_document(d)
         text = _all_text(doc)
         assert "schematic not available" in text.lower() or "Appendix E" in text
+
+
+class TestMainBodySchematicFigure:
+    """Verify the schematic is embedded in the report body (after executive summary)."""
+
+    def test_figure1_caption_present_with_station_data(self):
+        doc  = build_document(_SCHEMATIC_DRAFT)
+        text = _all_text(doc)
+        assert "Figure 1" in text
+        assert "Pump Station Elevation Schematic" in text
+
+    def test_figure1_caption_exact_text(self):
+        doc  = build_document(_SCHEMATIC_DRAFT)
+        text = _all_text(doc)
+        assert "Figure 1 \u2014 Pump Station Elevation Schematic" in text
+
+    def test_figure1_caption_absent_when_no_station_data(self):
+        d = {
+            "meta": EMPTY_DRAFT["meta"],
+            "unitSystem": "SI",
+            "designFlow_m3h": 10.0,
+            "upstreamNode":   {"elevation_m": 0.0},
+            "downstreamNode": {"elevation_m": 0.0},
+            "suction":        {"segments": [], "accessories": [], "accessories_K_sum": 0},
+            "discharge":      {"segments": [], "accessories": [], "accessories_K_sum": 0},
+        }
+        doc  = build_document(d)
+        text = _all_text(doc)
+        assert "Figure 1 \u2014 Pump Station Elevation Schematic" not in text
+
+    def test_figure1_appears_before_system_description(self):
+        doc  = build_document(_SCHEMATIC_DRAFT)
+        text = _all_text(doc)
+        idx_fig   = text.find("Figure 1 \u2014 Pump Station Elevation Schematic")
+        idx_sys   = text.find("2. System Description")
+        assert idx_fig != -1, "Figure 1 caption not found in document"
+        assert idx_sys != -1, "System Description section not found in document"
+        assert idx_fig < idx_sys, "Figure 1 must appear before Section 2 (System Description)"

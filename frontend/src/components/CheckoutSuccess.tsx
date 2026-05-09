@@ -58,8 +58,9 @@ export default function CheckoutSuccess() {
         if (data.active) {
           if (timer.current) clearInterval(timer.current);
           // Bust the billing cache so SubscriptionGate and all useBillingStatus
-          // consumers immediately see the new active state without waiting for TTL
-          invalidateBillingCache(user?.id);
+          // consumers immediately see the new active state without waiting for TTL.
+          // Guard on user.id to avoid accidentally clearing all users' cache entries.
+          if (user?.id) invalidateBillingCache(user.id);
           setActivated(true);
           setShowToast(true);
           setTimeout(() => setLocation("/app"), 2500);

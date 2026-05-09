@@ -61,19 +61,32 @@ export function invalidateBillingCache(userId?: string): void {
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
-export function useBillingStatus(): UseBillingStatusResult {
+export interface UseBillingStatusOptions {
+  /** When true the billing fetch is skipped and loadState is immediately "ready". */
+  skip?: boolean;
+}
+
+export function useBillingStatus(options?: UseBillingStatusOptions): UseBillingStatusResult {
+  const skip = options?.skip ?? false;
   const { user } = useUser();
   const cacheKey = user?.id ?? "";
 
   const [status, setStatus] = useState<BillingStatus | null>(() =>
-    cacheKey ? getCached(cacheKey) : null,
+    !skip && cacheKey ? getCached(cacheKey) : null,
   );
-  const [loadState, setLoadState] = useState<LoadState>(() =>
-    cacheKey && getCached(cacheKey) ? "ready" : "loading",
-  );
+  const [loadState, setLoadState] = useState<LoadState>(() => {
+    if (skip) return "ready";
+    return cacheKey && getCached(cacheKey) ? "ready" : "loading";
+  });
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
+    // When skipped (e.g. admin bypass), immediately resolve without fetching
+    if (skip) {
+      setLoadState("ready");
+      return;
+    }
+
     if (!cacheKey) return;
 
     // Serve from cache when fresh
@@ -107,7 +120,7 @@ export function useBillingStatus(): UseBillingStatusResult {
     return () => {
       cancelled = true;
     };
-  }, [tick, cacheKey]);
+  }, [tick, cacheKey, skip]);
 
   const refetch = () => {
     if (cacheKey) invalidateBillingCache(cacheKey);

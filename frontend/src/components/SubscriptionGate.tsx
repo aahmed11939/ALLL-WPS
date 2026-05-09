@@ -12,23 +12,25 @@ interface Props {
 export default function SubscriptionGate({ children }: Props) {
   const { isLoaded, user } = useUser();
   const [, setLocation] = useLocation();
-  const email = user?.primaryEmailAddress?.emailAddress ?? "";
-  const isAdmin = email === ADMIN_EMAIL;
 
-  // Admin bypass: skip billing check entirely for the admin account
-  const { status, loadState } = useBillingStatus();
+  const email = user?.primaryEmailAddress?.emailAddress ?? "";
+  // isAdmin is only true once Clerk is loaded and email matches
+  const isAdmin = isLoaded && email === ADMIN_EMAIL;
+
+  // Pass skip=true once admin is confirmed to avoid any billing API call
+  const { status, loadState } = useBillingStatus({ skip: isAdmin });
 
   useEffect(() => {
     if (!isLoaded || !user) return;
-    if (isAdmin) return; // admin always allowed
-    if (loadState !== "ready") return;
-    if (!status?.active) {
+    if (isAdmin) return; // admin is always allowed — no billing check needed
+    if (loadState === "loading") return; // wait for result
+    // Fail-closed: redirect on both "error" and inactive "ready" states
+    if (loadState === "error" || !status?.active) {
       setLocation("/subscribe");
     }
   }, [isLoaded, user, isAdmin, loadState, status, setLocation]);
 
-  // Not yet signed in or billing check in flight → show spinner
-  // Admin bypasses the gate immediately once Clerk is loaded
+  // Show spinner while Clerk or billing status is loading
   if (!isLoaded || (!isAdmin && loadState === "loading")) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
@@ -37,7 +39,7 @@ export default function SubscriptionGate({ children }: Props) {
     );
   }
 
-  // Error or inactive → redirect handled above, render nothing while navigating
+  // Non-admin with error or inactive subscription — render nothing while redirect fires
   if (!isAdmin && (loadState === "error" || !status?.active)) return null;
 
   return <>{children}</>;

@@ -386,6 +386,308 @@ def fig_moc_histories(draft: dict) -> bytes | None:
     return _to_png(fig)
 
 
+def fig_station_schematic(draft: dict) -> bytes | None:
+    """
+    Server-side elevation-view schematic of the pump station.
+
+    Renders (mirroring PumpStationSchematic.tsx):
+    - Clearwell cross-section with LLL / LWL / HWL / HHL water-level bands
+    - Suction pipeline segment(s) — horizontal at upstream elevation
+    - Centrifugal pump symbol(s) — duty (solid teal) + standby (grey)
+    - Discharge pipeline segment(s) — sloped from pump to downstream node
+    - Downstream reservoir node
+    - Elevation datum rail with ticks
+    - Pipe size / material callout labels
+
+    Returns None when there is no meaningful station data to draw.
+    """
+    suction   = draft.get("suction",        {}) or {}
+    discharge = draft.get("discharge",      {}) or {}
+    up_node   = draft.get("upstreamNode",   {}) or {}
+    dn_node   = draft.get("downstreamNode", {}) or {}
+    cw_cfg    = draft.get("clearwellConfig")
+    ps_cfg    = draft.get("pumpSelectionConfig") or {}
+
+    s_segs = suction.get("segments",  []) or []
+    d_segs = discharge.get("segments", []) or []
+
+    has_cw   = (cw_cfg and
+                cw_cfg.get("LLL_m", 0) < cw_cfg.get("LWL_m", 1) and
+                cw_cfg.get("LWL_m", 0) < cw_cfg.get("HWL_m", 2) and
+                cw_cfg.get("HWL_m", 0) < cw_cfg.get("HHL_m", 3))
+    has_data = bool(s_segs or d_segs or has_cw or ps_cfg)
+
+    if not has_data:
+        return None
+
+    up_elev = up_node.get("elevation_m", 0.0)
+    dn_elev = dn_node.get("elevation_m", 0.0)
+    cw_top_elev = (up_elev + cw_cfg["HHL_m"]) if has_cw else up_elev
+
+    max_elev = max(up_elev, dn_elev, cw_top_elev)
+    min_elev = min(up_elev, dn_elev)
+    elev_span = max(max_elev - min_elev, 5.0)
+
+    # ---------------------------------------------------------------------------
+    # Matplotlib figure
+    # ---------------------------------------------------------------------------
+    plt = _mpl()
+    fig, ax = plt.subplots(figsize=(8.5, 4.8))
+    ax.set_aspect("auto")
+    ax.set_facecolor("#F8FAFC")
+    fig.patch.set_facecolor("white")
+
+    # Horizontal layout: x positions (arbitrary units that look good at 8.5 in)
+    CW_X1    = 0.5
+    CW_X2    = 1.8
+    SUCT_X1  = CW_X2
+    SUCT_X2  = 4.2
+    PUMP_CX  = 5.0
+    PUMP_R   = 0.28
+    DISC_X1  = PUMP_CX + PUMP_R
+    DISC_X2  = 8.0
+    DS_CX    = 8.3
+    DS_R     = 0.18
+    X_MAX    = 9.0
+
+    # Map elevation → y (SVG-style: higher elev → higher y, but matplotlib y increases up)
+    def to_y(elev: float) -> float:
+        return (elev - min_elev) / elev_span * 3.8 + 0.4  # 0.4..4.2 range
+
+    up_y = to_y(up_elev)
+    dn_y = to_y(dn_elev)
+    cw_top_y = max(to_y(cw_top_elev), up_y + 0.45)
+
+    # ---- Datum rail ----
+    ax.axhline(to_y(min_elev), color="#94a3b8", linewidth=0.8, linestyle="--", alpha=0.6)
+    ax.text(0.1, to_y(min_elev) - 0.12, "Datum", fontsize=6, color="#94a3b8",
+            va="top", style="italic")
+
+    # ---- Clearwell ----
+    if has_cw:
+        lll = cw_cfg["LLL_m"]
+        lwl = cw_cfg["LWL_m"]
+        hwl = cw_cfg["HWL_m"]
+        hhl = cw_cfg["HHL_m"]
+
+        y_lll = to_y(up_elev + lll)
+        y_lwl = to_y(up_elev + lwl)
+        y_hwl = to_y(up_elev + hwl)
+        y_hhl = to_y(up_elev + hhl)
+
+        from matplotlib.patches import Rectangle as MplRect
+        # Bands (bottom to top: dead zone amber, operating teal, alarm red)
+        ax.add_patch(MplRect((CW_X1, up_y), CW_X2 - CW_X1, y_lll - up_y,
+                              facecolor="#fef3c7", edgecolor="none", zorder=2))
+        ax.add_patch(MplRect((CW_X1, y_lll), CW_X2 - CW_X1, y_lwl - y_lll,
+                              facecolor="#fef3c7", edgecolor="none", zorder=2))
+        ax.add_patch(MplRect((CW_X1, y_lwl), CW_X2 - CW_X1, y_hwl - y_lwl,
+                              facecolor="#ccfbf1", edgecolor="none", zorder=2))
+        ax.add_patch(MplRect((CW_X1, y_hwl), CW_X2 - CW_X1, y_hhl - y_hwl,
+                              facecolor="#fee2e2", edgecolor="none", zorder=2))
+
+        # Tank walls
+        ax.add_patch(MplRect((CW_X1, up_y), 0.06, cw_top_y - up_y,
+                              facecolor="#cbd5e1", edgecolor="#94a3b8", linewidth=0.8, zorder=3))
+        ax.add_patch(MplRect((CW_X2 - 0.06, up_y), 0.06, cw_top_y - up_y,
+                              facecolor="#cbd5e1", edgecolor="#94a3b8", linewidth=0.8, zorder=3))
+        # Floor
+        ax.add_patch(MplRect((CW_X1, up_y - 0.04), CW_X2 - CW_X1, 0.04,
+                              facecolor="#cbd5e1", edgecolor="#94a3b8", linewidth=0.8, zorder=3))
+
+        # Level markers
+        level_defs = [
+            ("HHL", y_hhl, "#ef4444"),
+            ("HWL", y_hwl, "#0f766e"),
+            ("LWL", y_lwl, "#0f766e"),
+            ("LLL", y_lll, "#f59e0b"),
+        ]
+        for lbl, ly, col in level_defs:
+            ax.axhline(ly, xmin=(CW_X1 / X_MAX), xmax=(CW_X2 / X_MAX),
+                       color=col, linewidth=1.0, linestyle=":", alpha=0.85, zorder=4)
+            ax.text(CW_X1 - 0.06, ly, lbl, fontsize=5.5, color=col, ha="right",
+                    va="center", fontweight="bold", zorder=5)
+
+        # Clearwell label
+        ax.text((CW_X1 + CW_X2) / 2, cw_top_y + 0.08, "Clearwell",
+                ha="center", va="bottom", fontsize=7.5, fontweight="bold",
+                color="#334155", zorder=5)
+    else:
+        # Simple upstream node box
+        from matplotlib.patches import Rectangle as MplRect
+        ax.add_patch(MplRect((CW_X1, up_y - 0.2), CW_X2 - CW_X1, 0.4,
+                              facecolor="#e2e8f0", edgecolor="#94a3b8", linewidth=0.8, zorder=3))
+        ax.text((CW_X1 + CW_X2) / 2, up_y + 0.25, "Upstream\nNode",
+                ha="center", va="bottom", fontsize=6.5, color="#334155", zorder=5)
+
+    # ---- Suction pipe ----
+    PIPE_H = 0.10
+    if s_segs:
+        from matplotlib.patches import Rectangle as _R
+        ax.add_patch(_R((SUCT_X1, up_y - PIPE_H / 2), SUCT_X2 - SUCT_X1, PIPE_H,
+                         facecolor="#e2e8f0", edgecolor="#94a3b8", linewidth=0.8, zorder=3))
+        ax.plot([SUCT_X1, SUCT_X2], [up_y, up_y],
+                color="#94a3b8", linewidth=0.6, linestyle="--", zorder=4)
+        # Segment labels
+        total_s = sum(s.get("length_m", 0) for s in s_segs)
+        x_cur = SUCT_X1
+        for i, seg in enumerate(s_segs):
+            seg_w = (seg.get("length_m", 0) / max(total_s, 1)) * (SUCT_X2 - SUCT_X1)
+            mid_x = x_cur + seg_w / 2
+            dn_mm = seg.get("diameter_mm", 0)
+            mat   = seg.get("material", "").upper().replace("_", " ")
+            lbl   = f"DN{int(dn_mm)}" if dn_mm else "—"
+            ax.text(mid_x, up_y + PIPE_H / 2 + 0.08, lbl,
+                    ha="center", va="bottom", fontsize=6.5, fontweight="600",
+                    color="#475569", zorder=5,
+                    fontfamily="monospace")
+            ax.text(mid_x, up_y - PIPE_H / 2 - 0.04, f"{mat} · {seg.get('length_m', 0):.0f} m",
+                    ha="center", va="top", fontsize=5.5, color="#94a3b8", zorder=5,
+                    fontfamily="monospace")
+            x_cur += seg_w
+    else:
+        # Dashed connector
+        ax.plot([SUCT_X1, SUCT_X2], [up_y, up_y],
+                color="#cbd5e1", linewidth=1.2, linestyle="--", zorder=3)
+
+    # ---- Pump symbol(s) ----
+    n_duty    = ps_cfg.get("nDuty", 1) if ps_cfg else 1
+    n_standby = ps_cfg.get("nStandby", 0) if ps_cfg else 0
+    total_pumps = max(n_duty + n_standby, 1)
+    spacing  = min(0.30, 0.60 / total_pumps)
+    p_offset = -((total_pumps - 1) * spacing) / 2
+
+    pump_label_key = ps_cfg.get("selectedTypeKey", "") if ps_cfg else ""
+    pump_label = (pump_label_key.replace("_", " ").title()
+                  if pump_label_key else "Pump")
+
+    for i in range(total_pumps):
+        pcx = PUMP_CX + p_offset + i * spacing
+        pcy = up_y
+        is_stby = i >= n_duty
+        fc = "#ccfbf1" if not is_stby else "#f1f5f9"
+        ec = "#0f766e" if not is_stby else "#94a3b8"
+        alpha = 1.0 if not is_stby else 0.55
+
+        circ = plt.Circle((pcx, pcy), PUMP_R, facecolor=fc, edgecolor=ec,
+                           linewidth=1.8, zorder=6, alpha=alpha)
+        ax.add_patch(circ)
+        tri_s = PUMP_R * 0.55
+        tri_pts = plt.Polygon(
+            [[pcx + tri_s, pcy],
+             [pcx - tri_s * 0.5, pcy + tri_s * 0.9],
+             [pcx - tri_s * 0.5, pcy - tri_s * 0.9]],
+            closed=True, facecolor=ec, alpha=0.7 * alpha, zorder=7,
+        )
+        ax.add_patch(tri_pts)
+        p_lbl = "Stby" if is_stby else (f"D{i+1}" if total_pumps > 1 else pump_label[:8])
+        ax.text(pcx, pcy - PUMP_R - 0.12, p_lbl,
+                ha="center", va="top", fontsize=6.0, fontweight="600",
+                color=ec, alpha=alpha, zorder=8)
+
+    # ---- Discharge pipe ----
+    if d_segs:
+        from matplotlib.patches import Polygon as MplPoly
+        ph2 = PIPE_H / 2
+        # Pipe body as a filled quad (sloped from up_y to dn_y)
+        pts = [
+            [DISC_X1, up_y - ph2],
+            [DISC_X2, dn_y - ph2],
+            [DISC_X2, dn_y + ph2],
+            [DISC_X1, up_y + ph2],
+        ]
+        ax.add_patch(MplPoly(pts, closed=True,
+                              facecolor="#e2e8f0", edgecolor="#94a3b8", linewidth=0.8, zorder=3))
+        # Centreline dashed
+        ax.plot([DISC_X1, DISC_X2], [up_y, dn_y],
+                color="#94a3b8", linewidth=0.6, linestyle="--", zorder=4)
+
+        total_d = sum(s.get("length_m", 0) for s in d_segs)
+        x_cur = DISC_X1
+        dx_span = DISC_X2 - DISC_X1
+        for i, seg in enumerate(d_segs):
+            seg_w = (seg.get("length_m", 0) / max(total_d, 1)) * dx_span
+            mid_x = x_cur + seg_w / 2
+            frac  = (mid_x - DISC_X1) / max(dx_span, 1)
+            mid_y = up_y + frac * (dn_y - up_y)
+            dn_mm = seg.get("diameter_mm", 0)
+            mat   = seg.get("material", "").upper().replace("_", " ")
+            lbl   = f"DN{int(dn_mm)}" if dn_mm else "—"
+            # Label above pipe
+            perp_up = ph2 + 0.09
+            ax.text(mid_x, mid_y + perp_up, lbl,
+                    ha="center", va="bottom", fontsize=6.5, fontweight="600",
+                    color="#475569", zorder=5, fontfamily="monospace")
+            ax.text(mid_x, mid_y - perp_up - 0.01,
+                    f"{mat} · {seg.get('length_m', 0):.0f} m",
+                    ha="center", va="top", fontsize=5.5, color="#94a3b8",
+                    zorder=5, fontfamily="monospace")
+            x_cur += seg_w
+    else:
+        ax.plot([DISC_X1, DISC_X2], [up_y, dn_y],
+                color="#cbd5e1", linewidth=1.2, linestyle="--", zorder=3)
+
+    # ---- Downstream reservoir node ----
+    ds_circ = plt.Circle((DS_CX, dn_y), DS_R, facecolor="#e0f2fe",
+                           edgecolor="#0284c7", linewidth=1.4, zorder=6)
+    ax.add_patch(ds_circ)
+    ax.text(DS_CX, dn_y + DS_R + 0.08, "DS Node",
+            ha="center", va="bottom", fontsize=6.0, color="#0369a1", fontweight="600", zorder=7)
+
+    # ---- Elevation ticks on left Y axis ----
+    for ev, lbl in [(up_elev, f"US\n{up_elev:.1f} m"), (dn_elev, f"DS\n{dn_elev:.1f} m")]:
+        ty = to_y(ev)
+        ax.plot([CW_X1 - 0.25, CW_X1 - 0.08], [ty, ty],
+                color="#64748b", linewidth=0.8, zorder=3)
+        ax.text(CW_X1 - 0.28, ty, f"{ev:.1f} m",
+                ha="right", va="center", fontsize=5.5, color="#64748b",
+                fontfamily="monospace")
+
+    # ---- Flow arrow ----
+    ax.annotate("", xy=(SUCT_X2 - 0.1, up_y + 0.22),
+                xytext=(SUCT_X1 + 0.15, up_y + 0.22),
+                arrowprops=dict(arrowstyle="-|>", color="#0f766e", lw=1.2),
+                zorder=8)
+    ax.text((SUCT_X1 + SUCT_X2) / 2, up_y + 0.28, "flow →",
+            ha="center", va="bottom", fontsize=6.0, color="#0f766e", style="italic", zorder=8)
+
+    # ---- Title & axis tidy ----
+    ax.set_xlim(0.0, X_MAX)
+    ax.set_ylim(to_y(min_elev) - 0.35, max(cw_top_y, to_y(max_elev)) + 0.55)
+    ax.set_xlabel("→ Station Layout (elevation view — not to scale in x)", fontsize=8)
+    ax.set_ylabel("Elevation (m)", fontsize=8)
+    ax.set_title("Pump Station Schematic — Elevation View", fontsize=10, fontweight="bold",
+                 color="#1F3864")
+    ax.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
+    ax.tick_params(axis="y", labelsize=7)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["bottom"].set_visible(False)
+
+    # Custom Y ticks to show actual elevations
+    tick_levels = sorted({up_elev, dn_elev})
+    if has_cw:
+        tick_levels += [up_elev + cw_cfg["LLL_m"], up_elev + cw_cfg["LWL_m"],
+                        up_elev + cw_cfg["HWL_m"], up_elev + cw_cfg["HHL_m"]]
+    tick_levels = sorted(set(tick_levels))
+    ax.set_yticks([to_y(e) for e in tick_levels])
+    ax.set_yticklabels([f"{e:.2f}" for e in tick_levels], fontsize=6.5)
+
+    # Legend for clearwell bands
+    if has_cw:
+        from matplotlib.patches import Patch
+        legend_patches = [
+            Patch(facecolor="#fee2e2", label="Above HWL (alarm)"),
+            Patch(facecolor="#ccfbf1", label="Operating zone (LWL–HWL)"),
+            Patch(facecolor="#fef3c7", label="Below LWL (low / dead)"),
+        ]
+        ax.legend(handles=legend_patches, loc="upper right",
+                  fontsize=6, framealpha=0.85, edgecolor="#e2e8f0")
+
+    fig.tight_layout(pad=0.6)
+    return _to_png(fig)
+
+
 def fig_protection_comparison(draft: dict) -> bytes | None:
     """
     Bar chart comparing global H_max and H_min across baseline + device runs.

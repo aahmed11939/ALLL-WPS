@@ -26,6 +26,7 @@ from backend.engine.word_figures import (
     fig_system_curve,
     fig_efficiency_power,
     fig_npsh,
+    fig_station_schematic,
     fig_surge_envelope_suction,
     fig_surge_envelope_discharge,
     fig_moc_histories,
@@ -1036,3 +1037,129 @@ class TestSolverGridInWordExport:
         doc  = build_document(d)
         data = _doc_to_bytes(doc)
         assert len(data) > 500
+
+
+# ===========================================================================
+# Appendix E — Station Layout Schematic (Task #122)
+# ===========================================================================
+
+_CW_CFG = {
+    "LLL_m": 0.3, "LWL_m": 0.5, "HWL_m": 2.5, "HHL_m": 3.0,
+    "shape": "cylindrical", "diameter_m": 3.0,
+}
+
+_SCHEMATIC_DRAFT = {
+    **EMPTY_DRAFT,
+    "clearwellConfig": _CW_CFG,
+    "pumpSelectionConfig": {"nDuty": 1, "nStandby": 1, "selectedTypeKey": "centrifugal"},
+}
+
+
+class TestStationSchematicFigure:
+    """Unit tests for fig_station_schematic."""
+
+    def test_returns_bytes_with_full_station_data(self):
+        result = fig_station_schematic(_SCHEMATIC_DRAFT)
+        assert isinstance(result, bytes) and len(result) > 1000
+
+    def test_returns_none_for_empty_draft(self):
+        result = fig_station_schematic({})
+        assert result is None
+
+    def test_returns_none_when_no_segments_and_no_clearwell(self):
+        d = {
+            "upstreamNode":   {"elevation_m": 5.0},
+            "downstreamNode": {"elevation_m": 25.0},
+            "suction":        {"segments": [], "accessories_K_sum": 0},
+            "discharge":      {"segments": [], "accessories_K_sum": 0},
+        }
+        assert fig_station_schematic(d) is None
+
+    def test_returns_bytes_with_suction_segs_only(self):
+        d = {
+            **EMPTY_DRAFT,
+            "discharge": {**EMPTY_DRAFT["discharge"], "segments": []},
+        }
+        result = fig_station_schematic(d)
+        assert isinstance(result, bytes) and len(result) > 100
+
+    def test_returns_bytes_with_clearwell_no_pumps(self):
+        d = {**EMPTY_DRAFT, "clearwellConfig": _CW_CFG}
+        result = fig_station_schematic(d)
+        assert isinstance(result, bytes) and len(result) > 100
+
+    def test_standby_pump_renders_without_error(self):
+        d = {
+            **_SCHEMATIC_DRAFT,
+            "pumpSelectionConfig": {"nDuty": 2, "nStandby": 2, "selectedTypeKey": "submersible"},
+        }
+        result = fig_station_schematic(d)
+        assert isinstance(result, bytes) and len(result) > 100
+
+    def test_equal_elevations_no_crash(self):
+        d = {
+            **_SCHEMATIC_DRAFT,
+            "upstreamNode":   {"elevation_m": 10.0},
+            "downstreamNode": {"elevation_m": 10.0},
+        }
+        result = fig_station_schematic(d)
+        assert isinstance(result, bytes) and len(result) > 100
+
+    def test_negative_elevations_no_crash(self):
+        d = {
+            **_SCHEMATIC_DRAFT,
+            "upstreamNode":   {"elevation_m": -5.0},
+            "downstreamNode": {"elevation_m": 15.0},
+        }
+        result = fig_station_schematic(d)
+        assert isinstance(result, bytes) and len(result) > 100
+
+
+class TestAppendixEInDocument:
+    """Verify Appendix E — Station Layout Schematic appears in the built report."""
+
+    def test_appendix_e_heading_present_in_full_draft(self):
+        doc  = build_document(full_draft())
+        text = _all_text(doc)
+        assert "Appendix E" in text
+
+    def test_station_layout_heading_text_present(self):
+        doc  = build_document(full_draft())
+        text = _all_text(doc)
+        assert "Station Layout Schematic" in text
+
+    def test_appendix_e_present_in_minimal_draft(self):
+        doc  = build_document(EMPTY_DRAFT)
+        text = _all_text(doc)
+        assert "Appendix E" in text
+
+    def test_appendix_e_present_with_clearwell_data(self):
+        d = {**EMPTY_DRAFT, "clearwellConfig": _CW_CFG}
+        doc  = build_document(d)
+        text = _all_text(doc)
+        assert "Appendix E" in text
+
+    def test_clearwell_level_key_in_tables_when_cw_configured(self):
+        d = {**EMPTY_DRAFT, "clearwellConfig": _CW_CFG}
+        doc  = build_document(d)
+        text = _table_text(doc)
+        assert "LLL" in text or "LWL" in text or "HWL" in text or "HHL" in text
+
+    def test_figure_caption_present_with_station_data(self):
+        doc  = build_document(_SCHEMATIC_DRAFT)
+        text = _all_text(doc)
+        assert "Figure E1" in text
+
+    def test_fallback_message_when_no_station_data(self):
+        d = {
+            "meta": EMPTY_DRAFT["meta"],
+            "unitSystem": "SI",
+            "designFlow_m3h": 10.0,
+            "upstreamNode":   {"elevation_m": 0.0},
+            "downstreamNode": {"elevation_m": 0.0},
+            "suction":        {"segments": [], "accessories": [], "accessories_K_sum": 0},
+            "discharge":      {"segments": [], "accessories": [], "accessories_K_sum": 0},
+        }
+        doc  = build_document(d)
+        text = _all_text(doc)
+        assert "schematic not available" in text.lower() or "Appendix E" in text

@@ -37,6 +37,7 @@ from backend.engine.word_figures import (
     fig_moc_histories,
     fig_npsh,
     fig_protection_comparison,
+    fig_station_schematic,
     fig_surge_envelope_discharge,
     fig_surge_envelope_suction,
     fig_system_curve,
@@ -1300,6 +1301,54 @@ def _appendix_surge_timeseries(doc: Document, draft: dict) -> None:
 # Appendix D — Pipe Roughness Reference
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Appendix E — Station Layout Schematic
+# (placed after roughness reference so section letters remain stable)
+# ---------------------------------------------------------------------------
+
+def _appendix_station_schematic(doc: Document, draft: dict) -> None:
+    """Embed the server-side pump station elevation-view schematic."""
+    _heading(doc, "Appendix E — Station Layout Schematic")
+
+    _para(doc, (
+        "The following figure shows an elevation-view schematic of the pump station. "
+        "The diagram is generated from the design inputs and is not drawn to scale in the "
+        "horizontal direction. Elevations on the Y-axis are exact."
+    ))
+    doc.add_paragraph()
+
+    fig_bytes = fig_station_schematic(draft)
+    if fig_bytes:
+        _embed_figure(
+            doc, fig_bytes,
+            caption="Figure E1 — Pump Station Elevation View Schematic",
+            width_in=6.2,
+        )
+    else:
+        _para(doc,
+              "Station schematic not available — complete the pipeline and pump steps to "
+              "generate the schematic.",
+              italic=True)
+    doc.add_paragraph()
+
+    # Key for the clearwell colour bands
+    cw_cfg = draft.get("clearwellConfig")
+    has_cw = (cw_cfg and
+              cw_cfg.get("LLL_m", 0) < cw_cfg.get("LWL_m", 1) and
+              cw_cfg.get("LWL_m", 0) < cw_cfg.get("HWL_m", 2) and
+              cw_cfg.get("HWL_m", 0) < cw_cfg.get("HHL_m", 3))
+    if has_cw:
+        up_elev = (draft.get("upstreamNode") or {}).get("elevation_m", 0.0)
+        _para(doc, "Clearwell water level key:", bold=True)
+        rows = [
+            ("LLL — Low-Low Level",  f"{_fmt(up_elev + cw_cfg['LLL_m'])} m AHD"),
+            ("LWL — Low Water Level", f"{_fmt(up_elev + cw_cfg['LWL_m'])} m AHD"),
+            ("HWL — High Water Level", f"{_fmt(up_elev + cw_cfg['HWL_m'])} m AHD"),
+            ("HHL — High-High Level", f"{_fmt(up_elev + cw_cfg['HHL_m'])} m AHD"),
+        ]
+        _kv_table(doc, rows)
+        doc.add_paragraph()
+
 def _appendix_roughness_ref(doc: Document) -> None:
     _heading(doc, "Appendix D — Pipe Roughness Reference")
 
@@ -1365,6 +1414,7 @@ def build_document(draft: dict) -> Document:
     _appendix_pump_curves(doc, draft)
     _appendix_surge_timeseries(doc, draft)
     _appendix_roughness_ref(doc)
+    _appendix_station_schematic(doc, draft)
 
     return doc
 

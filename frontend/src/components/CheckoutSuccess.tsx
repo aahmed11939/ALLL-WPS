@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { useAuth } from "@clerk/react";
+import { useAuth, useUser } from "@clerk/react";
+import { invalidateBillingCache } from "../hooks/useBillingStatus";
 
 const API_BASE = import.meta.env.VITE_API_SERVER_URL ?? "";
 const POLL_INTERVAL_MS = 2000;
@@ -30,6 +31,7 @@ function Toast({ message, visible }: ToastProps) {
 
 export default function CheckoutSuccess() {
   const { isSignedIn } = useAuth();
+  const { user } = useUser();
   const [, setLocation] = useLocation();
   const [activated, setActivated] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -55,6 +57,9 @@ export default function CheckoutSuccess() {
         const data = (await res.json()) as { active: boolean };
         if (data.active) {
           if (timer.current) clearInterval(timer.current);
+          // Bust the billing cache so SubscriptionGate and all useBillingStatus
+          // consumers immediately see the new active state without waiting for TTL
+          invalidateBillingCache(user?.id);
           setActivated(true);
           setShowToast(true);
           setTimeout(() => setLocation("/app"), 2500);
@@ -69,7 +74,7 @@ export default function CheckoutSuccess() {
     return () => {
       if (timer.current) clearInterval(timer.current);
     };
-  }, [isSignedIn, setLocation]);
+  }, [isSignedIn, user, setLocation]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">

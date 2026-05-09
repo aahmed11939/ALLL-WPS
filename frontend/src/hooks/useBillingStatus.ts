@@ -21,7 +21,12 @@ export interface UseBillingStatusResult {
 // ---------------------------------------------------------------------------
 // Module-level in-memory cache (cleared on page unload, never persisted)
 // ---------------------------------------------------------------------------
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL_MS = (() => {
+  const raw = (import.meta.env.VITE_BILLING_CACHE_TTL_MS as string | undefined) ?? "";
+  const parsed = parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CACHE_TTL_MS;
+})();
 
 interface CacheEntry {
   data: BillingStatus;

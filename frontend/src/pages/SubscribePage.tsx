@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useAuth, useUser, useClerk } from "@clerk/react";
 import wpsLogo from "../assets/WPS_Logo_1778184724504.png";
-import { useBillingStatus, formatRenewalDate } from "../hooks/useBillingStatus";
+import { useBillingStatus, formatRenewalDate, invalidateBillingCache } from "../hooks/useBillingStatus";
 
 const API_BASE = import.meta.env.VITE_API_SERVER_URL ?? "";
 
@@ -143,7 +143,10 @@ export default function SubscribePage() {
               ) : (
                 <button
                   type="button"
-                  onClick={() => signOut({ redirectUrl: `${window.location.origin}/sign-in` })}
+                  onClick={() => {
+                    invalidateBillingCache(user?.id);
+                    void signOut({ redirectUrl: `${window.location.origin}/sign-in` });
+                  }}
                   className="text-xs font-medium text-slate-400 hover:text-slate-600 transition-colors"
                 >
                   Sign out

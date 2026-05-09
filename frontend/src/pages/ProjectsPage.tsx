@@ -9,7 +9,7 @@ import {
   type ProjectMeta,
   type ProjectLoadResponse,
 } from "../utils/api";
-import { useBillingStatus, formatRenewalDate } from "../hooks/useBillingStatus";
+import { useBillingStatus, formatRenewalDate, invalidateBillingCache } from "../hooks/useBillingStatus";
 
 interface Props {
   onOpenProject: (row: ProjectLoadResponse) => void;
@@ -215,7 +215,10 @@ export default function ProjectsPage({ onOpenProject, onNewProject, onImportJSON
             )}
             <button
               type="button"
-              onClick={() => signOut({ redirectUrl: `${window.location.origin}/sign-in` })}
+              onClick={() => {
+                invalidateBillingCache(user?.id);
+                void signOut({ redirectUrl: `${window.location.origin}/sign-in` });
+              }}
               className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700 hover:border-slate-300 transition-colors"
               title="Sign out"
             >

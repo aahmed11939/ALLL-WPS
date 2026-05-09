@@ -23,6 +23,7 @@ from __future__ import annotations
 import io
 import math
 from datetime import date as _date
+from pathlib import Path
 from typing import Any
 
 from docx import Document
@@ -339,9 +340,19 @@ def _embed_figure(doc: Document, fig_bytes: bytes, caption: str = "",
 # Title page (stamp block + revision table)
 # ---------------------------------------------------------------------------
 
+_LOGO_PATH = Path(__file__).parent / "wps_logo.png"
+
+
 def _title_page(doc: Document, meta: dict) -> None:
     doc.add_paragraph()
     doc.add_paragraph()
+
+    # Company logo — centred above the hero title
+    if _LOGO_PATH.exists():
+        logo_para = doc.add_paragraph()
+        logo_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        logo_para.add_run().add_picture(str(_LOGO_PATH), width=Inches(2.5))
+        doc.add_paragraph()
 
     title = doc.add_paragraph()
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER

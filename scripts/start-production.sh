@@ -2,6 +2,7 @@
 set -e
 
 export NODE_ENV=production
+export PORT=${PORT:-8080}
 
 # Start FastAPI on internal port 8000
 uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 &

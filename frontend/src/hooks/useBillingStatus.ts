@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useUser } from "@clerk/react";
 
 const API_BASE = (import.meta.env.VITE_API_SERVER_URL as string | undefined) ?? "";
 
@@ -17,12 +18,67 @@ export interface UseBillingStatusResult {
   refetch: () => void;
 }
 
+// ---------------------------------------------------------------------------
+// Module-level in-memory cache (cleared on page unload, never persisted)
+// ---------------------------------------------------------------------------
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+interface CacheEntry {
+  data: BillingStatus;
+  expiresAt: number;
+}
+
+const billingCache = new Map<string, CacheEntry>();
+
+function getCached(key: string): BillingStatus | null {
+  const entry = billingCache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    billingCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function setCached(key: string, data: BillingStatus): void {
+  billingCache.set(key, { data, expiresAt: Date.now() + CACHE_TTL_MS });
+}
+
+/** Invalidate one user's entry (pass userId) or clear all entries. */
+export function invalidateBillingCache(userId?: string): void {
+  if (userId) {
+    billingCache.delete(userId);
+  } else {
+    billingCache.clear();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
 export function useBillingStatus(): UseBillingStatusResult {
-  const [status, setStatus] = useState<BillingStatus | null>(null);
-  const [loadState, setLoadState] = useState<LoadState>("loading");
+  const { user } = useUser();
+  const cacheKey = user?.id ?? "";
+
+  const [status, setStatus] = useState<BillingStatus | null>(() =>
+    cacheKey ? getCached(cacheKey) : null,
+  );
+  const [loadState, setLoadState] = useState<LoadState>(() =>
+    cacheKey && getCached(cacheKey) ? "ready" : "loading",
+  );
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
+    if (!cacheKey) return;
+
+    // Serve from cache when fresh
+    const cached = getCached(cacheKey);
+    if (cached) {
+      setStatus(cached);
+      setLoadState("ready");
+      return;
+    }
+
     let cancelled = false;
     setLoadState("loading");
 
@@ -33,6 +89,7 @@ export function useBillingStatus(): UseBillingStatusResult {
       })
       .then((data) => {
         if (cancelled) return;
+        setCached(cacheKey, data);
         setStatus(data);
         setLoadState("ready");
       })
@@ -45,11 +102,19 @@ export function useBillingStatus(): UseBillingStatusResult {
     return () => {
       cancelled = true;
     };
-  }, [tick]);
+  }, [tick, cacheKey]);
 
-  return { status, loadState, refetch: () => setTick((t) => t + 1) };
+  const refetch = () => {
+    if (cacheKey) invalidateBillingCache(cacheKey);
+    setTick((t) => t + 1);
+  };
+
+  return { status, loadState, refetch };
 }
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 export function formatRenewalDate(isoDate: string | null | undefined): string {
   if (!isoDate) return "";
   const d = new Date(isoDate);

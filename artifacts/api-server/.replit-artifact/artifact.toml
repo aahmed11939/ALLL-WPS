@@ -1,16 +1,8 @@
 kind = "api"
-previewPath = "/"
+previewPath = "/api"
 title = "API Server"
 version = "1.0.0"
 id = "3B4_FFSkEVBkAeYMFRJ2e"
-
-[[services]]
-localPort = 5173
-name = "WPS Frontend"
-paths = ["/"]
-
-[services.development]
-run = "cd /home/runner/workspace/frontend && npm run dev"
 
 [[services]]
 localPort = 8080

@@ -65,6 +65,10 @@ externalPort = 80
 localPort = 8082
 externalPort = 3000
 
+[[ports]]
+localPort = 20825
+externalPort = 3003
+
 [nix]
 channel = "stable-25_05"
 packages = ["cairo", "ffmpeg-full", "freetype", "ghostscript", "gobject-introspection", "gtk3", "pkg-config", "qhull", "tcl", "tk"]

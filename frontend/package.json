@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "playwright test --config playwright.config.ts",
+    "test:e2e:headed": "playwright test --config playwright.config.ts --headed"
   },
   "dependencies": {
     "@clerk/react": "^6.6.1",
@@ -23,7 +25,10 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@clerk/backend": "^3.4.7",
+    "@clerk/testing": "^2.0.27",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/vite": "^4.2.4",
     "@types/katex": "^0.16.8",
     "@types/node": "^24.12.2",

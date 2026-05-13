@@ -21,7 +21,7 @@
     "react-dom": "^19.2.5",
     "react-hook-form": "^7.75.0",
     "recharts": "^3.8.1",
-    "wouter": "catalog:",
+    "wouter": "^3.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

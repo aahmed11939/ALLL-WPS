@@ -110,11 +110,10 @@ if (process.env.NODE_ENV === "production") {
     logger.warn({ distPath }, "frontend/dist not found — React app will not be served");
   }
 } else {
-  // Development: proxy all remaining traffic to the Vite dev server on port 5173.
-  // This lets port 8080 (api-server) act as the single dev entry point,
-  // while the React HMR dev server continues to run on 5173 internally.
+  // Development: proxy all remaining traffic to the Vite dev server.
+  // The frontend artifact runs on port 20825 in development.
   const viteProxy = createProxyMiddleware({
-    target: "http://localhost:5173",
+    target: "http://localhost:20825",
     changeOrigin: true,
     ws: true,
     on: {

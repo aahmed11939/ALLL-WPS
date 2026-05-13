@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { requireAuth, clerkClient, getAuth } from "@clerk/express";
+import { clerkClient, getAuth } from "@clerk/express";
 import { eq, sql } from "drizzle-orm";
 import { db, users, whitelistEmails } from "@workspace/db";
 import { getUncachableStripeClient } from "./stripeClient";
@@ -160,7 +160,7 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Internal error";
 }
 
-router.get("/status", requireAuth(), async (req: Request, res: Response) => {
+router.get("/status", async (req: Request, res: Response) => {
   try {
     const { userId } = getAuth(req);
     if (!userId) {
@@ -199,7 +199,7 @@ router.get("/status", requireAuth(), async (req: Request, res: Response) => {
   }
 });
 
-router.post("/checkout", requireAuth(), async (req: Request, res: Response) => {
+router.post("/checkout", async (req: Request, res: Response) => {
   try {
     const { userId } = getAuth(req);
     if (!userId) {
@@ -256,7 +256,7 @@ router.post("/checkout", requireAuth(), async (req: Request, res: Response) => {
   }
 });
 
-router.post("/portal", requireAuth(), async (req: Request, res: Response) => {
+router.post("/portal", async (req: Request, res: Response) => {
   try {
     const { userId } = getAuth(req);
     if (!userId) {

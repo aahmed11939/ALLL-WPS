@@ -18,7 +18,7 @@ localPort = 20825
 run = "cd /home/runner/workspace/frontend && npm run dev"
 
 [services.production]
-build = ["bash", "-c", "cd /home/runner/workspace/frontend && npm run build"]
+build = ["bash", "-c", "cd /home/runner/workspace/frontend && npm install --legacy-peer-deps && npm run build"]
 publicDir = "frontend/dist"
 serve = "static"
 

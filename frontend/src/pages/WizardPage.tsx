@@ -337,7 +337,8 @@ export default function WizardPage({
         setCurrentSlug(row.slug);
       }
       setSaveStatus("saved");
-    } catch {
+    } catch (err) {
+      console.error("[Save] project save failed:", err);
       setSaveStatus("error");
     } finally {
       setSaving(false);

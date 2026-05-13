@@ -11,6 +11,12 @@ export default defineConfig({
     // in production builds that breaks Clerk UI styling
     tailwindcss({ optimize: false }),
   ],
+  resolve: {
+    dedupe: ["react", "react-dom", "react-is"],
+  },
+  optimizeDeps: {
+    include: ["recharts", "react-is"],
+  },
   server: {
     port,
     strictPort: true,

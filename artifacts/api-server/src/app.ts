@@ -74,34 +74,52 @@ app.use(
   })),
 );
 
-// Body parsers scoped ONLY to /api — must NOT run for proxy routes (/compute,
-// /surge, /export) because express consuming the stream prevents the proxy from
-// forwarding the body to the Python backend (Content-Length is set but bytes
-// never arrive → backend hangs for 30 s).
-app.use("/api", express.json({ limit: "10mb" }));
-app.use("/api", express.urlencoded({ extended: true, limit: "10mb" }));
+// Body parsers scoped ONLY to the routes actually handled by this Express server
+// (/api/billing, /api/admin). They MUST NOT run for Python-proxied routes
+// (/api/v1/*, /compute, /surge, /export) — consuming the stream there makes
+// forwarding impossible (Content-Length is set but bytes never arrive → Python
+// hangs for 30 s). /api/stripe/webhook already has its own raw-body handler above.
+app.use("/api/billing", express.json({ limit: "10mb" }));
+app.use("/api/billing", express.urlencoded({ extended: true, limit: "10mb" }));
+app.use("/api/admin", express.json({ limit: "10mb" }));
+app.use("/api/admin", express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Billing / Stripe / Clerk API routes (handled by this server)
 app.use("/api", router);
 
-if (process.env.NODE_ENV === "production") {
-  // Production: proxy Python engine routes to FastAPI (internal port 8000)
-  const fastApiProxy = createProxyMiddleware({
+// ---------------------------------------------------------------------------
+// Python FastAPI proxy factory
+//
+// When Express mounts middleware with app.use("/prefix", handler), it strips
+// the matched prefix from req.url before the handler sees it. For example,
+// app.use("/compute", proxy) receives req.url = "/pump-types" for a request
+// to /compute/pump-types, and the proxy would forward to http://…/pump-types
+// (404). pathRewrite restores the stripped prefix so Python sees the full path.
+// ---------------------------------------------------------------------------
+function makePythonProxy(strippedPrefix: string) {
+  return createProxyMiddleware({
     target: "http://localhost:8000",
     changeOrigin: true,
+    // Express strips strippedPrefix from req.url; prepend it back so that
+    // Python receives the original full path (e.g. /compute/pump-types).
+    pathRewrite: { "^/": `${strippedPrefix}/` },
     on: {
       error: (_err, _req, res) => {
         (res as Response).status(502).json({ error: "Backend unavailable" });
       },
     },
   });
+}
 
-  app.use("/compute", fastApiProxy);
-  app.use("/surge", fastApiProxy);
-  app.use("/export", fastApiProxy);
+if (process.env.NODE_ENV === "production") {
+  // Production: proxy Python engine routes to FastAPI (internal port 8000)
+  app.use("/compute", makePythonProxy("/compute"));
+  app.use("/surge", makePythonProxy("/surge"));
+  app.use("/export", makePythonProxy("/export"));
 
   // Remaining /api/* routes not matched by the billing router → FastAPI
-  app.use("/api", fastApiProxy);
+  // (Express strips /api, so /v1/calculate becomes /api/v1/calculate via rewrite)
+  app.use("/api", makePythonProxy("/api"));
 
   // Serve the built React SPA (must be last so all API routes take priority)
   const distPath = path.resolve(process.cwd(), "frontend/dist");
@@ -115,8 +133,24 @@ if (process.env.NODE_ENV === "production") {
     logger.warn({ distPath }, "frontend/dist not found — React app will not be served");
   }
 } else {
-  // Development: proxy all remaining traffic to the Vite dev server.
-  // The frontend artifact runs on port 20825 in development.
+  // Development: proxy Python engine routes directly to FastAPI BEFORE the Vite
+  // fallback. These must be registered here (not left to the Vite proxy chain)
+  // because without this the request body stream is already consumed by the time
+  // Vite tries to forward to Python.
+  //
+  // Body parsers above are scoped to /api/billing and /api/admin only, so the
+  // stream is still intact when these proxy handlers fire for /api/v1/* routes.
+  //
+  // pathRewrite restores the prefix that Express strips before each handler fires.
+  app.use("/compute", makePythonProxy("/compute"));
+  app.use("/surge", makePythonProxy("/surge"));
+  app.use("/export", makePythonProxy("/export"));
+
+  // Remaining /api/* routes (e.g. /api/v1/calculate) → Python FastAPI.
+  // Express strips /api from req.url, so rewrite restores: /v1/calculate → /api/v1/calculate.
+  app.use("/api", makePythonProxy("/api"));
+
+  // All other traffic → Vite dev server (port 20825)
   const viteProxy = createProxyMiddleware({
     target: "http://localhost:20825",
     changeOrigin: true,

@@ -33,7 +33,7 @@ interface StepDef {
   badge?: string;
 }
 
-const STEPS: StepDef[] = [
+const BASE_STEPS: StepDef[] = [
   { label: "Project Setup",              shortLabel: "Setup",      badge: "Meta"  },
   { label: "System Nodes",               shortLabel: "Nodes",      badge: "Elev"  },
   { label: "Suction Pipeline",           shortLabel: "Suction",    badge: "Pipe"  },
@@ -46,6 +46,10 @@ const STEPS: StepDef[] = [
   { label: "Engineering Checks",         shortLabel: "Checks",     badge: "✓ Eng" },
   { label: "Summary & Export",           shortLabel: "Export",     badge: "Report"},
 ];
+
+function buildSteps(includeSurge: boolean): StepDef[] {
+  return includeSurge ? BASE_STEPS : BASE_STEPS.filter((s) => s.badge !== "Surge");
+}
 
 // ---------------------------------------------------------------------------
 // Per-step validation
@@ -79,24 +83,29 @@ function validateStep(step: number, draft: ProjectDraft): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Step content
+// Step content — ordered to match BASE_STEPS, surge entry conditionally included
 // ---------------------------------------------------------------------------
 
-function StepContent({ index }: { index: number }) {
-  switch (index) {
-    case 0:  return <StepMeta />;
-    case 1:  return <StepNodes />;
-    case 2:  return <StepPipeline label="suction" />;
-    case 3:  return <StepWetWell />;
-    case 4:  return <StepPump />;
-    case 5:  return <StepPipeline label="discharge" />;
-    case 6:  return <StepHydraulics />;
-    case 7:  return <StepCurves />;
-    case 8:  return <StepWaterHammer />;
-    case 9:  return <StepChecks />;
-    case 10: return <StepExports />;
-    default: return null;
-  }
+const ALL_STEP_CONTENTS = [
+  <StepMeta />,
+  <StepNodes />,
+  <StepPipeline label="suction" />,
+  <StepWetWell />,
+  <StepPump />,
+  <StepPipeline label="discharge" />,
+  <StepHydraulics />,
+  <StepCurves />,
+  <StepWaterHammer />,   // index 8 — conditionally removed when !includeSurge
+  <StepChecks />,
+  <StepExports />,
+];
+const SURGE_STEP_INDEX = 8;
+
+function StepContent({ index, includeSurge }: { index: number; includeSurge: boolean }) {
+  const contents = includeSurge
+    ? ALL_STEP_CONTENTS
+    : ALL_STEP_CONTENTS.filter((_, i) => i !== SURGE_STEP_INDEX);
+  return contents[index] ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -215,6 +224,8 @@ export default function WizardPage({
   const ownerEmail = user?.primaryEmailAddress?.emailAddress ?? "";
   const { draft, dispatch, loadJSON } = useProject();
   const { setUnitSystem, setShowBoth } = useUnitSystem();
+
+  const STEPS = buildSteps(draft.includeSurge ?? true);
 
   const [currentStep, setCurrentStep] = useState(0);
   const [visitedSteps, setVisitedSteps] = useState<Set<number>>(new Set([0]));
@@ -672,7 +683,7 @@ export default function WizardPage({
           <div ref={contentRef} className="flex-1 overflow-y-auto px-6 py-6 pb-14">
             {STEPS.map((_, idx) => (
               <div key={`${idx}-${projectVersion}`} className={currentStep === idx ? "block" : "hidden"}>
-                <StepContent index={idx} />
+                <StepContent index={idx} includeSurge={draft.includeSurge ?? true} />
               </div>
             ))}
           </div>

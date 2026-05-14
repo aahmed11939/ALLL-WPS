@@ -156,6 +156,29 @@ export default function StepMeta() {
         </label>
       </div>
 
+      {/* Optional modules */}
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200 pb-2 mb-4">
+          Optional Modules
+        </p>
+        <label className="flex items-center gap-3 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={draft.includeSurge ?? true}
+            onChange={(e) =>
+              dispatch({ type: "SET_INCLUDE_SURGE", includeSurge: e.target.checked })
+            }
+            className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+          />
+          <div>
+            <span className="text-sm font-medium text-slate-700">Include Surge Analysis</span>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Adds the Water Hammer step (Joukowsky quick analysis + Method of Characteristics MOC solver)
+            </p>
+          </div>
+        </label>
+      </div>
+
       {/* Design flow */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200 pb-2 mb-4">

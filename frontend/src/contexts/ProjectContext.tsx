@@ -52,6 +52,7 @@ type Action =
   | { type: "SET_SUCTION_SURGE_CONFIG";     config: SuctionSurgeConfig | null }
   | { type: "SET_SUCTION_SURGE_RESULT";     result: SuctionTransientResult | null }
   | { type: "SET_WHATIF_RESULT";            result: WhatIfResponse | null }
+  | { type: "SET_INCLUDE_SURGE";            includeSurge: boolean }
   | { type: "LOAD";                         draft: ProjectDraft };
 
 function reducer(state: ProjectDraft, action: Action): ProjectDraft {
@@ -80,6 +81,7 @@ function reducer(state: ProjectDraft, action: Action): ProjectDraft {
     case "SET_SUCTION_SURGE_CONFIG":  return { ...state, suctionSurgeConfig: action.config };
     case "SET_SUCTION_SURGE_RESULT":  return { ...state, suctionSurgeResult: action.result };
     case "SET_WHATIF_RESULT":         return { ...state, whatIfResult: action.result };
+    case "SET_INCLUDE_SURGE":         return { ...state, includeSurge: action.includeSurge };
     case "LOAD":                      return { ...action.draft };
     default:                          return state;
   }
@@ -119,6 +121,7 @@ function parseDraft(raw: string): ProjectDraft {
     suctionSurgeResult:   parsed.suctionSurgeResult   ?? null,
     whatIfResult:         parsed.whatIfResult          ?? null,
     hydraulicsFieldErrors: parsed.hydraulicsFieldErrors ?? [],
+    includeSurge: parsed.includeSurge ?? true,
   };
 }
 

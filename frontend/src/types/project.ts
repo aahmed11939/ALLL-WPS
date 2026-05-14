@@ -265,6 +265,9 @@ export interface ProjectDraft {
   /** Structured field-level errors from the last failed /api/v1/calculate call.
    *  Stored in draft so StepPipeline and other steps can display them. */
   hydraulicsFieldErrors: Array<{ loc: string[]; msg: string; type: string }>;
+  /** Whether the Surge Analysis (Water Hammer) step is included in this project.
+   *  Defaults to true. When false the step is hidden from the wizard. */
+  includeSurge: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -364,4 +367,5 @@ export const DEFAULT_DRAFT: ProjectDraft = {
   suctionSurgeResult: null,
   whatIfResult: null,
   hydraulicsFieldErrors: [],
+  includeSurge: true,
 };

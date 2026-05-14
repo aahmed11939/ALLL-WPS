@@ -63,8 +63,6 @@ app.post(
 );
 
 app.use(cors({ credentials: true, origin: true }));
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Resolve publishable key from host for multi-domain support
 app.use(
@@ -75,6 +73,13 @@ app.use(
     ),
   })),
 );
+
+// Body parsers scoped ONLY to /api — must NOT run for proxy routes (/compute,
+// /surge, /export) because express consuming the stream prevents the proxy from
+// forwarding the body to the Python backend (Content-Length is set but bytes
+// never arrive → backend hangs for 30 s).
+app.use("/api", express.json({ limit: "10mb" }));
+app.use("/api", express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Billing / Stripe / Clerk API routes (handled by this server)
 app.use("/api", router);

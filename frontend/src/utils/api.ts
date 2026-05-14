@@ -3,6 +3,8 @@ import type { UnitSystem } from "./units";
 
 const BASE = "/api/v1";
 
+axios.defaults.timeout = 30_000;
+
 export interface CalculationRequest {
   Q_m3h: number;
   elev_us_m: number;
@@ -93,11 +95,12 @@ export async function calculate(
   return res.data;
 }
 
-export async function fetchPumpLibrary(): Promise<PumpRecord[]> {
-  const res = await axios.get<{ pumps: PumpRecord[]; count: number }>(
-    `${BASE}/pump-library`
-  );
-  return res.data.pumps;
+let _pumpLibraryCache: Promise<PumpRecord[]> | null = null;
+export function fetchPumpLibrary(): Promise<PumpRecord[]> {
+  return (_pumpLibraryCache ??= axios
+    .get<{ pumps: PumpRecord[]; count: number }>(`${BASE}/pump-library`)
+    .then((r) => r.data.pumps)
+    .catch((e) => { _pumpLibraryCache = null; throw e; }));
 }
 
 // ---------------------------------------------------------------------------
@@ -275,9 +278,12 @@ export interface PumpSelectionResponse {
   warnings: string[];
 }
 
-export async function fetchPumpTypes(): Promise<PumpTypesResponse> {
-  const res = await axios.get<PumpTypesResponse>("/compute/pump-types");
-  return res.data;
+let _pumpTypesCache: Promise<PumpTypesResponse> | null = null;
+export function fetchPumpTypes(): Promise<PumpTypesResponse> {
+  return (_pumpTypesCache ??= axios
+    .get<PumpTypesResponse>("/compute/pump-types")
+    .then((r) => r.data)
+    .catch((e) => { _pumpTypesCache = null; throw e; }));
 }
 
 export async function computePumpSelection(
@@ -404,9 +410,12 @@ export interface AccessoryLibraryResponse {
   categories: AccessoryCategoryGroup[];
 }
 
-export async function fetchAccessoriesLibrary(): Promise<AccessoryLibraryResponse> {
-  const res = await axios.get<AccessoryLibraryResponse>(`${BASE}/library/accessories`);
-  return res.data;
+let _accessoriesCache: Promise<AccessoryLibraryResponse> | null = null;
+export function fetchAccessoriesLibrary(): Promise<AccessoryLibraryResponse> {
+  return (_accessoriesCache ??= axios
+    .get<AccessoryLibraryResponse>(`${BASE}/library/accessories`)
+    .then((r) => r.data)
+    .catch((e) => { _accessoriesCache = null; throw e; }));
 }
 
 export async function fetchAccessoryById(id: string): Promise<AccessoryRecord> {

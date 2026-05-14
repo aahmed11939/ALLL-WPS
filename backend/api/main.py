@@ -311,6 +311,9 @@ def get_materials() -> MaterialOptionsResponse:
     )
 
 
+_pump_library_response_cache: PumpLibraryResponse | None = None
+
+
 @app.get(
     "/api/v1/pump-library",
     response_model=PumpLibraryResponse,
@@ -319,9 +322,12 @@ def get_materials() -> MaterialOptionsResponse:
 )
 def get_pump_library() -> PumpLibraryResponse:
     """Return the built-in illustrative pump library."""
-    raw = load_pump_library()
-    pumps = [PumpRecord(**p) for p in raw]
-    return PumpLibraryResponse(pumps=pumps, count=len(pumps))
+    global _pump_library_response_cache
+    if _pump_library_response_cache is None:
+        raw = load_pump_library()
+        pumps = [PumpRecord(**p) for p in raw]
+        _pump_library_response_cache = PumpLibraryResponse(pumps=pumps, count=len(pumps))
+    return _pump_library_response_cache
 
 
 @app.post(
@@ -863,6 +869,9 @@ def _build_pump_type_info(entry: dict) -> PumpTypeInfo:
     )
 
 
+_pump_types_response_cache: PumpTypesResponse | None = None
+
+
 @app.get(
     "/compute/pump-types",
     response_model=PumpTypesResponse,
@@ -877,9 +886,12 @@ def get_pump_types() -> PumpTypesResponse:
 
     Types are sorted by family then display name.
     """
-    entries = list_pump_types(sort_by_family=True)
-    pump_types = [_build_pump_type_info(e) for e in entries]
-    return PumpTypesResponse(pump_types=pump_types, count=len(pump_types))
+    global _pump_types_response_cache
+    if _pump_types_response_cache is None:
+        entries = list_pump_types(sort_by_family=True)
+        pump_types = [_build_pump_type_info(e) for e in entries]
+        _pump_types_response_cache = PumpTypesResponse(pump_types=pump_types, count=len(pump_types))
+    return _pump_types_response_cache
 
 
 # ---------------------------------------------------------------------------
@@ -1557,6 +1569,9 @@ async def import_pump_curve_csv(
 # ---------------------------------------------------------------------------
 
 
+_accessories_response_cache: AccessoryLibraryResponse | None = None
+
+
 @app.get(
     "/api/v1/library/accessories",
     response_model=AccessoryLibraryResponse,
@@ -1578,6 +1593,9 @@ def get_accessories_library() -> AccessoryLibraryResponse:
     The response includes both a flat ``accessories`` list (for backward compatibility)
     and a ``categories`` list with the same records grouped by category in canonical order.
     """
+    global _accessories_response_cache
+    if _accessories_response_cache is not None:
+        return _accessories_response_cache
     _CATEGORY_ORDER = [
         "check_valve",
         "isolation_valve",
@@ -1632,11 +1650,12 @@ def get_accessories_library() -> AccessoryLibraryResponse:
                 )
             )
 
-    return AccessoryLibraryResponse(
+    _accessories_response_cache = AccessoryLibraryResponse(
         accessories=records,
         count=len(records),
         categories=categories,
     )
+    return _accessories_response_cache
 
 
 @app.get(

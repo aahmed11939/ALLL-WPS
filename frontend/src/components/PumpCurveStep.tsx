@@ -15,6 +15,7 @@ import {
 } from "../utils/api";
 import { useUnitSystem } from "../contexts/UnitSystemContext";
 import TermTip from "./TermTip";
+import { FT_PER_M, M_PER_FT, GPM_PER_M3H, M3H_PER_GPM, KW_PER_HP } from "../utils/units";
 
 /** 1 kW = 1.34102 hp */
 const KW_TO_HP = 1.34102;
@@ -114,6 +115,8 @@ interface ChartConfig {
   showOpDiamond?: boolean;
   /** Pass true when unit system is US Customary so axis labels update */
   isUS?: boolean;
+  /** Unit suffix shown on Y-axis reference line labels (e.g. "ft", "m", "hp") */
+  yUnit?: string;
 }
 
 function PumpChart({ cfg }: { cfg: ChartConfig }) {
@@ -227,7 +230,7 @@ function PumpChart({ cfg }: { cfg: ChartConfig }) {
               stroke="#16a34a"
               strokeDasharray="6 3"
               strokeWidth={1.5}
-              label={{ value: `NPSHa=${cfg.npshaM.toFixed(1)}m`, position: "right", fontSize: 9, fill: "#16a34a", fontFamily: "monospace" }}
+              label={{ value: `NPSHa=${cfg.npshaM.toFixed(1)} ${cfg.yUnit ?? "m"}`, position: "right", fontSize: 9, fill: "#16a34a", fontFamily: "monospace" }}
             />
           )}
 
@@ -263,7 +266,7 @@ function PumpChart({ cfg }: { cfg: ChartConfig }) {
               stroke="#dc2626"
               strokeDasharray="5 3"
               strokeWidth={1.5}
-              label={{ value: `${cfg.opV.toFixed(1)}`, position: "right", fontSize: 9, fill: "#dc2626", fontFamily: "monospace" }}
+              label={{ value: `${cfg.opV.toFixed(1)}${cfg.yUnit ? ` ${cfg.yUnit}` : ""}`, position: "right", fontSize: 9, fill: "#dc2626", fontFamily: "monospace" }}
             />
           )}
           {/* Diamond marker at operating point (H-Q chart only) */}
@@ -317,9 +320,10 @@ interface ManualCurveEditorProps {
   label: string;
   unit: string;
   onChange: (rows: ManualPoint[]) => void;
+  isUS?: boolean;
 }
 
-function ManualCurveEditor({ rows, label, unit, onChange }: ManualCurveEditorProps) {
+function ManualCurveEditor({ rows, label, unit, onChange, isUS = false }: ManualCurveEditorProps) {
   const add = () => {
     if (rows.length >= MAX_MANUAL_ROWS) return;
     onChange([...rows, { Q: "", value: "" }]);
@@ -345,7 +349,7 @@ function ManualCurveEditor({ rows, label, unit, onChange }: ManualCurveEditorPro
       </div>
       <div className="space-y-1">
         <div className="grid grid-cols-2 gap-1 mb-0.5">
-          <span className="text-[10px] text-slate-400 font-mono px-1">Q (m³/h)</span>
+          <span className="text-[10px] text-slate-400 font-mono px-1">{isUS ? "Q (gpm)" : "Q (m³/h)"}</span>
           <span className="text-[10px] text-slate-400 font-mono px-1">{unit}</span>
         </div>
         {rows.map((row, i) => (
@@ -532,13 +536,21 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
       const etaPts  = etaRows.length  >= 2 ? parseManualPoints(etaRows)   : undefined;
       const pPts    = pRows.length    >= 2 ? parseManualPoints(pRows)     : undefined;
       const npshPts = npshRows.length >= 2 ? parseManualPoints(npshRows)  : undefined;
+      // Convert from display units to SI for backend
+      const scaleQ = isUS ? M3H_PER_GPM : 1;
+      const scaleH = isUS ? M_PER_FT : 1;
+      const scaleP = isUS ? KW_PER_HP : 1;
+      const toSI = (pts: CurvePoint[], qS: number, vS: number) =>
+        pts.map((p) => ({ Q_m3h: p.Q_m3h * qS, value: p.value * vS }));
+      const toSIopt = (pts: CurvePoint[] | null | undefined, qS: number, vS: number) =>
+        pts ? toSI(pts, qS, vS) : undefined;
       return {
         ...common,
         curve_data: {
-          hq: hqPts,
-          eta_q: etaPts ?? undefined,
-          p_q: pPts ?? undefined,
-          npshr_q: npshPts ?? undefined,
+          hq: toSI(hqPts, scaleQ, scaleH),
+          eta_q: toSIopt(etaPts, scaleQ, 1),
+          p_q: toSIopt(pPts, scaleQ, scaleP),
+          npshr_q: toSIopt(npshPts, scaleQ, scaleH),
           interp_method: "linear",
           poly_degree: 2,
         },
@@ -561,7 +573,7 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
   }, [
     sourceTab, selectedPumpId, hqRows, etaRows, pRows, npshRows, csvParsed,
     arrangement, nPumps, staging, vfd, speedPct, speedMin, speedMax,
-    npsha, systemCurve, staticHeadM, staticHeadOverride,
+    npsha, systemCurve, staticHeadM, staticHeadOverride, isUS,
   ]);
 
   const handleCompute = useCallback(async () => {
@@ -642,7 +654,7 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
         {/* System curve link status */}
         {hasIncomingSystemCurve && (
           <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-2 text-xs text-emerald-700 font-mono">
-            ✓ System curve linked from hydraulic calculation ({systemCurve!.length} pts · static head {resolvedStaticHead.toFixed(1)} m)
+            ✓ System curve linked from hydraulic calculation ({systemCurve!.length} pts · static head {isUS ? (resolvedStaticHead * FT_PER_M).toFixed(1) : resolvedStaticHead.toFixed(1)} {isUS ? "ft" : "m"})
           </div>
         )}
         {!hasIncomingSystemCurve && (
@@ -713,7 +725,7 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
                   >
                     {filteredPumps.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.name} — {p.manufacturer} · {p.rated_flow_m3h} m³/h @ {p.rated_head_m} m
+                        {p.name} — {p.manufacturer} · {isUS ? (p.rated_flow_m3h * GPM_PER_M3H).toFixed(0) : p.rated_flow_m3h} {isUS ? "gpm" : "m³/h"} @ {isUS ? (p.rated_head_m * FT_PER_M).toFixed(0) : p.rated_head_m} {isUS ? "ft" : "m"}
                       </option>
                     ))}
                   </select>
@@ -725,7 +737,7 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
                   {(() => {
                     const p = libraryPumps.find((x) => x.id === selectedPumpId);
                     return p
-                      ? `${p.type} · η=${p.rated_efficiency_pct}% · ${p.rated_power_kW} kW · ${p.rated_speed_rpm} rpm`
+                      ? `${p.type} · η=${p.rated_efficiency_pct}% · ${isUS ? (p.rated_power_kW * KW_TO_HP).toFixed(1) : p.rated_power_kW} ${isUS ? "hp" : "kW"} · ${p.rated_speed_rpm} rpm`
                       : "";
                   })()}
                 </div>
@@ -736,10 +748,10 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
           {/* Manual tab */}
           {sourceTab === "manual" && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <ManualCurveEditor rows={hqRows} label="H-Q (required)" unit="H (m)" onChange={setHqRows} />
-              <ManualCurveEditor rows={etaRows} label="η-Q (optional)" unit="η (%)" onChange={setEtaRows} />
-              <ManualCurveEditor rows={pRows} label="P-Q (optional)" unit="P (kW)" onChange={setPRows} />
-              <ManualCurveEditor rows={npshRows} label="NPSHr-Q (optional)" unit="NPSHr (m)" onChange={setNpshRows} />
+              <ManualCurveEditor rows={hqRows} label="H-Q (required)" unit={isUS ? "H (ft)" : "H (m)"} onChange={setHqRows} isUS={isUS} />
+              <ManualCurveEditor rows={etaRows} label="η-Q (optional)" unit="η (%)" onChange={setEtaRows} isUS={isUS} />
+              <ManualCurveEditor rows={pRows} label="P-Q (optional)" unit={isUS ? "P (hp)" : "P (kW)"} onChange={setPRows} isUS={isUS} />
+              <ManualCurveEditor rows={npshRows} label="NPSHr-Q (optional)" unit={isUS ? "NPSHr (ft)" : "NPSHr (m)"} onChange={setNpshRows} isUS={isUS} />
             </div>
           )}
 
@@ -826,27 +838,35 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
             {/* Static head override (only shown when no system curve from parent) */}
             {!hasIncomingSystemCurve && (
               <div>
-                <label className={labelCls}>Static head (m)</label>
+                <label className={labelCls}>Static head ({isUS ? "ft" : "m"})</label>
                 <input
                   type="number"
-                  min={0} step={0.5}
-                  value={staticHeadOverride}
-                  onChange={(e) => setStaticHeadOverride(parseFloat(e.target.value) || 0)}
+                  min={0} step={isUS ? 1 : 0.5}
+                  value={isUS ? (staticHeadOverride * FT_PER_M).toFixed(2) : staticHeadOverride}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value) || 0;
+                    setStaticHeadOverride(isUS ? v * M_PER_FT : v);
+                  }}
                   className={inputCls}
                 />
               </div>
             )}
             <div>
               <label className={labelCls}>
-                <TermTip term="NPSHa">NPSHa</TermTip> (m)
+                <TermTip term="NPSHa">NPSHa</TermTip> ({isUS ? "ft" : "m"})
                 <span className="text-slate-400 normal-case font-normal ml-1">optional</span>
               </label>
               <input
                 type="number"
                 min={0} step={0.1}
-                value={npsha}
-                onChange={(e) => setNpsha(e.target.value)}
-                placeholder="e.g. 6.5"
+                value={npsha !== "" && isUS ? (parseFloat(npsha) * FT_PER_M).toFixed(2) : npsha}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === "") { setNpsha(""); return; }
+                  const v = parseFloat(raw);
+                  setNpsha(isNaN(v) ? "" : isUS ? String(v * M_PER_FT) : raw);
+                }}
+                placeholder={isUS ? "e.g. 21.3" : "e.g. 6.5"}
                 className={inputCls}
               />
             </div>
@@ -956,13 +976,13 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
                           </span>
                           {op.npsh_margin_m !== null && op.npsh_margin_m !== undefined && (
                             <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${op.warnings.length > 0 ? "bg-amber-200 text-amber-800" : "bg-teal-200 text-teal-800"}`}>
-                              NPSH Margin: {op.npsh_margin_m.toFixed(2)} m
+                              NPSH Margin: {isUS ? (op.npsh_margin_m * FT_PER_M).toFixed(2) : op.npsh_margin_m.toFixed(2)} {isUS ? "ft" : "m"}
                             </span>
                           )}
                         </div>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs font-mono text-slate-700">
                           <span>
-                            Q* = <strong>{op.Q_m3h.toFixed(1)} m³/h</strong>
+                            Q* = <strong>{isUS ? (op.Q_m3h * GPM_PER_M3H).toFixed(1) : op.Q_m3h.toFixed(1)} {isUS ? "gpm" : "m³/h"}</strong>
                             {qDevPct !== null && (
                               <span className={`ml-1 text-[10px] font-semibold ${Math.abs(qDevPct) > 10 ? "text-amber-600" : "text-slate-400"}`}>
                                 ({qDevPct >= 0 ? "+" : ""}{qDevPct.toFixed(1)}% vs Q_d)
@@ -970,7 +990,7 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
                             )}
                           </span>
                           <span>
-                            H* = <strong>{op.H_m.toFixed(1)} m</strong>
+                            H* = <strong>{isUS ? (op.H_m * FT_PER_M).toFixed(1) : op.H_m.toFixed(1)} {isUS ? "ft" : "m"}</strong>
                             {hDevPct !== null && (
                               <span className={`ml-1 text-[10px] font-semibold ${Math.abs(hDevPct) > 10 ? "text-amber-600" : "text-slate-400"}`}>
                                 ({hDevPct >= 0 ? "+" : ""}{hDevPct.toFixed(1)}% vs TDH)
@@ -985,13 +1005,13 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
                                 : `${op.power_kW?.toFixed(1)} kW`}
                             </strong></span>
                           )}
-                          {op.npshr_m !== null && <span>NPSHr* = <strong>{op.npshr_m?.toFixed(2)} m</strong></span>}
-                          {op.npsha_m !== null && <span>NPSHa = <strong>{op.npsha_m?.toFixed(2)} m</strong></span>}
+                          {op.npshr_m !== null && <span>NPSHr* = <strong>{isUS ? (op.npshr_m! * FT_PER_M).toFixed(2) : op.npshr_m?.toFixed(2)} {isUS ? "ft" : "m"}</strong></span>}
+                          {op.npsha_m !== null && <span>NPSHa = <strong>{isUS ? (op.npsha_m! * FT_PER_M).toFixed(2) : op.npsha_m?.toFixed(2)} {isUS ? "ft" : "m"}</strong></span>}
                         </div>
                         {(designFlowM3h || designTdhM) && (
                           <div className="mt-2 pt-2 border-t border-teal-200 grid grid-cols-2 gap-x-4 text-[10px] font-mono text-slate-500">
-                            {designFlowM3h && <span>Q_design = {designFlowM3h.toFixed(1)} m³/h</span>}
-                            {designTdhM && <span>TDH_design = {designTdhM.toFixed(2)} m</span>}
+                            {designFlowM3h && <span>Q_design = {isUS ? (designFlowM3h * GPM_PER_M3H).toFixed(1) : designFlowM3h.toFixed(1)} {isUS ? "gpm" : "m³/h"}</span>}
+                            {designTdhM && <span>TDH_design = {isUS ? (designTdhM * FT_PER_M).toFixed(2) : designTdhM.toFixed(2)} {isUS ? "ft" : "m"}</span>}
                           </div>
                         )}
                         {op.warnings.map((w, wi) => (
@@ -1013,13 +1033,29 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
                 <PumpChart
                   cfg={{
                     title: "H-Q Curve" + (hasIncomingSystemCurve ? " (with system curve)" : ""),
-                    yLabel: "H (m)",
+                    yLabel: isUS ? "H (ft)" : "H (m)",
+                    yUnit: isUS ? "ft" : "m",
                     color: "#0f766e",
-                    data: result.hq_curve,
+                    data: isUS
+                      ? result.hq_curve.map((pt) => ({ ...pt, value: pt.value * FT_PER_M }))
+                      : result.hq_curve,
                     opQ: primaryOp?.Q_m3h,
-                    opV: primaryOp?.H_m,
-                    speedCurves: vfd ? result.speed_curves : undefined,
-                    systemPts: systemCurve,
+                    opV: primaryOp?.H_m != null
+                      ? (isUS ? primaryOp.H_m * FT_PER_M : primaryOp.H_m)
+                      : undefined,
+                    speedCurves: vfd
+                      ? (isUS
+                          ? result.speed_curves?.map((sc) => ({
+                              ...sc,
+                              hq_pts: sc.hq_pts.map((p) => ({ ...p, value: p.value * FT_PER_M })),
+                            }))
+                          : result.speed_curves)
+                      : undefined,
+                    systemPts: systemCurve
+                      ? (isUS
+                          ? systemCurve.map((pt) => ({ ...pt, value: pt.value * FT_PER_M }))
+                          : systemCurve)
+                      : undefined,
                     showOpDiamond: true,
                     isUS,
                   }}
@@ -1054,12 +1090,19 @@ export default function PumpCurveStep({ systemCurve, staticHeadM, designFlowM3h,
                 <PumpChart
                   cfg={{
                     title: "NPSHr-Q" + (npsha !== "" ? " (vs NPSHa)" : ""),
-                    yLabel: "NPSHr (m)",
+                    yLabel: isUS ? "NPSHr (ft)" : "NPSHr (m)",
+                    yUnit: isUS ? "ft" : "m",
                     color: "#b45309",
-                    data: result.npshr_curve,
+                    data: isUS
+                      ? result.npshr_curve.map((pt) => ({ ...pt, value: pt.value * FT_PER_M }))
+                      : result.npshr_curve,
                     opQ: primaryOp?.Q_m3h,
-                    opV: primaryOp?.npshr_m ?? undefined,
-                    npshaM: npsha !== "" ? parseFloat(npsha) : undefined,
+                    opV: primaryOp?.npshr_m != null
+                      ? (isUS ? primaryOp.npshr_m * FT_PER_M : primaryOp.npshr_m)
+                      : undefined,
+                    npshaM: npsha !== ""
+                      ? (isUS ? parseFloat(npsha) * FT_PER_M : parseFloat(npsha))
+                      : undefined,
                     isUS,
                   }}
                 />

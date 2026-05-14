@@ -7,6 +7,8 @@ import {
   type PumpSelectionRequest,
   type PumpSelectionResponse,
 } from "../utils/api";
+import { useUnitSystem } from "../contexts/UnitSystemContext";
+import { GPM_PER_M3H, FT_PER_M, M_PER_FT, PSI_PER_KPA, KPA_PER_PSI } from "../utils/units";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -73,10 +75,12 @@ function TypeCard({
   pt,
   selected,
   onSelect,
+  isUS = false,
 }: {
   pt: PumpTypeInfo;
   selected: boolean;
   onSelect: () => void;
+  isUS?: boolean;
 }) {
   return (
     <button
@@ -105,10 +109,10 @@ function TypeCard({
       </p>
       <div className="mt-2 flex gap-3 text-[10px] font-mono text-slate-400">
         <span>
-          H: {pt.typical_head_range_m.min}–{pt.typical_head_range_m.max} m
+          H: {isUS ? (pt.typical_head_range_m.min * FT_PER_M).toFixed(0) : pt.typical_head_range_m.min}–{isUS ? (pt.typical_head_range_m.max * FT_PER_M).toFixed(0) : pt.typical_head_range_m.max} {isUS ? "ft" : "m"}
         </span>
         <span>
-          Q: {pt.typical_flow_range_m3h.min}–{pt.typical_flow_range_m3h.max} m³/h
+          Q: {isUS ? (pt.typical_flow_range_m3h.min * GPM_PER_M3H).toFixed(0) : pt.typical_flow_range_m3h.min}–{isUS ? (pt.typical_flow_range_m3h.max * GPM_PER_M3H).toFixed(0) : pt.typical_flow_range_m3h.max} {isUS ? "gpm" : "m³/h"}
         </span>
       </div>
     </button>
@@ -125,12 +129,37 @@ function DynamicExtrasForm({
   fields,
   values,
   onChange,
+  isUS = false,
 }: {
   fields: TypeSpecificField[];
   values: ExtrasValues;
   onChange: (key: string, value: string | number | boolean) => void;
+  isUS?: boolean;
 }) {
   if (fields.length === 0) return null;
+
+  const toDisplayUnit = (unit: string | undefined): string | undefined => {
+    if (!isUS || !unit) return unit;
+    if (unit === "m") return "ft";
+    if (unit === "kPa") return "psi";
+    return unit;
+  };
+
+  const toDisplayValue = (val: string | number | boolean, unit: string | undefined): string => {
+    if (typeof val === "boolean" || val === "") return String(val);
+    const n = Number(val);
+    if (isNaN(n) || !isUS) return String(val);
+    if (unit === "m") return (n * FT_PER_M).toFixed(2);
+    if (unit === "kPa") return (n * PSI_PER_KPA).toFixed(2);
+    return String(val);
+  };
+
+  const fromDisplayValue = (raw: number, unit: string | undefined): number => {
+    if (!isUS) return raw;
+    if (unit === "m") return raw * M_PER_FT;
+    if (unit === "kPa") return raw * KPA_PER_PSI;
+    return raw;
+  };
 
   return (
     <div className="grid grid-cols-2 gap-3">
@@ -206,7 +235,7 @@ function DynamicExtrasForm({
             <label className={labelCls}>
               {f.label}
               {f.unit && (
-                <span className="ml-1 text-slate-400 normal-case">({f.unit})</span>
+                <span className="ml-1 text-slate-400 normal-case">({toDisplayUnit(f.unit)})</span>
               )}
               {f.required && <span className="ml-1 text-red-500">*</span>}
               {!f.required && (
@@ -220,15 +249,15 @@ function DynamicExtrasForm({
                 min={f.min_value ?? undefined}
                 max={f.max_value ?? undefined}
                 placeholder={f.placeholder ?? ""}
-                value={String(currentValue)}
+                value={toDisplayValue(currentValue, f.unit)}
                 onChange={(e) => {
                   const raw = e.target.value;
                   if (f.field_type === "integer") {
                     const n = parseInt(raw, 10);
-                    onChange(f.key, isNaN(n) ? "" : n);
+                    onChange(f.key, isNaN(n) ? "" : fromDisplayValue(n, f.unit));
                   } else if (f.field_type === "float") {
                     const n = parseFloat(raw);
-                    onChange(f.key, isNaN(n) ? "" : n);
+                    onChange(f.key, isNaN(n) ? "" : fromDisplayValue(n, f.unit));
                   } else {
                     onChange(f.key, raw);
                   }
@@ -237,7 +266,7 @@ function DynamicExtrasForm({
               />
               {f.unit && (
                 <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">
-                  {f.unit}
+                  {toDisplayUnit(f.unit)}
                 </span>
               )}
             </div>
@@ -256,10 +285,12 @@ function GroupedTypePicker({
   pumpTypes,
   selectedKey,
   onSelect,
+  isUS = false,
 }: {
   pumpTypes: PumpTypeInfo[];
   selectedKey: string | null;
   onSelect: (pt: PumpTypeInfo) => void;
+  isUS?: boolean;
 }) {
   // Build family → types map in the preferred order
   const grouped: { family: string; types: PumpTypeInfo[] }[] = [];
@@ -300,6 +331,7 @@ function GroupedTypePicker({
                 pt={pt}
                 selected={selectedKey === pt.key}
                 onSelect={() => onSelect(pt)}
+                isUS={isUS}
               />
             ))}
           </div>
@@ -372,6 +404,8 @@ export interface PumpSelectionStepProps {
 }
 
 export default function PumpSelectionStep({ initialConfig, onConfigChange }: PumpSelectionStepProps = {}) {
+  const { unitSystem } = useUnitSystem();
+  const isUS = unitSystem === "US";
   const [stepState, setStepState] = useState<StepState>("active");
   const [pumpTypes, setPumpTypes] = useState<PumpTypeInfo[]>([]);
   const [loadingTypes, setLoadingTypes] = useState(true);
@@ -578,6 +612,7 @@ export default function PumpSelectionStep({ initialConfig, onConfigChange }: Pum
                   pumpTypes={pumpTypes}
                   selectedKey={selectedType?.key ?? null}
                   onSelect={handleSelectType}
+                  isUS={isUS}
                 />
               )}
               {formError && !selectedType && (
@@ -648,6 +683,7 @@ export default function PumpSelectionStep({ initialConfig, onConfigChange }: Pum
                   fields={selectedType.type_specific_inputs}
                   values={extrasValues}
                   onChange={handleExtrasChange}
+                  isUS={isUS}
                 />
               </div>
             )}

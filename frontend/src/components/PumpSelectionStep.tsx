@@ -138,14 +138,14 @@ function DynamicExtrasForm({
 }) {
   if (fields.length === 0) return null;
 
-  const toDisplayUnit = (unit: string | undefined): string | undefined => {
-    if (!isUS || !unit) return unit;
+  const toDisplayUnit = (unit: string | null | undefined): string | undefined => {
+    if (!isUS || !unit) return unit ?? undefined;
     if (unit === "m") return "ft";
     if (unit === "kPa") return "psi";
     return unit;
   };
 
-  const toDisplayValue = (val: string | number | boolean, unit: string | undefined): string => {
+  const toDisplayValue = (val: string | number | boolean, unit: string | null | undefined): string => {
     if (typeof val === "boolean" || val === "") return String(val);
     const n = Number(val);
     if (isNaN(n) || !isUS) return String(val);
@@ -154,7 +154,7 @@ function DynamicExtrasForm({
     return String(val);
   };
 
-  const fromDisplayValue = (raw: number, unit: string | undefined): number => {
+  const fromDisplayValue = (raw: number, unit: string | null | undefined): number => {
     if (!isUS) return raw;
     if (unit === "m") return raw * M_PER_FT;
     if (unit === "kPa") return raw * KPA_PER_PSI;

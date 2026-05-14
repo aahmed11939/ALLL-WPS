@@ -12,6 +12,7 @@ export const SAMPLE_PROJECT_BOOSTER: ProjectDraft = {
   },
   unitSystem: "SI",
   showBoth: false,
+  includeSurge: true,
   designFlow_m3h: 25,
   upstreamNode: { elevation_m: 0.0, pressure_kPa: 280 },
   downstreamNode: { elevation_m: 2.0, pressure_kPa: 550 },

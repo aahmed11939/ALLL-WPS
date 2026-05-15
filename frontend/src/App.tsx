@@ -10,6 +10,7 @@ import AdminPage from "./pages/AdminPage";
 import CheckoutSuccess from "./components/CheckoutSuccess";
 import SubscriptionGate from "./components/SubscriptionGate";
 import { invalidateBillingCache } from "./hooks/useBillingStatus";
+import wpsLogo from "./assets/WPS_Logo_1778184724504.png";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -75,28 +76,67 @@ function stripBase(path: string): string {
     : path;
 }
 
+function BrandPanel() {
+  return (
+    <div className="hidden lg:flex lg:w-1/2 flex-col justify-center items-start bg-teal-700 px-12 py-16 text-white">
+      <div className="flex items-center gap-3 mb-8">
+        <img src={wpsLogo} alt="ALLL WPS Designer logo" className="h-12 w-auto" />
+        <span className="text-2xl font-bold tracking-tight">ALLL WPS Designer</span>
+      </div>
+      <h2 className="text-3xl font-bold mb-4 leading-snug">
+        Precision water pumping<br />station design
+      </h2>
+      <p className="text-teal-100 mb-8 text-base leading-relaxed">
+        A professional engineering tool built for hydraulic consultants and designers.
+      </p>
+      <ul className="space-y-4">
+        {[
+          "Hydraulic surge analysis",
+          "Pump selection & system curves",
+          "Professional PDF/Excel reports",
+        ].map((feature) => (
+          <li key={feature} className="flex items-center gap-3 text-base">
+            <span className="flex-shrink-0 h-6 w-6 rounded-full bg-teal-500 flex items-center justify-center">
+              <svg className="h-3.5 w-3.5 text-white" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            </span>
+            <span className="text-teal-50">{feature}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function SignInPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-12">
-      <SignIn
-        routing="path"
-        path={`${basePath}/sign-in`}
-        signUpUrl={`${basePath}/sign-up`}
-        fallbackRedirectUrl={`${basePath}/app`}
-      />
+    <div className="flex min-h-screen">
+      <BrandPanel />
+      <div className="flex flex-1 items-center justify-center bg-slate-50 px-4 py-12">
+        <SignIn
+          routing="path"
+          path={`${basePath}/sign-in`}
+          signUpUrl={`${basePath}/sign-up`}
+          fallbackRedirectUrl={`${basePath}/app`}
+        />
+      </div>
     </div>
   );
 }
 
 function SignUpPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-12">
-      <SignUp
-        routing="path"
-        path={`${basePath}/sign-up`}
-        signInUrl={`${basePath}/sign-in`}
-        fallbackRedirectUrl={`${basePath}/app`}
-      />
+    <div className="flex min-h-screen">
+      <BrandPanel />
+      <div className="flex flex-1 items-center justify-center bg-slate-50 px-4 py-12">
+        <SignUp
+          routing="path"
+          path={`${basePath}/sign-up`}
+          signInUrl={`${basePath}/sign-in`}
+          fallbackRedirectUrl={`${basePath}/app`}
+        />
+      </div>
     </div>
   );
 }

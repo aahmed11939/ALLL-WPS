@@ -76,6 +76,15 @@ function stripBase(path: string): string {
     : path;
 }
 
+function MobileBrandHeader() {
+  return (
+    <div className="flex lg:hidden items-center gap-3 bg-teal-700 px-6 py-4 text-white">
+      <img src={wpsLogo} alt="ALLL WPS Designer logo" className="h-8 w-auto" />
+      <span className="text-lg font-bold tracking-tight">ALLL WPS Designer</span>
+    </div>
+  );
+}
+
 function BrandPanel() {
   return (
     <div className="hidden lg:flex lg:w-1/2 flex-col justify-center items-start bg-teal-700 px-12 py-16 text-white">
@@ -111,7 +120,8 @@ function BrandPanel() {
 
 function SignInPage() {
   return (
-    <div className="flex min-h-screen">
+    <div className="flex flex-col lg:flex-row min-h-screen">
+      <MobileBrandHeader />
       <BrandPanel />
       <div className="flex flex-1 items-center justify-center bg-slate-50 px-4 py-12">
         <SignIn
@@ -127,7 +137,8 @@ function SignInPage() {
 
 function SignUpPage() {
   return (
-    <div className="flex min-h-screen">
+    <div className="flex flex-col lg:flex-row min-h-screen">
+      <MobileBrandHeader />
       <BrandPanel />
       <div className="flex flex-1 items-center justify-center bg-slate-50 px-4 py-12">
         <SignUp

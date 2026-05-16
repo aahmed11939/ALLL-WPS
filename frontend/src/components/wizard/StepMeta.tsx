@@ -2,6 +2,7 @@ import { useProject } from "../../contexts/ProjectContext";
 import { useUnitSystem } from "../../contexts/UnitSystemContext";
 import type { UnitSystem } from "../../utils/units";
 import { GPM_PER_M3H, M3H_PER_GPM } from "../../utils/units";
+import FieldTip from "../FieldTip";
 
 const inputCls =
   "w-full rounded border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600";
@@ -122,7 +123,7 @@ export default function StepMeta() {
       {/* Unit system */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200 pb-2 mb-4">
-          Unit System
+          Unit System <FieldTip fieldKey="unit_system" />
         </p>
         <div className="flex gap-3 mb-4">
           {(["SI", "US"] as UnitSystem[]).map((us) => (
@@ -171,7 +172,7 @@ export default function StepMeta() {
             className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
           />
           <div>
-            <span className="text-sm font-medium text-slate-700">Include Surge Analysis</span>
+            <span className="text-sm font-medium text-slate-700">Include Surge Analysis <FieldTip fieldKey="include_surge" /></span>
             <p className="text-xs text-slate-400 mt-0.5">
               Adds the Water Hammer step (Joukowsky quick analysis + Method of Characteristics MOC solver)
             </p>
@@ -187,7 +188,7 @@ export default function StepMeta() {
         <div className="flex items-end gap-3 max-w-xs">
           <div className="flex-1">
             <label className={labelCls}>
-              Q design ({flowUnit})
+              Q design ({flowUnit}) <FieldTip fieldKey="design_flow" />
             </label>
             <input
               type="number"

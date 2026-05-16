@@ -7,6 +7,7 @@ import {
   type PumpSelectionRequest,
   type PumpSelectionResponse,
 } from "../utils/api";
+import FieldTip from "./FieldTip";
 import { useUnitSystem } from "../contexts/UnitSystemContext";
 import { GPM_PER_M3H, FT_PER_M, M_PER_FT, PSI_PER_KPA, KPA_PER_PSI } from "../utils/units";
 
@@ -625,7 +626,7 @@ export default function PumpSelectionStep({ initialConfig, onConfigChange }: Pum
               <SectionHeader>Configuration</SectionHeader>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className={labelCls}>Duty Pumps (1–4)</label>
+                  <label className={labelCls}>Duty Pumps (1–4) <FieldTip fieldKey="duty_pumps" /></label>
                   <input
                     type="number"
                     step="1"
@@ -637,7 +638,7 @@ export default function PumpSelectionStep({ initialConfig, onConfigChange }: Pum
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Standby Pumps (0–4)</label>
+                  <label className={labelCls}>Standby Pumps (0–4) <FieldTip fieldKey="standby_pumps" /></label>
                   <input
                     type="number"
                     step="1"
@@ -649,7 +650,7 @@ export default function PumpSelectionStep({ initialConfig, onConfigChange }: Pum
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Speed Control</label>
+                  <label className={labelCls}>Speed Control <FieldTip fieldKey="control_mode" /></label>
                   <select
                     value={controlMode}
                     onChange={(e) => setControlMode(e.target.value as ControlMode)}

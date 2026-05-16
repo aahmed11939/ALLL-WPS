@@ -1,6 +1,7 @@
 import { useProject } from "../../contexts/ProjectContext";
 import { useUnitSystem } from "../../contexts/UnitSystemContext";
 import TermTip from "../TermTip";
+import FieldTip from "../FieldTip";
 import AccessoriesPicker from "../AccessoriesPicker";
 import FieldErrorHint from "../FieldErrorHint";
 import type { PipelineDraft, PipelineSegment } from "../../types/project";
@@ -131,13 +132,13 @@ export default function StepPipeline({ label }: Props) {
                 #
               </th>
               <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                Material <TermTip term="roughness" /> <TermTip term="Hazen-C" />
+                Material <TermTip term="roughness" /> <TermTip term="Hazen-C" /> <FieldTip fieldKey="pipe_material" />
               </th>
               <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                Dia ({diamUnit})
+                Dia ({diamUnit}) <FieldTip fieldKey="pipe_diameter" />
               </th>
               <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                Length ({lengthUnit})
+                Length ({lengthUnit}) <FieldTip fieldKey="pipe_length" />
               </th>
               <th className="px-2 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400 w-20">
                 Order
@@ -245,8 +246,8 @@ export default function StepPipeline({ label }: Props) {
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
             Fittings &amp; Accessories
           </p>
-          <span className="text-xs font-mono text-slate-400">
-            ΣK = {pipeline.accessories_K_sum.toFixed(3)}
+          <span className="text-xs font-mono text-slate-400 flex items-center gap-1">
+            ΣK = {pipeline.accessories_K_sum.toFixed(3)} <FieldTip fieldKey="accessories_K" />
           </span>
         </div>
         <div className="p-4">

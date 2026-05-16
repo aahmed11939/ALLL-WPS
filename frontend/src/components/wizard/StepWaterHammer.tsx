@@ -4,6 +4,7 @@ import {
   ReferenceLine, ResponsiveContainer, Cell,
 } from "recharts";
 import TermTip from "../TermTip";
+import FieldTip from "../FieldTip";
 import { useProject } from "../../contexts/ProjectContext";
 import { computeSurgeQuick, computeWaveSpeed } from "../../utils/api";
 import type {
@@ -537,7 +538,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
                 </select>
               </div>
               <div>
-                <Label>Outer diameter D<sub>o</sub> [mm]</Label>
+                <Label>Outer diameter D<sub>o</sub> [mm] <FieldTip fieldKey="pipe_outer_diameter" /></Label>
                 <input
                   type="number" min={10} step={1}
                   value={waveDoMm}
@@ -550,7 +551,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
 
             <div>
               <div className="flex items-center gap-4 mb-2">
-                <Label>Wall thickness</Label>
+                <Label>Wall thickness <FieldTip fieldKey="pipe_wall_thickness" /></Label>
                 <div className="flex gap-1 ml-auto">
                   {[{ id: false, l: "e [mm]" }, { id: true, l: "SDR" }].map(opt => (
                     <button
@@ -595,7 +596,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
             </div>
 
             <div>
-              <Label>Pipe restraint condition</Label>
+              <Label>Pipe restraint condition <FieldTip fieldKey="pipe_restraint" /></Label>
               <div className="space-y-1.5">
                 {RESTRAINT_OPTIONS.map(r => (
                   <label key={r.value} className="flex items-start gap-2 cursor-pointer">
@@ -616,7 +617,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <Label>Water temperature [°C]</Label>
+                <Label>Water temperature [°C] <FieldTip fieldKey="water_temperature" /></Label>
                 <span className="text-xs font-mono font-semibold text-blue-700">{temperatureC} °C</span>
               </div>
               <input
@@ -714,7 +715,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
 
           {needsClosure && (
             <div>
-              <Label>Closure time t<sub>c</sub> [s]</Label>
+              <Label>Closure time t<sub>c</sub> [s] <FieldTip fieldKey="closure_time" /></Label>
               <input
                 type="number" min={0} step={0.5}
                 placeholder="e.g. 10"
@@ -735,7 +736,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
         <Section title="Pipe &amp; Fluid">
           <FieldRow>
             <div>
-              <Label>Wave speed <TermTip term="a" /> [m/s]</Label>
+              <Label>Wave speed <TermTip term="a" /> [m/s] <FieldTip fieldKey="wave_speed" /></Label>
               <input
                 type="number" min={10} max={2000} step={10}
                 value={wavespeed}
@@ -775,7 +776,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
             </div>
             <div>
               <Label>
-                V₀ [{velUnit}]{" "}
+                V₀ [{velUnit}] <FieldTip fieldKey="initial_velocity" />{" "}
                 {autoV0 !== null && !v0Override && (
                   <span className="text-blue-500 font-normal">(auto)</span>
                 )}
@@ -797,7 +798,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
               <Hint>Steady-state velocity (ΔV = V₀)</Hint>
             </div>
             <div>
-              <Label>Fluid density ρ [kg/m³]</Label>
+              <Label>Fluid density ρ [kg/m³] <FieldTip fieldKey="fluid_density" /></Label>
               <input
                 type="number" min={500} max={1500} step={1}
                 value={rho}
@@ -811,7 +812,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
           <FieldRow>
             <div>
               <Label>
-                Operating head H₀ [{headUnit} gauge]{" "}
+                Operating head H₀ [{headUnit} gauge] <FieldTip fieldKey="operating_head" />{" "}
                 {autoTDH !== null && !hOpOverride && (
                   <span className="text-blue-500 font-normal">(auto from TDH)</span>
                 )}
@@ -851,7 +852,7 @@ function QuickAnalysisPanel({ activePipeline }: { activePipeline: "suction" | "d
         <Section title="Pressure Rating (optional)">
           <div>
             <Label>
-              Pipe pressure class [{us ? "kPa gauge  (psi shown on presets)" : "kPa gauge"}]
+              Pipe pressure class [{us ? "kPa gauge  (psi shown on presets)" : "kPa gauge"}] <FieldTip fieldKey="pressure_rating" />
             </Label>
             <div className="flex gap-2 flex-wrap mb-2">
               {PN_PRESETS.map(pn => (

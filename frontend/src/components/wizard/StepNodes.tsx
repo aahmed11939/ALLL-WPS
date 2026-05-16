@@ -1,6 +1,7 @@
 import { useProject } from "../../contexts/ProjectContext";
 import { useUnitSystem } from "../../contexts/UnitSystemContext";
 import { FT_PER_M, M_PER_FT, PSI_PER_KPA, KPA_PER_PSI } from "../../utils/units";
+import FieldTip from "../FieldTip";
 
 const inputCls =
   "w-full rounded border border-slate-300 bg-white px-3 py-1.5 text-sm font-mono text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600";
@@ -49,7 +50,7 @@ export default function StepNodes() {
           </div>
           <div className="space-y-3">
             <div>
-              <label className={labelCls}>Elevation ({elevUnit})</label>
+              <label className={labelCls}>Elevation ({elevUnit}) <FieldTip fieldKey="upstream_elevation" /></label>
               <input
                 type="number"
                 step="any"
@@ -71,7 +72,7 @@ export default function StepNodes() {
               )}
             </div>
             <div>
-              <label className={labelCls}>Pressure zone ({pressUnit})</label>
+              <label className={labelCls}>Pressure zone ({pressUnit}) <FieldTip fieldKey="upstream_pressure" /></label>
               <input
                 type="number"
                 step="any"
@@ -109,7 +110,7 @@ export default function StepNodes() {
           </div>
           <div className="space-y-3">
             <div>
-              <label className={labelCls}>Elevation ({elevUnit})</label>
+              <label className={labelCls}>Elevation ({elevUnit}) <FieldTip fieldKey="downstream_elevation" /></label>
               <input
                 type="number"
                 step="any"
@@ -131,7 +132,7 @@ export default function StepNodes() {
               )}
             </div>
             <div>
-              <label className={labelCls}>Pressure zone ({pressUnit})</label>
+              <label className={labelCls}>Pressure zone ({pressUnit}) <FieldTip fieldKey="downstream_pressure" /></label>
               <input
                 type="number"
                 step="any"

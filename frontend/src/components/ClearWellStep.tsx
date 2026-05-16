@@ -16,6 +16,7 @@ import {
   type ClearWellResponse,
 } from "../utils/api";
 import ClearWellDiagram from "./ClearWellDiagram";
+import FieldTip from "./FieldTip";
 import { useUnitSystem } from "../contexts/UnitSystemContext";
 import { FT_PER_M, GPM_PER_M3H } from "../utils/units";
 
@@ -360,7 +361,7 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
               <SectionHeader>Geometry</SectionHeader>
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div>
-                  <label className={labelCls}>Shape</label>
+                  <label className={labelCls}>Shape <FieldTip fieldKey="clearwell_shape" /></label>
                   <select {...register("shape")} className={inputCls}>
                     <option value="cylindrical">Cylindrical (circular tank)</option>
                     <option value="rectangular">Rectangular (basin)</option>
@@ -368,7 +369,7 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
                 </div>
                 {watchShape === "cylindrical" ? (
                   <div>
-                    <label className={labelCls}>Internal Diameter ({lenSuffix})</label>
+                    <label className={labelCls}>Internal Diameter ({lenSuffix}) <FieldTip fieldKey="clearwell_diameter" /></label>
                     <UnitInput
                       name="diameter_m"
                       control={control}
@@ -385,7 +386,7 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
                 ) : (
                   <>
                     <div>
-                      <label className={labelCls}>Length ({lenSuffix})</label>
+                      <label className={labelCls}>Length ({lenSuffix}) <FieldTip fieldKey="clearwell_length" /></label>
                       <UnitInput
                         name="length_m"
                         control={control}
@@ -400,7 +401,7 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
                       )}
                     </div>
                     <div>
-                      <label className={labelCls}>Width ({lenSuffix})</label>
+                      <label className={labelCls}>Width ({lenSuffix}) <FieldTip fieldKey="clearwell_width" /></label>
                       <UnitInput
                         name="width_m"
                         control={control}
@@ -425,14 +426,14 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
               <div className="grid grid-cols-2 gap-3">
                 {(
                   [
-                    ["LLL_m", "LLL — Low-Low Level (dry-run trip)"],
-                    ["LWL_m", "LWL — Pump Start (on)"],
-                    ["HWL_m", "HWL — Pump Stop (off)"],
-                    ["HHL_m", "HHL — High-High (overflow alarm)"],
+                    ["LLL_m", "LLL — Low-Low Level (dry-run trip)", "clearwell_lll"],
+                    ["LWL_m", "LWL — Pump Start (on)", "clearwell_lwl"],
+                    ["HWL_m", "HWL — Pump Stop (off)", "clearwell_hwl"],
+                    ["HHL_m", "HHL — High-High (overflow alarm)", "clearwell_hhl"],
                   ] as const
-                ).map(([field, label]) => (
+                ).map(([field, label, helpKey]) => (
                   <div key={field}>
-                    <label className={labelCls}>{label}</label>
+                    <label className={labelCls}>{label} <FieldTip fieldKey={helpKey} /></label>
                     <UnitInput
                       name={field}
                       control={control}
@@ -455,6 +456,12 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
             {/* ---- Pump stages ---- */}
             <div>
               <SectionHeader>Pump Staging</SectionHeader>
+              {stageFields.length > 0 && (
+                <div className="grid grid-cols-2 gap-2 mb-1">
+                  <span className={`${labelCls} mb-0`}>Label <FieldTip fieldKey="pump_stage_label" /></span>
+                  <span className={`${labelCls} mb-0`}>Flow ({flowSuffix}) <FieldTip fieldKey="pump_stage_flow" /></span>
+                </div>
+              )}
               <div className="space-y-2">
                 {stageFields.map((field, i) => (
                   <div key={field.id} className="flex items-center gap-2">
@@ -532,7 +539,7 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
             <div>
               <SectionHeader>Inflow Profile</SectionHeader>
               <div className="mb-3">
-                <label className={labelCls}>Inflow Type</label>
+                <label className={labelCls}>Inflow Type <FieldTip fieldKey="inflow_type" /></label>
                 <select {...register("inflow_type")} className={inputCls}>
                   <option value="constant">Constant rate</option>
                   <option value="hourly_24">24-hour hourly table</option>
@@ -541,7 +548,7 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
 
               {watchInflowType === "constant" ? (
                 <div>
-                  <label className={labelCls}>Constant Inflow Q_in ({flowSuffix})</label>
+                  <label className={labelCls}>Constant Inflow Q_in ({flowSuffix}) <FieldTip fieldKey="clearwell_constant_inflow" /></label>
                   <UnitInput
                     name="Q_in_m3h"
                     control={control}
@@ -557,7 +564,7 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
                 </div>
               ) : (
                 <div>
-                  <label className={labelCls}>Hourly Inflow — 24 values ({flowSuffix})</label>
+                  <label className={labelCls}>Hourly Inflow — 24 values ({flowSuffix}) <FieldTip fieldKey="clearwell_hourly_inflow" /></label>
                   <div className="grid grid-cols-6 gap-1.5">
                     {hourlyFields.map((field, i) => (
                       <div key={field.id} className="flex flex-col gap-0.5">
@@ -588,7 +595,7 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
               <SectionHeader>Design Limits</SectionHeader>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={labelCls}>Max Cycles / Hour</label>
+                  <label className={labelCls}>Max Cycles / Hour <FieldTip fieldKey="max_cycles_per_hour" /></label>
                   <div className="relative">
                     <input
                       {...register("max_cycles_per_hour", {
@@ -612,7 +619,7 @@ export default function ClearWellStep({ initialConfig, onConfigChange, onCompute
                   </p>
                 </div>
                 <div>
-                  <label className={labelCls}>Required Detention Time</label>
+                  <label className={labelCls}>Required Detention Time <FieldTip fieldKey="detention_time" /></label>
                   <div className="relative">
                     <input
                       {...register("required_detention_min", {

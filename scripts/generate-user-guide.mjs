@@ -1,10 +1,13 @@
 import puppeteer from "puppeteer-core";
-import { writeFileSync, existsSync } from "fs";
+import { writeFileSync, existsSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { execSync } from "child_process";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const logoDataUrl = "data:image/png;base64," +
+  readFileSync(join(__dirname, "WPS_Logo_1778892831735.png")).toString("base64");
 
 /**
  * Resolve the Chromium/Chrome executable path.
@@ -340,13 +343,12 @@ const html = `<!DOCTYPE html>
   /* Running footer */
   @page {
     size: A4;
-    margin: 0;
+    margin: 0 0 16mm 0;
     @bottom-center {
       content: "ALLL WPS Designer — User Guide | Page " counter(page);
       font-size: 8pt;
       color: #94a3b8;
       font-family: 'Inter', Arial, sans-serif;
-      padding-bottom: 6mm;
     }
   }
 </style>
@@ -358,11 +360,7 @@ const html = `<!DOCTYPE html>
 ═══════════════════════════════════════════════════════ -->
 <div class="cover">
   <div class="cover-logo-area">
-    <div class="cover-logo-circle">WPS</div>
-    <div>
-      <div class="cover-brand">ALLL WPS Designer</div>
-      <div class="cover-sub">Municipal Drinking-Water Pump Station</div>
-    </div>
+    <img src="${logoDataUrl}" style="height:160px;width:auto;" alt="ALLL WPS Designer"/>
   </div>
   <h1>User Guide</h1>
   <p>A complete engineering reference for all 11 wizard steps — calculations, equations, standards, and best practice for drinking-water pump station design.</p>

@@ -343,7 +343,7 @@ const html = `<!DOCTYPE html>
   /* Running footer */
   @page {
     size: A4;
-    margin: 0 0 16mm 0;
+    margin: 16mm 0 16mm 0;
     @bottom-center {
       content: "ALLL WPS Designer — User Guide | Page " counter(page);
       font-size: 8pt;

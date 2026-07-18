@@ -2784,17 +2784,33 @@ class SubscriptionEmailRequest(BaseModel):
     status_code=status.HTTP_204_NO_CONTENT,
     include_in_schema=False,
 )
-def api_internal_subscription_email(body: SubscriptionEmailRequest) -> None:
+def api_internal_subscription_email(
+    body: SubscriptionEmailRequest,
+    request: Request,
+) -> None:
     """
     Receives subscription lifecycle events from the Node.js api-server after a
     Stripe webhook is processed.  Resolves the customer email (either from the
     payload directly, or via the Stripe API using customer_id) and fires the
     appropriate transactional email using the Python SMTP service.
 
-    Fails silently — always returns 204 so the webhook handler is never blocked.
+    Protected by INTERNAL_EMAIL_SECRET bearer token — returns 401 if missing
+    or incorrect.  Fails silently on email errors (always returns 204 on auth
+    success) so the webhook handler is never blocked.
     """
     import logging as _logging
+    import os as _os
     _log = _logging.getLogger(__name__)
+
+    expected_secret = _os.environ.get("INTERNAL_EMAIL_SECRET", "")
+    if not expected_secret:
+        _log.error("INTERNAL_EMAIL_SECRET is not configured — rejecting all internal email requests")
+        raise HTTPException(status_code=503, detail="Internal email service misconfigured.")
+
+    auth_header = request.headers.get("Authorization", "")
+    provided = auth_header.removeprefix("Bearer ").strip()
+    if not provided or provided != expected_secret:
+        raise HTTPException(status_code=401, detail="Unauthorized.")
 
     to = body.email or ""
 

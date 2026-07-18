@@ -90,11 +90,19 @@ app.post(
         }
 
         if (emailEvent && (customerId || directEmail)) {
-          fetch("http://localhost:8000/api/v1/internal/subscription-email", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ event: emailEvent, customer_id: customerId, email: directEmail }),
-          }).catch((e: unknown) => logger.warn({ e }, "Subscription email notify failed"));
+          const internalSecret = process.env.INTERNAL_EMAIL_SECRET ?? "";
+          if (internalSecret) {
+            fetch("http://localhost:8000/api/v1/internal/subscription-email", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${internalSecret}`,
+              },
+              body: JSON.stringify({ event: emailEvent, customer_id: customerId, email: directEmail }),
+            }).catch((e: unknown) => logger.warn({ e }, "Subscription email notify failed"));
+          } else {
+            logger.warn("INTERNAL_EMAIL_SECRET not set — subscription email skipped");
+          }
         }
       } catch {
         // non-critical — email is best-effort; sync already succeeded

@@ -129,6 +129,10 @@ export default function LandingPage({ checkoutResult }: Props) {
 
       <footer className="border-t border-slate-200 py-4 text-center text-[11px] text-slate-400 font-mono">
         ALLL WPS Designer · © 2026 · $4,999/year per seat
+        {" · "}
+        <a href="mailto:Support@alll-ai.com" className="text-teal-600 hover:text-teal-700 hover:underline">
+          Support@alll-ai.com
+        </a>
       </footer>
     </div>
   );

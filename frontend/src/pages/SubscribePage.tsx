@@ -218,7 +218,12 @@ export default function SubscribePage() {
 
               {error && (
                 <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5">
-                  <p className="text-xs text-rose-700">{error}</p>
+                  <p className="text-xs text-rose-700">
+                    {error}{" "}
+                    <a href="mailto:Support@alll-ai.com" className="underline hover:text-rose-900">
+                      Contact Support@alll-ai.com
+                    </a>
+                  </p>
                 </div>
               )}
 
@@ -242,6 +247,12 @@ export default function SubscribePage() {
 
               <p className="mt-3 text-center text-xs text-slate-400">
                 Secure payment via Stripe · 30-day refund policy
+              </p>
+              <p className="mt-1.5 text-center text-xs text-slate-400">
+                Questions?{" "}
+                <a href="mailto:Support@alll-ai.com" className="text-teal-600 hover:text-teal-700 hover:underline">
+                  Support@alll-ai.com
+                </a>
               </p>
             </div>
           </div>

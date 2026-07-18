@@ -2220,6 +2220,7 @@ class ExcelExportRequest(BaseModel):
     meta: Optional[Dict[str, Any]] = None
     unitSystem: Optional[str] = "SI"
     designFlow_m3h: Optional[float] = None
+    owner_email: Optional[str] = None
     upstreamNode: Optional[Dict[str, Any]] = None
     downstreamNode: Optional[Dict[str, Any]] = None
     suction: Optional[Dict[str, Any]] = None

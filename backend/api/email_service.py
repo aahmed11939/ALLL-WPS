@@ -132,6 +132,48 @@ def send_project_saved(to: str, project_name: str, is_update: bool = False) -> N
     send_email(to, subject, body)
 
 
+def send_report_exported(
+    to: str,
+    project_name: str,
+    design_flow_m3h: float | None,
+    tdh_m: float | None,
+    report_format: str = "Word",
+) -> None:
+    """Send a confirmation email when a design report is exported."""
+    support_email = os.environ.get("SUPPORT_EMAIL", "support@alll-ai.com")
+    subject = f"{APP_NAME} — Report exported: {project_name}"
+
+    flow_str = f"{design_flow_m3h:.2f} m³/h" if design_flow_m3h is not None else "—"
+    tdh_str  = f"{tdh_m:.2f} m" if tdh_m is not None else "—"
+
+    body = f"""
+<html><body style="font-family:Arial,sans-serif;color:#1e293b;max-width:560px;margin:auto;padding:24px">
+  <img src="https://alll.ai/wps-logo.png" alt="{APP_NAME}" style="height:40px;margin-bottom:16px" onerror="this.style.display='none'">
+  <h2 style="color:#0f766e;margin-bottom:8px">Report exported</h2>
+  <p>Your <strong>{report_format}</strong> design report for <strong>{project_name}</strong> has been generated successfully.</p>
+  <table style="border-collapse:collapse;width:100%;margin:16px 0">
+    <tr style="background:#f1f5f9">
+      <td style="padding:8px 12px;font-weight:bold;width:50%">Design flow</td>
+      <td style="padding:8px 12px">{flow_str}</td>
+    </tr>
+    <tr>
+      <td style="padding:8px 12px;font-weight:bold">Total dynamic head (TDH)</td>
+      <td style="padding:8px 12px">{tdh_str}</td>
+    </tr>
+  </table>
+  <p style="color:#64748b;font-size:13px">
+    Questions? Email <a href="mailto:{support_email}" style="color:#0f766e">{support_email}</a>
+  </p>
+  <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0">
+  <p style="font-size:11px;color:#94a3b8">
+    {APP_NAME} · Municipal Drinking-Water Pump Station Design<br>
+    This is an automated notification — please do not reply to this email.
+  </p>
+</body></html>
+""".strip()
+    send_email(to, subject, body)
+
+
 def send_subscription_activated(to: str) -> None:
     """Send a welcome email when a subscription is activated."""
     support_email = os.environ.get("SUPPORT_EMAIL", "support@alll-ai.com")

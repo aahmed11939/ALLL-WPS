@@ -180,7 +180,7 @@ from backend.engine.hydraulics import (
 from backend.engine.units import convert
 from backend.engine.excel_export import _wb_to_bytes, build_workbook
 from backend.export.word_export import build_document, _doc_to_bytes
-from backend.api.email_service import send_project_saved, send_subscription_activated, send_subscription_lapsed
+from backend.api.email_service import send_project_saved, send_report_exported, send_subscription_activated, send_subscription_lapsed
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -2671,6 +2671,17 @@ async def export_word(body: ExcelExportRequest) -> StreamingResponse:
     )
     filename = f"{safe_name}.docx"
 
+    owner_email: str = body.owner_email or ""
+    if owner_email:
+        hyd_result = draft.get("hydraulicsResult") or {}
+        send_report_exported(
+            to=owner_email,
+            project_name=project_name or safe_name,
+            design_flow_m3h=draft.get("designFlow_m3h"),
+            tdh_m=hyd_result.get("tdh_m"),
+            report_format="Word",
+        )
+
     import io as _io
     return StreamingResponse(
         _io.BytesIO(docx_bytes),
@@ -2720,6 +2731,17 @@ async def export_excel(body: ExcelExportRequest) -> StreamingResponse:
         or "wps_project"
     )
     filename = f"{safe_name}.xlsx"
+
+    owner_email: str = body.owner_email or ""
+    if owner_email:
+        hyd_result = draft.get("hydraulicsResult") or {}
+        send_report_exported(
+            to=owner_email,
+            project_name=project_name or safe_name,
+            design_flow_m3h=draft.get("designFlow_m3h"),
+            tdh_m=hyd_result.get("tdh_m"),
+            report_format="Excel",
+        )
 
     import io
     return StreamingResponse(

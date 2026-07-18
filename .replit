@@ -72,3 +72,11 @@ externalPort = 3003
 [nix]
 channel = "stable-25_05"
 packages = ["cairo", "ffmpeg-full", "freetype", "ghostscript", "gobject-introspection", "gtk3", "pkg-config", "qhull", "tcl", "tk"]
+
+[userenv]
+
+[userenv.shared]
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = "587"
+EMAIL_USER = "carrott2026@gmail.com"
+SUPPORT_EMAIL = "support@alll-ai.com"

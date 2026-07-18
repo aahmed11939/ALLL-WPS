@@ -52,8 +52,41 @@ app.post(
     const sig = Array.isArray(signature) ? signature[0] : signature;
     try {
       const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body as string);
+
+      // Parse the event before sync so we can fire transactional emails
+      let customerEmail: string | null = null;
+      let eventType: string | null = null;
+      try {
+        const event = JSON.parse(rawBody.toString()) as {
+          type?: string;
+          data?: { object?: { customer_email?: string; customer_details?: { email?: string }; customer?: unknown } };
+        };
+        eventType = event.type ?? null;
+        const obj = event.data?.object;
+        customerEmail =
+          (obj as { customer_email?: string })?.customer_email ??
+          (obj as { customer_details?: { email?: string } })?.customer_details?.email ??
+          null;
+      } catch {
+        // non-parseable body — sync will handle/reject it
+      }
+
       const { WebhookHandlers } = await import("./webhookHandlers");
       await WebhookHandlers.processWebhook(rawBody, sig);
+
+      // Fire transactional emails after successful sync
+      if (customerEmail && eventType) {
+        const { sendSubscriptionActivated, sendSubscriptionLapsed } = await import("./emailService");
+        if (
+          eventType === "checkout.session.completed" ||
+          eventType === "customer.subscription.created"
+        ) {
+          sendSubscriptionActivated(customerEmail);
+        } else if (eventType === "customer.subscription.deleted") {
+          sendSubscriptionLapsed(customerEmail);
+        }
+      }
+
       res.status(200).json({ received: true });
     } catch (err) {
       logger.error({ err }, "Stripe webhook error");

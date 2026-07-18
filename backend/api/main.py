@@ -180,6 +180,7 @@ from backend.engine.hydraulics import (
 from backend.engine.units import convert
 from backend.engine.excel_export import _wb_to_bytes, build_workbook
 from backend.export.word_export import build_document, _doc_to_bytes
+from backend.api.email_service import send_project_saved
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -2844,6 +2845,8 @@ def api_create_project(body: ProjectSaveRequest) -> ProjectSaveResponse:
         row = create_project(data_json, owner_email=body.owner_email or "")
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    if row.get("owner_email"):
+        send_project_saved(row["owner_email"], row["name"], is_update=False)
     return ProjectSaveResponse(**row)
 
 
@@ -2864,6 +2867,8 @@ def api_update_project(slug: str, body: ProjectSaveRequest) -> ProjectSaveRespon
         row = update_project(slug, data_json, owner_email=body.owner_email or None)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Project '{slug}' not found.")
+    if row.get("owner_email"):
+        send_project_saved(row["owner_email"], row["name"], is_update=True)
     return ProjectSaveResponse(**row)
 
 

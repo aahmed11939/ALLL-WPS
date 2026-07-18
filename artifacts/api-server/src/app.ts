@@ -53,38 +53,51 @@ app.post(
     try {
       const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body as string);
 
-      // Parse the event before sync so we can fire transactional emails
-      let customerEmail: string | null = null;
-      let eventType: string | null = null;
-      try {
-        const event = JSON.parse(rawBody.toString()) as {
-          type?: string;
-          data?: { object?: { customer_email?: string; customer_details?: { email?: string }; customer?: unknown } };
-        };
-        eventType = event.type ?? null;
-        const obj = event.data?.object;
-        customerEmail =
-          (obj as { customer_email?: string })?.customer_email ??
-          (obj as { customer_details?: { email?: string } })?.customer_details?.email ??
-          null;
-      } catch {
-        // non-parseable body — sync will handle/reject it
-      }
-
       const { WebhookHandlers } = await import("./webhookHandlers");
       await WebhookHandlers.processWebhook(rawBody, sig);
 
-      // Fire transactional emails after successful sync
-      if (customerEmail && eventType) {
-        const { sendSubscriptionActivated, sendSubscriptionLapsed } = await import("./emailService");
+      // Fire transactional emails via the Python FastAPI internal endpoint.
+      // Parse the event to extract eventType, customer ID, and any direct email.
+      // For subscription events the payload has a `customer` ID (not email);
+      // Python resolves the address via Stripe API and dispatches the email.
+      try {
+        interface StripeEventShape {
+          type?: string;
+          data?: {
+            object?: {
+              customer?: unknown;
+              customer_email?: string;
+              customer_details?: { email?: string };
+            };
+          };
+        }
+        const event = JSON.parse(rawBody.toString()) as StripeEventShape;
+        const eventType: string | null = event.type ?? null;
+        const obj = event.data?.object ?? {};
+        const customerId: string | null =
+          typeof obj.customer === "string" ? obj.customer : null;
+        const directEmail: string | null =
+          obj.customer_email ?? obj.customer_details?.email ?? null;
+
+        let emailEvent: string | null = null;
         if (
           eventType === "checkout.session.completed" ||
           eventType === "customer.subscription.created"
         ) {
-          sendSubscriptionActivated(customerEmail);
+          emailEvent = "subscription_activated";
         } else if (eventType === "customer.subscription.deleted") {
-          sendSubscriptionLapsed(customerEmail);
+          emailEvent = "subscription_lapsed";
         }
+
+        if (emailEvent && (customerId || directEmail)) {
+          fetch("http://localhost:8000/api/v1/internal/subscription-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ event: emailEvent, customer_id: customerId, email: directEmail }),
+          }).catch((e: unknown) => logger.warn({ e }, "Subscription email notify failed"));
+        }
+      } catch {
+        // non-critical — email is best-effort; sync already succeeded
       }
 
       res.status(200).json({ received: true });

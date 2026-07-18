@@ -180,7 +180,7 @@ from backend.engine.hydraulics import (
 from backend.engine.units import convert
 from backend.engine.excel_export import _wb_to_bytes, build_workbook
 from backend.export.word_export import build_document, _doc_to_bytes
-from backend.api.email_service import send_project_saved
+from backend.api.email_service import send_project_saved, send_subscription_activated, send_subscription_lapsed
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -2769,6 +2769,66 @@ class ProjectLoadResponse(BaseModel):
     data: dict
     created_at: str
     updated_at: str
+
+
+class SubscriptionEmailRequest(BaseModel):
+    event: str  # "subscription_activated" | "subscription_lapsed"
+    customer_id: str | None = None
+    email: str | None = None
+
+
+@app.post(
+    "/api/v1/internal/subscription-email",
+    tags=["internal"],
+    summary="Trigger a subscription transactional email (called by Node.js webhook handler)",
+    status_code=status.HTTP_204_NO_CONTENT,
+    include_in_schema=False,
+)
+def api_internal_subscription_email(body: SubscriptionEmailRequest) -> None:
+    """
+    Receives subscription lifecycle events from the Node.js api-server after a
+    Stripe webhook is processed.  Resolves the customer email (either from the
+    payload directly, or via the Stripe API using customer_id) and fires the
+    appropriate transactional email using the Python SMTP service.
+
+    Fails silently — always returns 204 so the webhook handler is never blocked.
+    """
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+
+    to = body.email or ""
+
+    # If we only have a customer_id, look up the email via Stripe REST API
+    if not to and body.customer_id:
+        try:
+            import urllib.request as _urllib
+            import os as _os
+            stripe_key = _os.environ.get("STRIPE_SECRET_KEY", "")
+            if stripe_key:
+                req = _urllib.Request(
+                    f"https://api.stripe.com/v1/customers/{body.customer_id}",
+                    headers={"Authorization": f"Bearer {stripe_key}"},
+                )
+                with _urllib.urlopen(req, timeout=8) as resp:
+                    import json as _json
+                    cust = _json.loads(resp.read())
+                    to = cust.get("email", "")
+        except Exception as exc:
+            _log.warning("Could not resolve Stripe customer email: %s", exc)
+
+    if not to:
+        _log.warning(
+            "subscription-email: no email resolved for event=%s customer_id=%s",
+            body.event, body.customer_id,
+        )
+        return
+
+    if body.event == "subscription_activated":
+        send_subscription_activated(to)
+    elif body.event == "subscription_lapsed":
+        send_subscription_lapsed(to)
+    else:
+        _log.warning("subscription-email: unknown event type '%s'", body.event)
 
 
 @app.get(
